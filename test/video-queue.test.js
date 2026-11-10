@@ -30,3 +30,12 @@ test("finds the next pending item without wrapping or replaying completed items"
   assert.equal(findNextQueueItem(queue, "missing").id, "b");
   assert.equal(findNextQueueItem([], "a"), null);
 });
+
+test("extracts only explicit NicoNico request commands", () => {
+  const { extractRequestCandidate } = require("../src/video-queue");
+  assert.equal(extractRequestCandidate("リクエスト sm12345678"), "sm12345678");
+  assert.equal(extractRequestCandidate("リク： https://www.nicovideo.jp/watch/nm123"), "https://www.nicovideo.jp/watch/nm123");
+  assert.equal(extractRequestCandidate("request so987"), "so987");
+  assert.equal(extractRequestCandidate("sm12345678"), "");
+  assert.equal(extractRequestCandidate("この動画いいね request sm123"), "");
+});
