@@ -13,7 +13,7 @@ function boundedString(value, maxLength) {
 
 class CommentRecorder {
   constructor(userDataDirectory, programId) {
-    if (typeof programId !== "string" || !/^lv\\d+$/i.test(programId)) {
+    if (typeof programId !== "string" || !/^lv\d+$/i.test(programId)) {
       throw new TypeError("A valid Nico Live program ID is required.");
     }
     this.directory = path.join(userDataDirectory, "comment-recordings");
@@ -46,7 +46,7 @@ class CommentRecorder {
       content: boundedString(entry.content, 4000),
       isHistory: Boolean(entry.isHistory)
     };
-    const line = JSON.stringify(safeEntry) + "\\n";
+    const line = JSON.stringify(safeEntry) + "\n";
     this.writeQueue = this.writeQueue.then(() => fs.appendFile(this.filePath, line, { encoding: "utf8", mode: 0o600 }));
     return this.writeQueue;
   }
