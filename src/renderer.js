@@ -122,9 +122,13 @@ toast(result.message||"動画ページを開きました。");
 }
 async function playNextQueueItem(manual=false){
 const current=currentQueueItem();
+const previousStatus=current?.status;
 if(manual&&current&&current.status==="playing")current.status="skipped";
 const next=getNextQueueItem();
-if(!next){save();if(page==="requests"||page==="player")render();toast("次に再生できる動画はありません。");return;}
+if(!next){
+if(manual&&current)current.status=previousStatus||"playing";
+save();if(page==="requests"||page==="player")render();toast("次に再生できる動画はありません。");return;
+}
 save();await playQueueItem(next);
 }
 function updateVideoPlayerState(status){
@@ -286,7 +290,7 @@ if(b.hasAttribute("data-save-paths")){state.external={obs:document.getElementByI
 if(b.hasAttribute("data-up")){let i=+b.dataset.up;if(i>0)[state.requests[i-1],state.requests[i]]=[state.requests[i],state.requests[i-1]];save();render()}
 if(b.hasAttribute("data-down")){let i=+b.dataset.down;if(i<state.requests.length-1)[state.requests[i+1],state.requests[i]]=[state.requests[i],state.requests[i+1]];save();render()}
 if(b.hasAttribute("data-remove")){const removed=state.requests.find(x=>x.id===b.dataset.remove);state.requests=state.requests.filter(x=>x.id!==b.dataset.remove);if(removed&&removed.id===state.player.currentId){state.player.currentId="";state.player.status="closed";void window.kananeoApp.niconico.closeVideo();}save();render()}
-if(b.hasAttribute("data-clear")){state.requests=[];save();render()}
+if(b.hasAttribute("data-clear")){if(state.player.currentId)void window.kananeoApp.niconico.closeVideo();state.requests=[];state.player.currentId="";state.player.status="closed";save();render()}
 if(b.hasAttribute("data-ngw")){state.ngWords.splice(+b.dataset.ngw,1);save();render()}
 if(b.hasAttribute("data-ngu")){state.ngUsers.splice(+b.dataset.ngu,1);save();render()}
 if(b.hasAttribute("data-track")){state.playlist.splice(+b.dataset.track,1);save();render()}
