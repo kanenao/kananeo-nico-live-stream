@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   niconico:Object.freeze({
     openLogin:()=>ipcRenderer.invoke("niconico:open-login"),
     validateVideo:input=>ipcRenderer.invoke("niconico:validate-video",input),
+    extractRequestCandidate:input=>ipcRenderer.invoke("niconico:extract-request",input),
     openVideo:input=>ipcRenderer.invoke("niconico:open-video",input),
     focusVideo:()=>ipcRenderer.invoke("niconico:focus-video"),
     closeVideo:()=>ipcRenderer.invoke("niconico:close-video"),
