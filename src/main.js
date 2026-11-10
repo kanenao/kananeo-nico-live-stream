@@ -29,6 +29,7 @@ let finalQuitInProgress = false;
 let playerWindow = null;
 let playerMonitorTimer = null;
 let playerMonitorBusy = false;
+let playerMonitorGeneration = 0;
 let playerVideoId = "";
 let playerVideoUrl = "";
 let playerEndNotified = false;
@@ -466,10 +467,12 @@ function stopPlayerMonitor() {
   if (playerMonitorTimer) clearInterval(playerMonitorTimer);
   playerMonitorTimer = null;
   playerMonitorBusy = false;
+  playerMonitorGeneration++;
 }
 
 function startPlayerMonitor() {
   stopPlayerMonitor();
+  const generation = playerMonitorGeneration;
   playerMonitorTimer = setInterval(async () => {
     const win = playerWindow;
     if (!win || win.isDestroyed() || win.webContents.isDestroyed()) {
@@ -477,6 +480,7 @@ function startPlayerMonitor() {
       return;
     }
     if (playerMonitorBusy) return;
+    const monitoredVideoId = playerVideoId;
     playerMonitorBusy = true;
     try {
       const media = await win.webContents.executeJavaScript(`(() => {
@@ -492,6 +496,7 @@ function startPlayerMonitor() {
           title:document.title || ""
         };
       })()`, true);
+      if (generation !== playerMonitorGeneration || monitoredVideoId !== playerVideoId || win !== playerWindow) return;
       if (!media || !media.hasVideo) {
         sendPlayerState("loading", { currentTime:0, duration:0, message:"動画プレイヤーを読み込んでいます。" });
         return;
@@ -512,9 +517,11 @@ function startPlayerMonitor() {
         sendPlayerState(media.paused ? "paused" : "playing", details);
       }
     } catch {
-      sendPlayerState("loading", { message:"動画の再生状態を確認しています。" });
+      if (generation === playerMonitorGeneration && monitoredVideoId === playerVideoId) {
+        sendPlayerState("loading", { message:"動画の再生状態を確認しています。" });
+      }
     } finally {
-      playerMonitorBusy = false;
+      if (generation === playerMonitorGeneration) playerMonitorBusy = false;
     }
   }, 1000);
 }
@@ -523,6 +530,7 @@ async function openVideoPlayer(input) {
   const validation = normalizeNiconicoVideoUrl(input);
   if (!validation.ok) return validation;
 
+  stopPlayerMonitor();
   playerVideoId = validation.videoId;
   playerVideoUrl = validation.url;
   playerEndNotified = false;
