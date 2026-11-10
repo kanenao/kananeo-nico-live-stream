@@ -3,7 +3,7 @@
 const { app, BrowserWindow, shell, session, ipcMain, clipboard } = require("electron");
 const path = require("node:path");
 const {
-  normalizeProgramId, inspectWatchPage, NiconicoPageError, isTrustedWebSocketEndpoint
+  normalizeProgramId, inspectWatchPage, extractEmbeddedData, NiconicoPageError, isTrustedWebSocketEndpoint
 } = require("./niconico-program");
 const { normalizeComment, normalizeOperatorComment, normalizeNotification } = require("./comment-normalizer");
 const { isTrustedNdgrUri } = require("./ndgr-security");
@@ -161,12 +161,37 @@ async function startCommentStream(input,options={}) {
       fetchBacklog:options.fetchBacklog!==false,backlogEvents:["chat"]
     });
 
-    const originalFetch=provider.fetchWebSocketUrl;
-    if (typeof originalFetch!=="function") throw new Error("Unsupported provider implementation");
+    if (typeof provider.fetchWebSocketUrl!=="function") throw new Error("Unsupported provider implementation");
+    // Use our HTML parser for the watch page instead of depending on the provider's
+    // attribute-order-sensitive embedded-data expression. The resulting socket URL is allowlisted.
     provider.fetchWebSocketUrl=async function() {
-      const result=await originalFetch.call(this);
-      if (!isTrustedWebSocketEndpoint(result?.wsUrl)) throw new Error("Untrusted watch WebSocket URL");
-      return result;
+      const watchUrl=NICONICO_WATCH_BASE+encodeURIComponent(validation.programId);
+      const response=await niconicoSession.fetch(watchUrl,{
+        method:"GET",credentials:"include",redirect:"follow",
+        headers:{Accept:"text/html,application/xhtml+xml"},
+        signal:AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+      });
+      if(!isTrustedNiconicoUrl(response.url||watchUrl)||!response.ok) throw new Error("Nico Live watch page could not be verified");
+      const html=await response.text();
+      if(html.length>6*1024*1024) throw new Error("Nico Live page too large");
+      const embedded=extractEmbeddedData(html);
+      const props=embedded.props&&typeof embedded.props==="object"?embedded.props:embedded;
+      const wsUrl=props.site?.relive?.webSocketUrl;
+      if(!isTrustedWebSocketEndpoint(wsUrl)) throw new Error("Untrusted Nico Live WebSocket endpoint");
+      const program=props.program||{};
+      const stats=program.statistics||{};
+      const supplier=program.supplier||{};
+      const metadata={
+        title:typeof program.title==="string"?program.title:validation.title,
+        status:program.status,
+        description:program.description,
+        beginTime:program.beginTime!=null?new Date(program.beginTime*1000):undefined,
+        endTime:program.endTime!=null?new Date(program.endTime*1000):undefined,
+        watchCount:stats.watchCount,
+        commentCount:stats.commentCount,
+        broadcasterName:supplier.name
+      };
+      return {wsUrl,metadata};
     };
     for (const [method,kind] of [["startMessageStream","message"],["startSegmentStream","segment"],["startBackwardStream","backward"]]) {
       const original=provider[method];
