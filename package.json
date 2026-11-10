@@ -1,0 +1,14 @@
+{
+  "name": "kananeo-nico-live-stream",
+  "version": "0.1.0-beta.2",
+  "private": true,
+  "description": "総合ニコ生管理デスクトップアプリ",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "devDependencies": {
+    "electron": "45.2.3"
+  }
+}
