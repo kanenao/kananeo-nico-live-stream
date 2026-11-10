@@ -7,6 +7,7 @@ const {
 } = require("./niconico-program");
 const { normalizeComment, normalizeOperatorComment, normalizeNotification } = require("./comment-normalizer");
 const { isTrustedNdgrUri } = require("./ndgr-security");
+const { CommentRecorder } = require("./comment-recorder");
 
 const NICONICO_HOME = "https://live.nicovideo.jp/";
 const NICONICO_WATCH_BASE = "https://live2.nicovideo.jp/watch/";
@@ -18,6 +19,12 @@ let niconicoSession = null;
 let commentProvider = null;
 let commentProgramId = "";
 let commentOperationId = 0;
+let commentRecorder = null;
+let commentRecordingEnabled = false;
+let commentRecoveryTimer = null;
+let commentRecoveryAttempts = 0;
+let commentRecoveryActive = false;
+let finalQuitInProgress = false;
 
 function isNiconicoHost(hostname) {
   const host = String(hostname || "").toLowerCase();
@@ -113,7 +120,7 @@ async function checkNiconicoProgram(input) {
 
 function sendCommentState(state,message="",programId=commentProgramId) {
   if (mainWindow&&!mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("niconico:comment-state",{state,message,programId:programId||"",changedAt:new Date().toISOString()});
+    mainWindow.webContents.send("niconico:comment-state",{state,message,programId:programId||"",recordingEnabled:commentRecordingEnabled,changedAt:new Date().toISOString()});
   }
 }
 function sendCommentEvent(event) {
@@ -125,115 +132,314 @@ async function getCommentCookieHeader() {
   return cookies.filter(c=>allowed.has(c.name)&&c.value&&(!c.expirationDate||c.expirationDate>Date.now()/1000))
     .map(c=>`${c.name}=${c.value}`).join("; ");
 }
-function stopCommentStream(reason="コメント受信を停止しました。") {
-  commentOperationId++;
-  if (commentProvider) {
-    try { commentProvider.removeAllListeners(); } catch {}
-    try { commentProvider.disconnect(); } catch {}
+function clearCommentRecoveryTimer() {
+  if (commentRecoveryTimer) {
+    clearTimeout(commentRecoveryTimer);
+    commentRecoveryTimer = null;
   }
-  commentProvider=null;
-  commentProgramId="";
-  sendCommentState("disconnected",reason,"");
+}
+
+async function closeCommentRecorder() {
+  const recorder = commentRecorder;
+  commentRecorder = null;
+  commentRecordingEnabled = false;
+  if (recorder) {
+    try { await recorder.close(); } catch {}
+  }
+}
+
+function recordCommentEvent(entry) {
+  const recorder = commentRecorder;
+  if (!recorder) return;
+  void recorder.write(entry).catch(async () => {
+    if (commentRecorder !== recorder) return;
+    commentRecorder = null;
+    commentRecordingEnabled = false;
+    try { await recorder.close(); } catch {}
+    sendCommentState(
+      "connected",
+      "コメントは受信中ですが、自動保存でエラーが発生しました。保存先の空き容量とアクセス権を確認してください。",
+      commentProgramId
+    );
+  });
+}
+
+function scheduleCommentRecovery(provider, attemptId, programId) {
+  if (commentRecoveryTimer || commentRecoveryActive) return;
+  commentRecoveryTimer = setTimeout(async () => {
+    commentRecoveryTimer = null;
+    if (commentProvider !== provider || attemptId !== commentOperationId) return;
+
+    commentRecoveryActive = true;
+    commentRecoveryAttempts++;
+    sendCommentState(
+      "recovering",
+      "コメントストリームを再接続しています（" + commentRecoveryAttempts + "/5）。",
+      programId
+    );
+    try {
+      provider.disconnect();
+      await provider.connect();
+      if (commentProvider === provider && attemptId === commentOperationId) {
+        commentRecoveryAttempts = 0;
+        sendCommentState("connected", "コメント接続を再確立しました。受信を再開しています。", programId);
+      }
+    } catch {
+      if (commentProvider !== provider || attemptId !== commentOperationId) return;
+      if (commentRecoveryAttempts >= 5) {
+        try { provider.disconnect(); } catch {}
+        try { provider.removeAllListeners(); } catch {}
+        commentProvider = null;
+        commentProgramId = "";
+        await closeCommentRecorder();
+        sendCommentState("error", "コメントストリームを復旧できませんでした。放送IDを確認して再接続してください。", programId);
+      } else {
+        sendCommentState(
+          "recovering",
+          "再接続に失敗しました。再試行を続けます（" + commentRecoveryAttempts + "/5）。",
+          programId
+        );
+      }
+    } finally {
+      commentRecoveryActive = false;
+      if (commentProvider === provider && attemptId === commentOperationId && commentRecoveryAttempts > 0 && commentRecoveryAttempts < 5) {
+        scheduleCommentRecovery(provider, attemptId, programId);
+      }
+    }
+  }, 10000);
+}
+
+async function stopCommentStream(reason="コメント受信を停止しました。") {
+  commentOperationId++;
+  clearCommentRecoveryTimer();
+  commentRecoveryAttempts = 0;
+  commentRecoveryActive = false;
+  const provider = commentProvider;
+  commentProvider = null;
+  commentProgramId = "";
+  if (provider) {
+    try { provider.disconnect(); } catch {}
+    try { provider.removeAllListeners(); } catch {}
+  }
+  await closeCommentRecorder();
+  sendCommentState("disconnected", reason, "");
   return {ok:true,message:reason};
 }
 
-async function startCommentStream(input,options={}) {
-  const validation=await checkNiconicoProgram(input);
-  if (!validation.ok) return {ok:false,code:validation.code,message:validation.message};
-  if (!validation.watchingApiAvailable) return {ok:false,code:"WATCH_API_NOT_FOUND",message:"番組ページから視聴用API情報を確認できませんでした。放送状態とページ仕様を確認してください。"};
-  let cookies="";
-  try { cookies=await getCommentCookieHeader(); }
-  catch { return {ok:false,code:"COOKIE_READ_FAILED",message:"ログインセッションを確認できませんでした。再ログインしてください。"}; }
-  if (!cookies.split(/;\s*/).some(part=>part.startsWith("user_session="))) {
-    return {ok:false,code:"AUTH_REQUIRED",message:"ニコニコ公式ログインが必要です。先にアカウント接続を行ってください。"};
+async function startCommentStream(input, options={}) {
+  const attemptId = ++commentOperationId;
+  clearCommentRecoveryTimer();
+  commentRecoveryAttempts = 0;
+  commentRecoveryActive = false;
+
+  const previousProvider = commentProvider;
+  commentProvider = null;
+  commentProgramId = "";
+  if (previousProvider) {
+    try { previousProvider.disconnect(); } catch {}
+    try { previousProvider.removeAllListeners(); } catch {}
+  }
+  await closeCommentRecorder();
+  if (attemptId !== commentOperationId) {
+    return {ok:false,code:"CANCELLED",message:"接続処理はキャンセルされました。"};
   }
 
-  stopCommentStream("新しい放送への接続を準備しています。");
-  const attemptId=commentOperationId;
-  sendCommentState("connecting","ニコ生のコメントサーバーへ接続しています。",validation.programId);
+  sendCommentState("connecting", "放送ページを確認しています。", "");
+  const validation = await checkNiconicoProgram(input);
+  if (attemptId !== commentOperationId) {
+    return {ok:false,code:"CANCELLED",message:"接続処理はキャンセルされました。"};
+  }
+  if (!validation.ok) {
+    sendCommentState("error", validation.message, "");
+    return {ok:false,code:validation.code,message:validation.message};
+  }
+  if (!validation.watchingApiAvailable) {
+    const message = "番組ページから視聴用API情報を確認できませんでした。放送状態とページ仕様を確認してください。";
+    sendCommentState("error", message, validation.programId);
+    return {ok:false,code:"WATCH_API_NOT_FOUND",message};
+  }
+
+  let cookies = "";
   try {
-    const module=await import("nicomget/niconico");
-    if (attemptId!==commentOperationId) return {ok:false,code:"CANCELLED",message:"接続処理はキャンセルされました。"};
-    const Provider=module.NiconicoProvider;
-    if (typeof Provider!=="function") throw new Error("Comment provider unavailable");
-    const provider=new Provider({
-      liveId:validation.programId,cookies,maxRetries:8,retryIntervalMs:5000,
-      fetchBacklog:options.fetchBacklog!==false,backlogEvents:["chat"]
+    cookies = await getCommentCookieHeader();
+  } catch {
+    return {ok:false,code:"COOKIE_READ_FAILED",message:"ログインセッションを確認できませんでした。再ログインしてください。"};
+  }
+  if (attemptId !== commentOperationId) {
+    return {ok:false,code:"CANCELLED",message:"接続処理はキャンセルされました。"};
+  }
+  if (!cookies.split(/;\s*/).some(part => part.startsWith("user_session="))) {
+    const message = "ニコニコ公式ログインが必要です。先にアカウント接続を行ってください。";
+    sendCommentState("error", message, validation.programId);
+    return {ok:false,code:"AUTH_REQUIRED",message};
+  }
+
+  let recorderEnabled = false;
+  if (options.saveComments !== false) {
+    try {
+      const recorder = new CommentRecorder(app.getPath("userData"), validation.programId);
+      await recorder.open();
+      if (attemptId !== commentOperationId) {
+        await recorder.close();
+        return {ok:false,code:"CANCELLED",message:"接続処理はキャンセルされました。"};
+      }
+      commentRecorder = recorder;
+      commentRecordingEnabled = true;
+      recorderEnabled = true;
+    } catch {
+      commentRecorder = null;
+      commentRecordingEnabled = false;
+    }
+  }
+
+  commentProgramId = validation.programId;
+  sendCommentState(
+    "connecting",
+    "ニコ生のコメントサーバーへ接続しています。",
+    validation.programId
+  );
+
+  try {
+    const module = await import("nicomget/niconico");
+    if (attemptId !== commentOperationId) {
+      return {ok:false,code:"CANCELLED",message:"接続処理はキャンセルされました。"};
+    }
+    const Provider = module.NiconicoProvider;
+    if (typeof Provider !== "function") throw new Error("Comment provider unavailable");
+    const provider = new Provider({
+      liveId:validation.programId,
+      cookies,
+      maxRetries:8,
+      retryIntervalMs:5000,
+      fetchBacklog:options.fetchBacklog !== false,
+      backlogEvents:["chat"]
     });
 
-    if (typeof provider.fetchWebSocketUrl!=="function") throw new Error("Unsupported provider implementation");
-    // Use our HTML parser for the watch page instead of depending on the provider's
-    // attribute-order-sensitive embedded-data expression. The resulting socket URL is allowlisted.
-    provider.fetchWebSocketUrl=async function() {
-      const watchUrl=NICONICO_WATCH_BASE+encodeURIComponent(validation.programId);
-      const response=await niconicoSession.fetch(watchUrl,{
-        method:"GET",credentials:"include",redirect:"follow",
+    if (typeof provider.fetchWebSocketUrl !== "function") {
+      throw new Error("Unsupported provider implementation");
+    }
+    provider.fetchWebSocketUrl = async function() {
+      const watchUrl = NICONICO_WATCH_BASE + encodeURIComponent(validation.programId);
+      const response = await niconicoSession.fetch(watchUrl, {
+        method:"GET",
+        credentials:"include",
+        redirect:"follow",
         headers:{Accept:"text/html,application/xhtml+xml"},
         signal:AbortSignal.timeout(REQUEST_TIMEOUT_MS)
       });
-      if(!isTrustedNiconicoUrl(response.url||watchUrl)||!response.ok) throw new Error("Nico Live watch page could not be verified");
-      const html=await response.text();
-      if(html.length>6*1024*1024) throw new Error("Nico Live page too large");
-      const embedded=extractEmbeddedData(html);
-      const props=embedded.props&&typeof embedded.props==="object"?embedded.props:embedded;
-      const wsUrl=props.site?.relive?.webSocketUrl;
-      if(!isTrustedWebSocketEndpoint(wsUrl)) throw new Error("Untrusted Nico Live WebSocket endpoint");
-      const program=props.program||{};
-      const stats=program.statistics||{};
-      const supplier=program.supplier||{};
-      const metadata={
-        title:typeof program.title==="string"?program.title:validation.title,
+      if (!isTrustedNiconicoUrl(response.url || watchUrl) || !response.ok) {
+        throw new Error("Nico Live watch page could not be verified");
+      }
+      const html = await response.text();
+      if (html.length > 6 * 1024 * 1024) throw new Error("Nico Live page too large");
+      const embedded = extractEmbeddedData(html);
+      const props = embedded.props && typeof embedded.props === "object" ? embedded.props : embedded;
+      const wsUrl = props.site?.relive?.webSocketUrl;
+      if (!isTrustedWebSocketEndpoint(wsUrl)) throw new Error("Untrusted Nico Live WebSocket endpoint");
+      const program = props.program || {};
+      const stats = program.statistics || {};
+      const supplier = program.supplier || {};
+      const metadata = {
+        title:typeof program.title === "string" ? program.title : validation.title,
         status:program.status,
         description:program.description,
-        beginTime:program.beginTime!=null?new Date(program.beginTime*1000):undefined,
-        endTime:program.endTime!=null?new Date(program.endTime*1000):undefined,
+        beginTime:program.beginTime != null ? new Date(program.beginTime * 1000) : undefined,
+        endTime:program.endTime != null ? new Date(program.endTime * 1000) : undefined,
         watchCount:stats.watchCount,
         commentCount:stats.commentCount,
         broadcasterName:supplier.name
       };
       return {wsUrl,metadata};
     };
+
     for (const [method,kind] of [["startMessageStream","message"],["startSegmentStream","segment"],["startBackwardStream","backward"]]) {
-      const original=provider[method];
-      if (typeof original!=="function") throw new Error("Unsupported NDGR stream method");
-      provider[method]=function(uri,...args) {
-        if (!isTrustedNdgrUri(uri,kind)) {
-          this.emit("error",new Error("Untrusted NDGR URI"));
+      const original = provider[method];
+      if (typeof original !== "function") throw new Error("Unsupported provider implementation");
+      provider[method] = function(uri, ...args) {
+        if (!isTrustedNdgrUri(uri, kind)) {
+          this.emit("error", new Error("Untrusted NDGR URI"));
           return;
         }
-        return original.call(this,uri,...args);
+        return original.call(this, uri, ...args);
       };
     }
 
-    commentProvider=provider;
-    commentProgramId=validation.programId;
-    provider.on("comment",value=>sendCommentEvent(normalizeComment(value)));
-    provider.on("operatorComment",value=>sendCommentEvent(normalizeOperatorComment(value)));
-    provider.on("gift",value=>sendCommentEvent(normalizeNotification(value,"gift")));
-    provider.on("emotion",value=>sendCommentEvent(normalizeNotification(value,"emotion")));
-    provider.on("notification",value=>sendCommentEvent(normalizeNotification(value,"notification")));
-    provider.on("stateChange",state=>{
-      const messages={connecting:"コメント接続を準備しています。",connected:"視聴セッションに接続しました。コメントを待っています。",disconnected:"コメント接続が切断されました。",error:"コメント接続でエラーが発生しました。"};
-      sendCommentState(state,messages[state]||"接続状態が変わりました。",validation.programId);
+    commentProvider = provider;
+    const publish = entry => {
+      if (commentProvider !== provider || attemptId !== commentOperationId) return;
+      clearCommentRecoveryTimer();
+      commentRecoveryAttempts = 0;
+      recordCommentEvent(entry);
+      sendCommentEvent(entry);
+    };
+    provider.on("comment",value => publish(normalizeComment(value)));
+    provider.on("operatorComment",value => publish(normalizeOperatorComment(value)));
+    provider.on("gift",value => publish(normalizeNotification(value,"gift")));
+    provider.on("emotion",value => publish(normalizeNotification(value,"emotion")));
+    provider.on("notification",value => publish(normalizeNotification(value,"notification")));
+    provider.on("stateChange",state => {
+      if (state === "connected") {
+        clearCommentRecoveryTimer();
+        commentRecoveryAttempts = 0;
+      }
+      const messages = {
+        connecting:"コメント接続を準備しています。",
+        connected:"視聴セッションに接続しました。コメントを待っています。",
+        disconnected:"コメント接続が切断されました。",
+        error:"コメント接続でエラーが発生しました。"
+      };
+      sendCommentState(state,messages[state] || "接続状態が変わりました。",validation.programId);
     });
-    provider.on("error",()=>{
-      sendCommentState("recovering","通信が不安定です。自動再接続を試みています。",validation.programId);
+    provider.on("error",() => {
+      if (commentProvider !== provider || attemptId !== commentOperationId) return;
+      sendCommentState("recovering","通信が不安定です。監視付き再接続を試みます。",validation.programId);
+      scheduleCommentRecovery(provider,attemptId,validation.programId);
     });
 
-    const metadata=await provider.connect();
-    if (attemptId!==commentOperationId||commentProvider!==provider) {
+    const metadata = await provider.connect();
+    if (attemptId !== commentOperationId || commentProvider !== provider) {
       try { provider.disconnect(); } catch {}
       return {ok:false,code:"CANCELLED",message:"接続処理はキャンセルされました。"};
     }
-    sendCommentState("connected",metadata?.title?`「${String(metadata.title).slice(0,120)}」の視聴セッションに接続しました。コメントを待っています。`:"視聴セッションに接続しました。コメントを待っています。",validation.programId);
-    return {ok:true,programId:validation.programId,title:typeof metadata?.title==="string"?metadata.title.slice(0,200):validation.title||"",message:"コメント受信を開始しました。"};
+    sendCommentState(
+      "connected",
+      metadata?.title
+        ? "「" + String(metadata.title).slice(0,120) + "」の視聴セッションに接続しました。コメントを待っています。"
+        : "視聴セッションに接続しました。コメントを待っています。",
+      validation.programId
+    );
+    const message = recorderEnabled
+      ? "コメント受信を開始しました。受信コメントをPC内に自動保存します。"
+      : "コメント受信を開始しました。自動保存は無効です。";
+    return {
+      ok:true,
+      programId:validation.programId,
+      title:typeof metadata?.title === "string" ? metadata.title.slice(0,200) : validation.title || "",
+      recordingEnabled:recorderEnabled,
+      message
+    };
   } catch {
-    if (attemptId!==commentOperationId) return {ok:false,code:"CANCELLED",message:"接続処理はキャンセルされました。"};
-    if (commentProvider) { try { commentProvider.disconnect(); } catch {} }
-    commentProvider=null;
-    commentProgramId="";
-    sendCommentState("error","コメントサーバーへの接続に失敗しました。ログイン状態・放送状態・通信環境を確認してください。",validation.programId);
-    return {ok:false,code:"COMMENT_CONNECT_FAILED",message:"コメントサーバーへの接続に失敗しました。ログイン状態・放送状態・通信環境を確認してください。"};
+    if (attemptId !== commentOperationId) {
+      return {ok:false,code:"CANCELLED",message:"接続処理はキャンセルされました。"};
+    }
+    const provider = commentProvider;
+    commentProvider = null;
+    commentProgramId = "";
+    if (provider) {
+      try { provider.disconnect(); } catch {}
+      try { provider.removeAllListeners(); } catch {}
+    }
+    await closeCommentRecorder();
+    sendCommentState(
+      "error",
+      "コメントサーバーへの接続に失敗しました。ログイン状態・放送状態・通信環境を確認してください。",
+      validation.programId
+    );
+    return {
+      ok:false,
+      code:"COMMENT_CONNECT_FAILED",
+      message:"コメントサーバーへの接続に失敗しました。ログイン状態・放送状態・通信環境を確認してください。"
+    };
   }
 }
 
@@ -241,7 +447,7 @@ function registerIpcHandlers() {
   ipcMain.handle("niconico:open-login",()=>openNiconicoLoginWindow());
   ipcMain.handle("niconico:get-session-status",()=>getNiconicoSessionStatus());
   ipcMain.handle("niconico:logout",async()=>{
-    stopCommentStream("ログアウトしたためコメント受信を停止しました。");
+    await stopCommentStream("ログアウトしたためコメント受信を停止しました。");
     try {
       await niconicoSession.clearStorageData({storages:["cookies","localstorage","indexdb","serviceworkers","cachestorage"]});
       await notifySessionStatus();
@@ -256,11 +462,23 @@ function registerIpcHandlers() {
   ipcMain.handle("niconico:start-comments",(event,input,options)=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     if(typeof input!=="string"||input.length>512) return {ok:false,code:"INVALID_INPUT",message:"放送IDまたはURLを入力してください。"};
-    return startCommentStream(input,{fetchBacklog:options?.fetchBacklog!==false});
+    return startCommentStream(input,{fetchBacklog:options?.fetchBacklog!==false,saveComments:options?.saveComments!==false});
   });
   ipcMain.handle("niconico:stop-comments",event=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,message:"この操作は許可されていません。"};
     return stopCommentStream();
+  });
+  ipcMain.handle("app:open-comment-recordings",async event=>{
+    if(event.sender!==mainWindow?.webContents) return {ok:false,message:"この操作は許可されていません。"};
+    const folder=path.join(app.getPath("userData"),"comment-recordings");
+    try {
+      const fs=require("node:fs/promises");
+      await fs.mkdir(folder,{recursive:true,mode:0o700});
+      const error=await shell.openPath(folder);
+      return error?{ok:false,message:"保存先フォルダを開けませんでした。"}:{ok:true,message:"コメント保存先フォルダを開きました。"};
+    } catch {
+      return {ok:false,message:"保存先フォルダを開けませんでした。"};
+    }
   });
   ipcMain.handle("app:copy-text",(event,value)=>{
     if(event.sender!==mainWindow?.webContents||typeof value!=="string"||value.length>500000) return {ok:false};
@@ -293,5 +511,10 @@ app.whenReady().then(()=>{
   createMainWindow();
   app.on("activate",()=>{if(BrowserWindow.getAllWindows().length===0)createMainWindow();});
 });
-app.on("before-quit",()=>{if(commentProvider){try{commentProvider.disconnect();}catch{}commentProvider=null;}});
+app.on("before-quit",event=>{
+  if(finalQuitInProgress) return;
+  event.preventDefault();
+  finalQuitInProgress=true;
+  void stopCommentStream("アプリを終了しました。").finally(()=>app.quit());
+});
 app.on("window-all-closed",()=>{if(process.platform!=="darwin")app.quit();});
