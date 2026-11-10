@@ -8,6 +8,7 @@ const {
 const { normalizeComment, normalizeOperatorComment, normalizeNotification } = require("./comment-normalizer");
 const { isTrustedNdgrUri } = require("./ndgr-security");
 const { CommentRecorder } = require("./comment-recorder");
+const { normalizeNiconicoVideoUrl } = require("./video-queue");
 
 const NICONICO_HOME = "https://live.nicovideo.jp/";
 const NICONICO_WATCH_BASE = "https://live2.nicovideo.jp/watch/";
@@ -25,6 +26,12 @@ let commentRecoveryTimer = null;
 let commentRecoveryAttempts = 0;
 let commentRecoveryActive = false;
 let finalQuitInProgress = false;
+let playerWindow = null;
+let playerMonitorTimer = null;
+let playerMonitorBusy = false;
+let playerVideoId = "";
+let playerVideoUrl = "";
+let playerEndNotified = false;
 
 function isNiconicoHost(hostname) {
   const host = String(hostname || "").toLowerCase();
@@ -443,11 +450,195 @@ async function startCommentStream(input, options={}) {
   }
 }
 
+function sendPlayerState(state, details = {}) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("niconico:player-state", {
+      state,
+      videoId:playerVideoId,
+      url:playerVideoUrl,
+      changedAt:new Date().toISOString(),
+      ...details
+    });
+  }
+}
+
+function stopPlayerMonitor() {
+  if (playerMonitorTimer) clearInterval(playerMonitorTimer);
+  playerMonitorTimer = null;
+  playerMonitorBusy = false;
+}
+
+function startPlayerMonitor() {
+  stopPlayerMonitor();
+  playerMonitorTimer = setInterval(async () => {
+    const win = playerWindow;
+    if (!win || win.isDestroyed() || win.webContents.isDestroyed()) {
+      stopPlayerMonitor();
+      return;
+    }
+    if (playerMonitorBusy) return;
+    playerMonitorBusy = true;
+    try {
+      const media = await win.webContents.executeJavaScript(`(() => {
+        const video = document.querySelector("video");
+        if (!video) return { hasVideo:false, title:document.title || "" };
+        return {
+          hasVideo:true,
+          currentTime:Number.isFinite(video.currentTime) ? video.currentTime : 0,
+          duration:Number.isFinite(video.duration) ? video.duration : 0,
+          paused:Boolean(video.paused),
+          ended:Boolean(video.ended),
+          readyState:Number(video.readyState || 0),
+          title:document.title || ""
+        };
+      })()`, true);
+      if (!media || !media.hasVideo) {
+        sendPlayerState("loading", { currentTime:0, duration:0, message:"動画プレイヤーを読み込んでいます。" });
+        return;
+      }
+      const details = {
+        currentTime:media.currentTime,
+        duration:media.duration,
+        title:String(media.title || "").slice(0,160),
+        readyState:media.readyState
+      };
+      if (media.ended) {
+        sendPlayerState("ended", details);
+        if (!playerEndNotified) {
+          playerEndNotified = true;
+          sendPlayerState("ended", {...details, endedEvent:true});
+        }
+      } else {
+        sendPlayerState(media.paused ? "paused" : "playing", details);
+      }
+    } catch {
+      sendPlayerState("loading", { message:"動画の再生状態を確認しています。" });
+    } finally {
+      playerMonitorBusy = false;
+    }
+  }, 1000);
+}
+
+async function openVideoPlayer(input) {
+  const validation = normalizeNiconicoVideoUrl(input);
+  if (!validation.ok) return validation;
+
+  playerVideoId = validation.videoId;
+  playerVideoUrl = validation.url;
+  playerEndNotified = false;
+  sendPlayerState("loading", { currentTime:0, duration:0, message:"公式動画ページを開いています。" });
+
+  if (!playerWindow || playerWindow.isDestroyed()) {
+    playerWindow = new BrowserWindow({
+      width:1180,
+      height:820,
+      minWidth:760,
+      minHeight:560,
+      show:false,
+      title:"kananeo 動画プレイヤー",
+      backgroundColor:"#101827",
+      autoHideMenuBar:true,
+      webPreferences:{
+        session:niconicoSession,
+        contextIsolation:true,
+        nodeIntegration:false,
+        sandbox:true,
+        webSecurity:true
+      }
+    });
+    playerWindow.webContents.setWindowOpenHandler(({url}) => {
+      if (isTrustedNiconicoUrl(url)) return {action:"allow"};
+      try {
+        if (new URL(url).protocol === "https:") shell.openExternal(url);
+      } catch {}
+      return {action:"deny"};
+    });
+    playerWindow.webContents.on("will-navigate", (event,url) => {
+      if (!isTrustedNiconicoUrl(url)) {
+        event.preventDefault();
+        try {
+          if (new URL(url).protocol === "https:") shell.openExternal(url);
+        } catch {}
+      }
+    });
+    playerWindow.webContents.on("did-start-loading", () => {
+      playerEndNotified = false;
+      sendPlayerState("loading", { currentTime:0, duration:0, message:"動画ページを読み込んでいます。" });
+    });
+    playerWindow.webContents.on("did-finish-load", () => {
+      if (playerWindow && !playerWindow.isDestroyed()) {
+        playerWindow.show();
+        startPlayerMonitor();
+      }
+    });
+    playerWindow.webContents.on("did-fail-load", (_event,code,description,_url,isMainFrame) => {
+      if (isMainFrame) {
+        sendPlayerState("error", { message:"動画ページを読み込めませんでした（" + String(code) + "）。" + String(description || "").slice(0,120) });
+      }
+    });
+    playerWindow.on("closed", () => {
+      stopPlayerMonitor();
+      playerWindow = null;
+      sendPlayerState("closed", { message:"プレイヤーウィンドウを閉じました。" });
+    });
+  } else {
+    playerWindow.show();
+    playerWindow.focus();
+  }
+
+  try {
+    await playerWindow.loadURL(validation.url);
+    if (playerWindow && !playerWindow.isDestroyed()) {
+      playerWindow.setTitle("kananeo 動画プレイヤー | " + validation.videoId);
+      playerWindow.show();
+      playerWindow.focus();
+    }
+    return { ok:true, videoId:validation.videoId, url:validation.url, message:"ニコニコ動画をプレイヤーウィンドウで開きました。動画の再生は公式プレイヤー側で開始してください。" };
+  } catch {
+    sendPlayerState("error", { message:"動画ページを開けませんでした。ネットワークとログイン状態を確認してください。" });
+    return { ok:false, code:"VIDEO_LOAD_FAILED", message:"動画ページを開けませんでした。ネットワークとログイン状態を確認してください。" };
+  }
+}
+
+function focusVideoPlayer() {
+  if (!playerWindow || playerWindow.isDestroyed()) {
+    return { ok:false, message:"プレイヤーウィンドウは開いていません。" };
+  }
+  playerWindow.show();
+  playerWindow.focus();
+  return { ok:true, message:"プレイヤーウィンドウを前面に表示しました。" };
+}
+
+function closeVideoPlayer() {
+  stopPlayerMonitor();
+  const win = playerWindow;
+  playerWindow = null;
+  if (win && !win.isDestroyed()) win.close();
+  return { ok:true, message:"プレイヤーウィンドウを閉じました。" };
+}
+
 function registerIpcHandlers() {
   ipcMain.handle("niconico:open-login",()=>openNiconicoLoginWindow());
+  ipcMain.handle("niconico:validate-video",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    return normalizeNiconicoVideoUrl(input);
+  });
+  ipcMain.handle("niconico:open-video",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents||typeof input!=="string"||input.length>2048) return {ok:false,code:"INVALID_INPUT",message:"動画URLを確認してください。"};
+    return openVideoPlayer(input);
+  });
+  ipcMain.handle("niconico:focus-video",event=>{
+    if(event.sender!==mainWindow?.webContents) return {ok:false,message:"この操作は許可されていません。"};
+    return focusVideoPlayer();
+  });
+  ipcMain.handle("niconico:close-video",event=>{
+    if(event.sender!==mainWindow?.webContents) return {ok:false,message:"この操作は許可されていません。"};
+    return closeVideoPlayer();
+  });
   ipcMain.handle("niconico:get-session-status",()=>getNiconicoSessionStatus());
   ipcMain.handle("niconico:logout",async()=>{
     await stopCommentStream("ログアウトしたためコメント受信を停止しました。");
+    closeVideoPlayer();
     try {
       await niconicoSession.clearStorageData({storages:["cookies","localstorage","indexdb","serviceworkers","cachestorage"]});
       await notifySessionStatus();
@@ -515,6 +706,6 @@ app.on("before-quit",event=>{
   if(finalQuitInProgress) return;
   event.preventDefault();
   finalQuitInProgress=true;
-  void stopCommentStream("アプリを終了しました。").finally(()=>app.quit());
+  void stopCommentStream("アプリを終了しました。").finally(()=>{ closeVideoPlayer(); app.quit(); });
 });
 app.on("window-all-closed",()=>{if(process.platform!=="darwin")app.quit();});
