@@ -8,7 +8,7 @@ const {
 const { normalizeComment, normalizeOperatorComment, normalizeNotification } = require("./comment-normalizer");
 const { isTrustedNdgrUri } = require("./ndgr-security");
 const { CommentRecorder } = require("./comment-recorder");
-const { normalizeNiconicoVideoUrl } = require("./video-queue");
+const { normalizeNiconicoVideoUrl, extractRequestCandidate } = require("./video-queue");
 
 const NICONICO_HOME = "https://live.nicovideo.jp/";
 const NICONICO_WATCH_BASE = "https://live2.nicovideo.jp/watch/";
@@ -627,6 +627,10 @@ function closeVideoPlayer() {
 
 function registerIpcHandlers() {
   ipcMain.handle("niconico:open-login",()=>openNiconicoLoginWindow());
+  ipcMain.handle("niconico:extract-request",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents||typeof input!=="string"||input.length>4000) return "";
+    return extractRequestCandidate(input);
+  });
   ipcMain.handle("niconico:validate-video",(event,input)=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     return normalizeNiconicoVideoUrl(input);
