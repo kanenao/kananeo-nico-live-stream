@@ -21,7 +21,7 @@ document.querySelectorAll("[data-page]").forEach(b=>b.classList.toggle("active",
 let html="";
 if(page==="dashboard"){
 html=hero("STREAM CONTROL CENTER","配信コントロールセンター","配信に必要な操作を、ひとつの画面からまとめて管理します。",'<button class="btn primary" data-go="broadcast">放送管理を開く</button>')+
-'<div class="banner"><i class="led"></i><div><b>ニコニコ生放送に接続していません</b><small>現在はUI・ローカル設定の試作段階です。通信機能は次の段階で実装します。</small></div><button data-go="broadcast">接続設定 →</button></div>'+
+'<div class="banner"><i class="led"></i><div><b>ニコニコ生放送に接続していません</b><small>公式ログインとNDGRコメント受信に対応しました。コメント送信・番組作成・延長操作は未実装です。</small></div><button data-go="broadcast">接続設定 →</button></div>'+
 '<div class="section"><div><h2>現在の配信状況</h2><p>放送接続後にリアルタイム情報を表示</p></div></div>'+
 `<div class="stats">${[["視聴者数","—"],["コメント数","—"],["リクエスト待ち",state.requests.length],["放送残り時間","—"]].map(x=>`<div class="card"><label>${x[0]}</label><strong>${x[1]}</strong><small>接続待ち</small></div>`).join("")}</div>`+
 '<div class="columns">'+panel("クイック操作","よく使う機能",'<div class="quick">'+[["♫","動画リクエスト","requests"],["◈","自動アンケート","poll"],["⟳","次枠・自動延長","automation"],["▣","OBS・外部ツール","external"]].map(x=>`<button data-go="${x[2]}"><span>${x[0]}</span><b>${x[1]}</b><small>機能を開く</small></button>`).join("")+'</div>')+
@@ -61,7 +61,7 @@ panel("受信コメント",'<span id="comment-count">'+receivedComments.length+'
 }else if(page==="broadcast"){
 const authTitle=nicoStatus.authenticated?"ログインCookieを確認しました":"ニコニコにログインしていません";
 const authText=nicoStatus.authenticated?"このアプリ専用のセッションにログインCookieがあります。Cookie値は表示しません。":"下のボタンからニコニコ公式ログインを開いてください。パスワードはアプリに入力しません。";
-html=hero("LIVE SESSION","放送・枠管理","ニコニコ公式ログイン、放送IDによる番組ページ確認を行います。コメント受信は次の段階です。")+
+html=hero("LIVE SESSION","放送・枠管理","ニコニコ公式ログイン、放送IDによる番組ページ確認、コメントビューアへの接続を管理します。")+
 '<div class="grid2">'+
 panel("ニコニコアカウント接続","公式ログインを専用セッションで開く",'<div class="empty" id="auth-status"><b>'+authTitle+'</b><br>'+authText+'</div><div class="actions"><button class="btn primary" data-nico-login>公式ログインを開く</button><button class="btn" data-nico-refresh>状態を再確認</button><button class="btn" data-nico-logout>このアプリからログアウト</button></div>')+
 panel("番組ページを確認","放送IDまたはニコ生番組URLを入力",'<div class="field"><label>放送ID / URL</label><input class="input" id="live-id" value="${esc(state.lastProgramId||"")}" placeholder="lv123456789 または放送URL" maxlength="512"></div><div class="actions"><button class="btn primary" data-nico-check>番組ページを確認</button></div><div class="empty" id="program-result">確認結果はここに表示します。</div>')+
@@ -76,7 +76,7 @@ html=hero("ACTIVITY & BACKUP","履歴・バックアップ","設定データのJ
 panel("システムログ","操作履歴",state.logs.map(x=>`<div class="row"><i></i><b>${esc(x)}</b></div>`).join("")+'<div class="actions"><button class="btn primary" data-export>設定JSONを書き出す</button><button class="btn" data-clear-logs>ログを消去</button></div>');
 }else{
 html=hero("APPLICATION SETTINGS","設定","アプリのバージョンとローカル設定を管理します。")+
-panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>0.1.0-beta.4</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>UI prototype / no live connection</span></div>');
+panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>0.1.0-beta.4</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Beta 4 / NDGR comments</span></div>');
 }
 document.getElementById("content").innerHTML=html;
 }
