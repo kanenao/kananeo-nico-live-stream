@@ -3,11 +3,20 @@ const names={dashboard:"ダッシュボード",broadcast:"放送・枠管理",co
 const key="kananeo-beta2";
 let commentConnection={state:"disconnected",message:"コメントサーバー未接続",programId:"",recordingEnabled:false};
 let receivedComments=[];
+let playerState={state:"closed",currentTime:0,duration:0,message:"プレイヤー未起動"};
 const MAX_DISPLAY_COMMENTS=1000;
 let nicoStatus={authenticated:false,label:"状態を確認中"};
-const initial={requests:[],ngWords:[],ngUsers:[],playlist:[],poll:{wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},external:{obs:"",nair:"",xsplit:""},logs:["β2 UIプロトタイプを起動しました"]};
+const initial={requests:[],ngWords:[],ngUsers:[],playlist:[],poll:{wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},external:{obs:"",nair:"",xsplit:""},logs:["β2 UIプロトタイプを起動しました"]};
 let state=load(),page="dashboard";
-function load(){try{return {...initial,...JSON.parse(localStorage.getItem(key)||"{}")}}catch{return structuredClone(initial)}}
+function load(){
+try{
+const stored=JSON.parse(localStorage.getItem(key)||"{}");
+const loaded={...initial,...stored};
+loaded.player={...initial.player,...(stored.player||{})};
+loaded.requests=(Array.isArray(stored.requests)?stored.requests:[]).map((item,index)=>({...item,id:typeof item?.id==="string"?item.id:"legacy-"+index,status:item?.status||"queued"}));
+return loaded;
+}catch{return structuredClone(initial)}
+}
 function save(){localStorage.setItem(key,JSON.stringify(state))}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function toast(s){const t=document.getElementById("toast");t.textContent=s;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200)}
@@ -26,11 +35,12 @@ html=hero("STREAM CONTROL CENTER","配信コントロールセンター","配信
 `<div class="stats">${[["視聴者数","—"],["コメント数","—"],["リクエスト待ち",state.requests.length],["放送残り時間","—"]].map(x=>`<div class="card"><label>${x[0]}</label><strong>${x[1]}</strong><small>接続待ち</small></div>`).join("")}</div>`+
 '<div class="columns">'+panel("クイック操作","よく使う機能",'<div class="quick">'+[["♫","動画リクエスト","requests"],["◈","自動アンケート","poll"],["⟳","次枠・自動延長","automation"],["▣","OBS・外部ツール","external"]].map(x=>`<button data-go="${x[2]}"><span>${x[0]}</span><b>${x[1]}</b><small>機能を開く</small></button>`).join("")+'</div>')+
 panel("システムログ","ローカルに記録した直近の操作",state.logs.slice(0,5).map(x=>`<div class="row"><i></i><div><b>${esc(x)}</b><small>ローカル記録</small></div></div>`).join(""))+'</div>'+
-'<footer>kananeo nico live stream <span>0.1.0-beta.5 · Beta preview</span></footer>';
+'<footer>kananeo nico live stream <span>0.1.0-beta.6 · Beta preview</span></footer>';
 }else if(page==="requests"){
-html=hero("REQUEST QUEUE","動画リクエスト","動画タイトルとURLをキューに登録し、再生順を管理します。")+
-panel("動画を追加","ローカルキューへの登録",'<form id="request-form" class="grid2">'+field("動画タイトル","req-title","","タイトル") + field("動画URL / ID","req-url","","URLまたは動画ID")+'<button class="btn primary">キューに追加</button></form>')+
-panel("再生待ちキュー",state.requests.length+" 件",state.requests.length?`<table class="table"><thead><tr><th>#</th><th>タイトル</th><th>URL</th><th>操作</th></tr></thead><tbody>${state.requests.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.title)}</td><td>${esc(x.url)}</td><td><button class="btn" data-up="${i}">↑</button> <button class="btn" data-down="${i}">↓</button> <button class="btn" data-remove="${i}">削除</button></td></tr>`).join("")}</tbody></table><div class="actions"><button class="btn" data-clear>全消去</button></div>`:'<div class="empty">キューは空です。上のフォームから動画を追加できます。</div>');
+const waiting=state.requests.filter(x=>!["completed","skipped"].includes(x.status)).length;
+html=hero("REQUEST QUEUE","動画リクエスト","ニコニコ動画のURL・動画IDを登録し、重複を防いで再生順を管理します。")+
+panel("動画を追加","対応形式：sm / nm / so の動画ID、ニコニコ動画 watch URL",'<form id="request-form" class="grid2">'+field("動画タイトル（任意）","req-title","","未入力なら動画IDを表示") + field("動画URL / ID","req-url","","sm12345678 または動画URL")+'<button class="btn primary">キューに追加</button></form><div class="muted">現在はニコニコ動画のwatchページに対応しています。YouTube等の外部動画には未対応です。</div>')+
+panel("再生キュー",waiting+" 件が未再生",state.requests.length?`<table class="table"><thead><tr><th>#</th><th>状態</th><th>タイトル</th><th>動画ID</th><th>操作</th></tr></thead><tbody>${state.requests.map((x,i)=>`<tr><td>${i+1}</td><td>${x.status==="playing"?"再生中":x.status==="completed"?"再生済み":x.status==="skipped"?"スキップ":"待機中"}</td><td>${esc(x.title)}</td><td>${esc(x.videoId||x.url)}</td><td><button class="btn primary" data-play="${esc(x.id)}">▶ 再生</button> <button class="btn" data-up="${i}" ${i===0?"disabled":""}>↑</button> <button class="btn" data-down="${i}" ${i===state.requests.length-1?"disabled":""}>↓</button> <button class="btn" data-remove="${esc(x.id)}">削除</button></td></tr>`).join("")}</tbody></table><div class="actions"><button class="btn" data-player-next>次の動画へ</button><button class="btn" data-clear>キューを全消去</button></div>`:'<div class="empty">キューは空です。上のフォームから動画を追加できます。</div>');
 }else if(page==="poll"){
 html=hero("AUTOMATIC POLL","自動アンケート","投票結果APIの選択肢名・投票率を読み取り、結果に応じて自動進行する設計です。")+
 '<div class="grid2">'+panel("投票時間","初期値15秒・設定変更可能",field("投票待ち時間（秒）","poll-wait",state.poll.wait)+field("結果表示時間（秒）","poll-result",state.poll.result)+'<button class="btn primary" data-save-poll>設定を保存</button>')+
@@ -48,9 +58,12 @@ html=hero("MODERATION","ユーザー・NG管理","NGワード・NGユーザー�
 '<div class="grid2">'+panel("NGワード","非表示対象の文字列",'<form id="ng-word-form" class="actions"><input id="ng-word" class="input" placeholder="NGワード" required><button class="btn primary">追加</button></form><div class="tags">'+state.ngWords.map((x,i)=>`<span class="tag">${esc(x)} <button data-ngw="${i}">×</button></span>`).join("")+'</div>')+
 panel("NGユーザー","ユーザーID単位で制限",'<form id="ng-user-form" class="actions"><input id="ng-user" class="input" placeholder="ユーザーID" required><button class="btn primary">追加</button></form><div class="tags">'+state.ngUsers.map((x,i)=>`<span class="tag">${esc(x)} <button data-ngu="${i}">×</button></span>`).join("")+'</div>')+'</div>';
 }else if(page==="player"){
-html=hero("PLAYER & BGM","プレイヤー・BGM","動画プレイヤーとBGMプレイリストを分けて管理します。")+
-panel("BGMプレイリスト","曲名の登録・削除",'<form id="track-form" class="actions"><input id="track" class="input" placeholder="曲名・音源ファイル名" required><button class="btn primary">追加</button></form>'+ (state.playlist.length?state.playlist.map((x,i)=>`<div class="row"><b>${esc(x)}</b><button class="btn" data-track="${i}">削除</button></div>`).join(""):'<div class="empty">プレイリストは空です。</div>'))+
-'<div class="banner"><i class="led"></i><div><b>実際の音声・動画再生は未実装</b><small>再生エンジンは後続の開発段階で追加します。</small></div></div>';
+const current=state.requests.find(x=>x.id===state.player.currentId);
+const playerLabel=({closed:"未起動",loading:"読み込み中",playing:"再生中",paused:"一時停止",ended:"再生終了",error:"読み込みエラー"}[playerState.state]||"状態確認中");
+html=hero("PLAYER & BGM","プレイヤー・BGM","公式ニコニコ動画プレイヤーを別ウィンドウで開き、再生キューと連携します。")+
+panel("動画プレイヤー",current?esc(current.title):"再生中の動画はありません",'<div class="row"><b>プレイヤー状態</b><span id="player-state-label">'+playerLabel+'</span></div><div class="row"><b>再生位置</b><span id="player-time-label">'+formatVideoTime(playerState.currentTime)+' / '+formatVideoTime(playerState.duration)+'</span></div><progress id="player-progress" max="100" value="'+(playerState.duration?Math.min(100,playerState.currentTime/playerState.duration*100):0)+'"></progress><div class="muted" id="player-message">'+esc(playerState.message||"")+'</div><label class="switchrow"><span><b>動画終了後に自動で次へ</b><small>動画の終了を検知できた場合、次の未再生動画を開きます。</small></span><input type="checkbox" id="player-auto-next" '+(state.player.autoNext?"checked":"")+'></label><div class="actions"><button class="btn primary" data-player-focus>プレイヤーを前面に表示</button><button class="btn" data-player-next>次の動画へ</button><button class="btn" data-player-close>プレイヤーを閉じる</button></div>')+
+panel("BGMプレイリスト","曲名の登録・削除（音源再生は未実装）",'<form id="track-form" class="actions"><input id="track" class="input" placeholder="曲名・音源ファイル名" required><button class="btn primary">追加</button></form>'+ (state.playlist.length?state.playlist.map((x,i)=>`<div class="row"><b>${esc(x)}</b><button class="btn" data-track="${i}">削除</button></div>`).join(""):'<div class="empty">プレイリストは空です。</div>'))+
+'<div class="banner"><i class="led"></i><div><b>公式Webプレイヤーを利用します</b><small>再生・一時停止は公式プレイヤー側で操作してください。アプリは再生状態を監視し、終了検知時に次の動画へ切り替えます。動画ページの仕様により終了を検知できない場合があります。</small></div></div>';
 }else if(page==="comments"){
 const active=["connecting","connected","recovering"].includes(commentConnection.state);
 const statusLabel=({disconnected:"未接続",connecting:"接続中",connected:"接続済み",recovering:"再接続中",error:"接続エラー"}[commentConnection.state]||"未接続");
@@ -76,9 +89,65 @@ html=hero("ACTIVITY & BACKUP","履歴・バックアップ","設定データのJ
 panel("システムログ","操作履歴",state.logs.map(x=>`<div class="row"><i></i><b>${esc(x)}</b></div>`).join("")+'<div class="actions"><button class="btn primary" data-export>設定JSONを書き出す</button><button class="btn" data-clear-logs>ログを消去</button></div>');
 }else{
 html=hero("APPLICATION SETTINGS","設定","アプリのバージョンとローカル設定を管理します。")+
-panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>0.1.0-beta.5</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Beta 4 / NDGR comments</span></div>');
+panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>0.1.0-beta.5</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Beta 6 / video queue & player</span></div>');
 }
 document.getElementById("content").innerHTML=html;
+}
+function formatVideoTime(value){
+const seconds=Math.max(0,Math.floor(Number(value)||0));
+const h=Math.floor(seconds/3600),m=Math.floor((seconds%3600)/60),sec=seconds%60;
+return h?String(h)+":"+String(m).padStart(2,"0")+":"+String(sec).padStart(2,"0"):String(m)+":"+String(sec).padStart(2,"0");
+}
+function currentQueueItem(){return state.requests.find(x=>x.id===state.player.currentId)||null;}
+function getNextQueueItem(){
+const index=state.requests.findIndex(x=>x.id===state.player.currentId);
+for(let i=index>=0?index+1:0;i<state.requests.length;i++){
+const item=state.requests[i];
+if(item.status!=="completed"&&item.status!=="skipped")return item;
+}
+return null;
+}
+async function playQueueItem(item){
+if(!item)return;
+try{
+const result=await window.kananeoApp.niconico.openVideo(item.url);
+if(!result?.ok){toast(result?.message||"動画を開けませんでした。");return;}
+state.requests.forEach(x=>{if(x.id!==item.id&&x.status==="playing")x.status="queued";});
+item.status="playing";
+state.player.currentId=item.id;state.player.status="loading";state.player.currentTime=0;state.player.duration=0;state.player.endedFor="";
+state.logs.unshift("動画を再生："+item.title);save();playerState={state:"loading",currentTime:0,duration:0,message:result.message||"動画ページを開きました。"};
+if(page==="requests"||page==="player")render();
+toast(result.message||"動画ページを開きました。");
+}catch{toast("プレイヤーを起動できませんでした。");}
+}
+async function playNextQueueItem(manual=false){
+const current=currentQueueItem();
+if(manual&&current&&current.status==="playing")current.status="skipped";
+const next=getNextQueueItem();
+if(!next){save();if(page==="requests"||page==="player")render();toast("次に再生できる動画はありません。");return;}
+save();await playQueueItem(next);
+}
+function updateVideoPlayerState(status){
+if(!status||typeof status!=="object")return;
+playerState={...playerState,...status};
+state.player.status=playerState.state;
+state.player.currentTime=Number(playerState.currentTime)||0;
+state.player.duration=Number(playerState.duration)||0;
+const label=document.getElementById("player-state-label");
+const time=document.getElementById("player-time-label");
+const progress=document.getElementById("player-progress");
+const message=document.getElementById("player-message");
+const names={closed:"未起動",loading:"読み込み中",playing:"再生中",paused:"一時停止",ended:"再生終了",error:"読み込みエラー"};
+if(label)label.textContent=names[playerState.state]||"状態確認中";
+if(time)time.textContent=formatVideoTime(playerState.currentTime)+" / "+formatVideoTime(playerState.duration);
+if(progress)progress.value=playerState.duration?Math.min(100,playerState.currentTime/playerState.duration*100):0;
+if(message)message.textContent=playerState.message||"";
+if(status.state==="ended"&&status.endedEvent&&state.player.currentId&&state.player.endedFor!==state.player.currentId){
+const finished=currentQueueItem();
+if(finished){finished.status="completed";state.player.endedFor=state.player.currentId;state.logs.unshift("動画の再生終了："+finished.title);save();}
+if(state.player.autoNext){void playNextQueueItem(false);}
+else if(page==="requests"||page==="player"){render();toast("動画が終了しました。次の動画は手動で開始できます。");}
+}
 }
 function currentFilteredComments(){
 const q=(document.getElementById("comments-search")?.value||"").trim().toLocaleLowerCase();
@@ -201,6 +270,10 @@ if(b.hasAttribute("data-nico-login")){window.kananeoApp.niconico.openLogin().the
 if(b.hasAttribute("data-nico-refresh")){window.kananeoApp.niconico.getSessionStatus().then(applyNicoStatus);return;}
 if(b.hasAttribute("data-nico-logout")){if(confirm("このアプリ専用のニコニコセッションを削除しますか？"))window.kananeoApp.niconico.logout().then(r=>{toast(r.message);return window.kananeoApp.niconico.getSessionStatus()}).then(applyNicoStatus);return;}
 if(b.hasAttribute("data-nico-check")){void checkProgram();return;}
+if(b.hasAttribute("data-play")){const item=state.requests.find(x=>x.id===b.dataset.play);if(item)void playQueueItem(item);return;}
+if(b.hasAttribute("data-player-next")){void playNextQueueItem(true);return;}
+if(b.hasAttribute("data-player-focus")){window.kananeoApp.niconico.focusVideo().then(r=>toast(r?.message||"プレイヤーを開けませんでした。"));return;}
+if(b.hasAttribute("data-player-close")){window.kananeoApp.niconico.closeVideo().then(r=>{playerState={state:"closed",message:r?.message||"プレイヤーを閉じました。"};updateVideoPlayerState(playerState);toast(r?.message||"プレイヤーを閉じました。");});return;}
 if(b.hasAttribute("data-comment-start")){void startComments();return;}
 if(b.hasAttribute("data-comment-stop")){void stopComments();return;}
 if(b.hasAttribute("data-comment-copy")){void copyVisibleComments();return;}
@@ -212,26 +285,40 @@ if(b.hasAttribute("data-save-auto")){state.automation.autoNext=document.querySel
 if(b.hasAttribute("data-save-paths")){state.external={obs:document.getElementById("obs").value,nair:document.getElementById("nair").value,xsplit:document.getElementById("xsplit").value};save();toast("外部ツールのパスを保存しました");}
 if(b.hasAttribute("data-up")){let i=+b.dataset.up;if(i>0)[state.requests[i-1],state.requests[i]]=[state.requests[i],state.requests[i-1]];save();render()}
 if(b.hasAttribute("data-down")){let i=+b.dataset.down;if(i<state.requests.length-1)[state.requests[i+1],state.requests[i]]=[state.requests[i],state.requests[i+1]];save();render()}
-if(b.hasAttribute("data-remove")){state.requests.splice(+b.dataset.remove,1);save();render()}
+if(b.hasAttribute("data-remove")){const removed=state.requests.find(x=>x.id===b.dataset.remove);state.requests=state.requests.filter(x=>x.id!==b.dataset.remove);if(removed&&removed.id===state.player.currentId){state.player.currentId="";state.player.status="closed";void window.kananeoApp.niconico.closeVideo();}save();render()}
 if(b.hasAttribute("data-clear")){state.requests=[];save();render()}
 if(b.hasAttribute("data-ngw")){state.ngWords.splice(+b.dataset.ngw,1);save();render()}
 if(b.hasAttribute("data-ngu")){state.ngUsers.splice(+b.dataset.ngu,1);save();render()}
 if(b.hasAttribute("data-track")){state.playlist.splice(+b.dataset.track,1);save();render()}
 if(b.hasAttribute("data-export")){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:"application/json"}));a.download="kananeo-settings.json";a.click();URL.revokeObjectURL(a.href)}
 if(b.hasAttribute("data-clear-logs")){state.logs=[];save();render()}
-if(b.hasAttribute("data-placeholder"))toast("β3：公式ログインセッションと番組ページ確認を追加しました。コメント受信は次段階です。");
+if(b.hasAttribute("data-placeholder"))toast("現在の段階ではこの操作は未実装です。");
 });
 document.addEventListener("input",e=>{if(e.target.id==="comments-search")renderComments();});
-document.addEventListener("change",e=>{if(e.target.id==="comments-filter")renderComments();});
-document.addEventListener("submit",e=>{
+document.addEventListener("change",e=>{if(e.target.id==="comments-filter")renderComments();if(e.target.id==="player-auto-next"){state.player.autoNext=e.target.checked;save();toast(e.target.checked?"自動で次の動画へ切り替えます。":"自動次動画切替をOFFにしました。");}});
+document.addEventListener("submit",async e=>{
 e.preventDefault();
-if(e.target.id==="request-form"){let title=document.getElementById("req-title").value.trim(),url=document.getElementById("req-url").value.trim();if(title&&url){state.requests.push({title,url});state.logs.unshift("動画をキューに追加："+title);save();render();toast("動画を追加しました")}}
+if(e.target.id==="request-form"){
+const title=document.getElementById("req-title").value.trim();
+const input=document.getElementById("req-url").value.trim();
+if(!input){toast("動画URLまたは動画IDを入力してください。");return;}
+try{
+const validation=await window.kananeoApp.niconico.validateVideo(input);
+if(!validation?.ok){toast(validation?.message||"対応していない動画URLです。");return;}
+for(const existing of state.requests){
+const old=await window.kananeoApp.niconico.validateVideo(existing.url);
+if(old?.ok&&old.url===validation.url){toast("同じ動画は既にキューに登録されています。");return;}
+}
+const item={id:"req-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8),title:title||validation.videoId,url:validation.url,videoId:validation.videoId,status:"queued",addedAt:new Date().toISOString()};
+state.requests.push(item);state.logs.unshift("動画をキューに追加："+item.title);save();render();toast("動画をキューに追加しました。");
+}catch{toast("動画URLを確認できませんでした。通信状態を確認してください。");}
+}
 if(e.target.id==="ng-word-form"){state.ngWords.push(document.getElementById("ng-word").value.trim());save();render()}
 if(e.target.id==="ng-user-form"){state.ngUsers.push(document.getElementById("ng-user").value.trim());save();render()}
 if(e.target.id==="track-form"){state.playlist.push(document.getElementById("track").value.trim());save();render()}
 });
 if(window.kananeoApp?.niconico){window.kananeoApp.niconico.getSessionStatus().then(applyNicoStatus).catch(()=>{});window.kananeoApp.niconico.onSessionChanged(applyNicoStatus);
     window.kananeoApp.niconico.onComment(receiveComment);
-    window.kananeoApp.niconico.onCommentState(updateCommentConnection);}
+    window.kananeoApp.niconico.onCommentState(updateCommentConnection);window.kananeoApp.niconico.onVideoState(updateVideoPlayerState);}
 render();
 })();
