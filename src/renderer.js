@@ -57,7 +57,7 @@ const authText=nicoStatus.authenticated?"このアプリ専用のセッション
 html=hero("LIVE SESSION","放送・枠管理","ニコニコ公式ログイン、放送IDによる番組ページ確認を行います。コメント受信は次の段階です。")+
 '<div class="grid2">'+
 panel("ニコニコアカウント接続","公式ログインを専用セッションで開く",'<div class="empty" id="auth-status"><b>'+authTitle+'</b><br>'+authText+'</div><div class="actions"><button class="btn primary" data-nico-login>公式ログインを開く</button><button class="btn" data-nico-refresh>状態を再確認</button><button class="btn" data-nico-logout>このアプリからログアウト</button></div>')+
-panel("番組ページを確認","放送IDまたはニコ生番組URLを入力",'<div class="field"><label>放送ID / URL</label><input class="input" id="live-id" placeholder="lv123456789 または放送URL" maxlength="512"></div><div class="actions"><button class="btn primary" data-nico-check>番組ページを確認</button></div><div class="empty" id="program-result">確認結果はここに表示します。</div>')+
+panel("番組ページを確認","放送IDまたはニコ生番組URLを入力",'<div class="field"><label>放送ID / URL</label><input class="input" id="live-id" value="${esc(state.lastProgramId||"")}" placeholder="lv123456789 または放送URL" maxlength="512"></div><div class="actions"><button class="btn primary" data-nico-check>番組ページを確認</button></div><div class="empty" id="program-result">確認結果はここに表示します。</div>')+
 '</div>'+
 panel("この段階で確認すること","番組ページ確認とコメント受信を区別します。",'<div class="row"><i></i><div><b>実装済み</b><small>公式ログイン画面、専用セッション、Cookieの存在確認、放送ID検証、番組ページの取得</small></div></div><div class="row"><i></i><div><b>次段階</b><small>NDGRコメントサーバー接続、コメント受信、配信主権限確認</small></div></div>')+
 '<div class="banner"><i class="led"></i><div><b>注意</b><small>番組ページを確認しても、コメント接続や配信操作が成功したことにはなりません。</small></div></div>';
@@ -69,7 +69,7 @@ html=hero("ACTIVITY & BACKUP","履歴・バックアップ","設定データのJ
 panel("システムログ","操作履歴",state.logs.map(x=>`<div class="row"><i></i><b>${esc(x)}</b></div>`).join("")+'<div class="actions"><button class="btn primary" data-export>設定JSONを書き出す</button><button class="btn" data-clear-logs>ログを消去</button></div>');
 }else{
 html=hero("APPLICATION SETTINGS","設定","アプリのバージョンとローカル設定を管理します。")+
-panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>0.1.0-beta.2</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>UI prototype / no live connection</span></div>');
+panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>0.1.0-beta.3</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>UI prototype / no live connection</span></div>');
 }
 document.getElementById("content").innerHTML=html;
 }
