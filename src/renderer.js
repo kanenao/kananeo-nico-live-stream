@@ -101,14 +101,7 @@ const h=Math.floor(seconds/3600),m=Math.floor((seconds%3600)/60),sec=seconds%60;
 return h?String(h)+":"+String(m).padStart(2,"0")+":"+String(sec).padStart(2,"0"):String(m)+":"+String(sec).padStart(2,"0");
 }
 function currentQueueItem(){return state.requests.find(x=>x.id===state.player.currentId)||null;}
-function getNextQueueItem(){
-const index=state.requests.findIndex(x=>x.id===state.player.currentId);
-for(let i=index>=0?index+1:0;i<state.requests.length;i++){
-const item=state.requests[i];
-if(item.status!=="completed"&&item.status!=="skipped")return item;
-}
-return null;
-}
+function getNextQueueItem(){return window.kananeoApp.niconico.findNextQueueItem(state.requests,state.player.currentId)||null;}
 async function playQueueItem(item){
 if(!item)return;
 try{
