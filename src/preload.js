@@ -1,6 +1,7 @@
 "use strict";
 
 const { contextBridge, ipcRenderer } = require("electron");
+const { findNextQueueItem } = require("./video-queue");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
@@ -11,6 +12,7 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
     openLogin:()=>ipcRenderer.invoke("niconico:open-login"),
     validateVideo:input=>ipcRenderer.invoke("niconico:validate-video",input),
     extractRequestCandidate:input=>ipcRenderer.invoke("niconico:extract-request",input),
+    findNextQueueItem:(items,currentId)=>findNextQueueItem(Array.isArray(items)?items.slice(0,200):[],typeof currentId==="string"?currentId:""),
     openVideo:input=>ipcRenderer.invoke("niconico:open-video",input),
     focusVideo:()=>ipcRenderer.invoke("niconico:focus-video"),
     closeVideo:()=>ipcRenderer.invoke("niconico:close-video"),
