@@ -4,9 +4,9 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
-  version:"0.1.0-beta.4",
+  version:"0.1.0-beta.5",
   platform:process.platform,
-  stage:"ndgr-comment-stream",
+  stage:"ndgr-comment-stream-and-recording",
   niconico:Object.freeze({
     openLogin:()=>ipcRenderer.invoke("niconico:open-login"),
     getSessionStatus:()=>ipcRenderer.invoke("niconico:get-session-status"),
@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
     checkProgram:input=>ipcRenderer.invoke("niconico:check-program",input),
     startComments:(input,options)=>ipcRenderer.invoke("niconico:start-comments",input,options),
     stopComments:()=>ipcRenderer.invoke("niconico:stop-comments"),
+    openCommentFolder:()=>ipcRenderer.invoke("app:open-comment-recordings"),
     copyText:value=>ipcRenderer.invoke("app:copy-text",value),
     onComment:callback=>{
       if(typeof callback!=="function") return ()=>{};
