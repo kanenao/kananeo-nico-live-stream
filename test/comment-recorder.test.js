@@ -31,7 +31,7 @@ test("records safe JSONL entries and flushes them on close", async () => {
     isHistory: true
   });
   await recorder.close();
-  const rows = (await fs.readFile(file, "utf8")).trim().split("\\n").map(JSON.parse);
+  const rows = (await fs.readFile(file, "utf8")).trim().split("\n").map(JSON.parse);
   assert.equal(rows.length, 2);
   assert.equal(rows[0].content, "こんにちは");
   assert.equal(rows[1].type, "operatorComment");
