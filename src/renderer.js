@@ -1,7 +1,7 @@
 (() => {
 const names={dashboard:"ダッシュボード",broadcast:"放送・枠管理",comments:"コメントビューア",requests:"動画リクエスト",poll:"自動アンケート",player:"プレイヤー・BGM",automation:"自動枠取り・延長",external:"OBS・外部ツール",voice:"音声・自動応答",users:"ユーザー・NG管理",logs:"履歴・バックアップ",settings:"設定"};
 const key="kananeo-beta2";
-let commentConnection={state:"disconnected",message:"コメントサーバー未接続",programId:""};
+let commentConnection={state:"disconnected",message:"コメントサーバー未接続",programId:"",recordingEnabled:false};
 let receivedComments=[];
 const MAX_DISPLAY_COMMENTS=1000;
 let nicoStatus={authenticated:false,label:"状態を確認中"};
@@ -26,7 +26,7 @@ html=hero("STREAM CONTROL CENTER","配信コントロールセンター","配信
 `<div class="stats">${[["視聴者数","—"],["コメント数","—"],["リクエスト待ち",state.requests.length],["放送残り時間","—"]].map(x=>`<div class="card"><label>${x[0]}</label><strong>${x[1]}</strong><small>接続待ち</small></div>`).join("")}</div>`+
 '<div class="columns">'+panel("クイック操作","よく使う機能",'<div class="quick">'+[["♫","動画リクエスト","requests"],["◈","自動アンケート","poll"],["⟳","次枠・自動延長","automation"],["▣","OBS・外部ツール","external"]].map(x=>`<button data-go="${x[2]}"><span>${x[0]}</span><b>${x[1]}</b><small>機能を開く</small></button>`).join("")+'</div>')+
 panel("システムログ","ローカルに記録した直近の操作",state.logs.slice(0,5).map(x=>`<div class="row"><i></i><div><b>${esc(x)}</b><small>ローカル記録</small></div></div>`).join(""))+'</div>'+
-'<footer>kananeo nico live stream <span>0.1.0-beta.4 · Beta preview</span></footer>';
+'<footer>kananeo nico live stream <span>0.1.0-beta.5 · Beta preview</span></footer>';
 }else if(page==="requests"){
 html=hero("REQUEST QUEUE","動画リクエスト","動画タイトルとURLをキューに登録し、再生順を管理します。")+
 panel("動画を追加","ローカルキューへの登録",'<form id="request-form" class="grid2">'+field("動画タイトル","req-title","","タイトル") + field("動画URL / ID","req-url","","URLまたは動画ID")+'<button class="btn primary">キューに追加</button></form>')+
@@ -55,8 +55,8 @@ panel("BGMプレイリスト","曲名の登録・削除",'<form id="track-form" 
 const active=["connecting","connected","recovering"].includes(commentConnection.state);
 const statusLabel=({disconnected:"未接続",connecting:"接続中",connected:"接続済み",recovering:"再接続中",error:"接続エラー"}[commentConnection.state]||"未接続");
 html=hero("COMMENT VIEWER","コメントビューア","ニコ生のNDGRコメントストリームからコメント・放送者コメント・ギフト・通知を受信します。")+
-'<div class="banner"><i class="led"></i><div><b id="comment-state-label">'+statusLabel+'</b><small id="comment-state-message">'+esc(commentConnection.message)+'</small></div><span class="version" id="comment-program-label">'+esc(commentConnection.programId||"放送未選択")+'</span></div>'+
-panel("コメント接続","放送IDまたは番組URLを指定して受信を開始",'<div class="field"><label>放送ID / URL</label><input class="input" id="comments-program-id" value="'+esc(state.lastProgramId||commentConnection.programId||"")+'" placeholder="lv123456789 または番組URL" maxlength="512"></div><label class="switchrow"><span><b>過去コメントも取得する</b><small>接続直後に取得できるバックログを読み込みます。</small></span><input type="checkbox" id="comments-backlog" checked></label><div class="actions"><button class="btn primary" data-comment-start '+(active?"disabled":"")+'>▶ コメント受信を開始</button><button class="btn danger" data-comment-stop '+(commentConnection.state==="disconnected"?"disabled":"")+'>■ 切断</button></div><div class="muted">Cookieはメインプロセス内でのみ使用し、画面・ログ・CSVへ出力しません。</div>')+
+'<div class="banner"><i class="led"></i><div><b id="comment-state-label">'+statusLabel+'</b><small id="comment-state-message">'+esc(commentConnection.message)+'</small></div><span class="version" id="comment-program-label">'+esc(commentConnection.programId||"放送未選択")+'</span><span class="version" id="comment-recording-label">'+(commentConnection.recordingEnabled?"自動保存：ON":"自動保存：OFF")+'</span></div>'+
+panel("コメント接続","放送IDまたは番組URLを指定して受信を開始",'<div class="field"><label>放送ID / URL</label><input class="input" id="comments-program-id" value="'+esc(state.lastProgramId||commentConnection.programId||"")+'" placeholder="lv123456789 または番組URL" maxlength="512"></div><label class="switchrow"><span><b>過去コメントも取得する</b><small>接続直後に取得できるバックログを読み込みます。</small></span><input type="checkbox" id="comments-backlog" checked></label><label class="switchrow"><span><b>コメントを自動保存する</b><small>受信した全コメントをJSONL形式でPC内に保存します。</small></span><input type="checkbox" id="comments-save" checked></label><div class="actions"><button class="btn primary" data-comment-start '+(active?"disabled":"")+'>▶ コメント受信を開始</button><button class="btn danger" data-comment-stop '+(commentConnection.state==="disconnected"?"disabled":"")+'>■ 切断</button><button class="btn" data-comment-open-folder>保存先フォルダ</button></div><div class="muted">Cookie・生Protobufは保存せず、画面とログにも出しません。CSV出力は表示中の最大1,000件です。</div>')+
 panel("受信コメント",'<span id="comment-count">'+receivedComments.length+'</span> 件を表示中','<div class="grid2"><div class="field"><label>検索（本文・ユーザー名・ID）</label><input class="input" id="comments-search" placeholder="コメントを検索"></div><div class="field"><label>表示種別</label><select id="comments-filter" class="input"><option value="all">すべて</option><option value="comment">一般コメント</option><option value="operatorComment">放送者コメント</option><option value="gift">ギフト</option><option value="emotion">エモーション</option><option value="notification">通知</option></select></div></div><div class="actions"><button class="btn" data-comment-copy>表示中をコピー</button><button class="btn" data-comment-csv>CSV保存</button><button class="btn" data-comment-clear>表示をクリア</button></div><div id="comments-list" class="comment-list"><div class="empty">まだコメントはありません。ログイン後、接続を開始してください。</div></div>');
 }else if(page==="broadcast"){
 const authTitle=nicoStatus.authenticated?"ログインCookieを確認しました":"ニコニコにログインしていません";
@@ -76,7 +76,7 @@ html=hero("ACTIVITY & BACKUP","履歴・バックアップ","設定データのJ
 panel("システムログ","操作履歴",state.logs.map(x=>`<div class="row"><i></i><b>${esc(x)}</b></div>`).join("")+'<div class="actions"><button class="btn primary" data-export>設定JSONを書き出す</button><button class="btn" data-clear-logs>ログを消去</button></div>');
 }else{
 html=hero("APPLICATION SETTINGS","設定","アプリのバージョンとローカル設定を管理します。")+
-panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>0.1.0-beta.4</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Beta 4 / NDGR comments</span></div>');
+panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>0.1.0-beta.5</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Beta 4 / NDGR comments</span></div>');
 }
 document.getElementById("content").innerHTML=html;
 }
@@ -120,6 +120,8 @@ const program=document.getElementById("comment-program-label");
 if(label)label.textContent=({disconnected:"未接続",connecting:"接続中",connected:"接続済み",recovering:"再接続中",error:"接続エラー"}[commentConnection.state]||"接続状態不明");
 if(message)message.textContent=commentConnection.message||"";
 if(program)program.textContent=commentConnection.programId||"放送未選択";
+const recording=document.getElementById("comment-recording-label");
+if(recording)recording.textContent=commentConnection.recordingEnabled?"自動保存：ON":"自動保存：OFF";
 const start=document.querySelector("[data-comment-start]");
 const stop=document.querySelector("[data-comment-stop]");
 const active=["connecting","connected","recovering"].includes(commentConnection.state);
@@ -135,7 +137,7 @@ if(!id){toast("放送IDまたは番組URLを入力してください。");return
 state.lastProgramId=id;save();
 updateCommentConnection({state:"connecting",message:"コメント接続を開始しています。",programId:id});
 try{
-const result=await window.kananeoApp.niconico.startComments(id,{fetchBacklog:document.getElementById("comments-backlog")?.checked!==false});
+const result=await window.kananeoApp.niconico.startComments(id,{fetchBacklog:document.getElementById("comments-backlog")?.checked!==false,saveComments:document.getElementById("comments-save")?.checked!==false});
 if(!result?.ok){
 updateCommentConnection({state:"error",message:result?.message||"コメント接続に失敗しました。",programId:id});
 toast(result?.message||"コメント接続に失敗しました。");
@@ -202,6 +204,7 @@ if(b.hasAttribute("data-nico-check")){void checkProgram();return;}
 if(b.hasAttribute("data-comment-start")){void startComments();return;}
 if(b.hasAttribute("data-comment-stop")){void stopComments();return;}
 if(b.hasAttribute("data-comment-copy")){void copyVisibleComments();return;}
+if(b.hasAttribute("data-comment-open-folder")){window.kananeoApp.niconico.openCommentFolder().then(r=>toast(r?.message||"保存先フォルダを開けませんでした。"));return;}
 if(b.hasAttribute("data-comment-csv")){exportCommentsCsv();return;}
 if(b.hasAttribute("data-comment-clear")){receivedComments=[];renderComments();toast("コメント表示をクリアしました。");return;}
 if(b.hasAttribute("data-save-poll")){state.poll.wait=+document.getElementById("poll-wait").value||15;state.poll.result=+document.getElementById("poll-result").value||0;state.poll.continue=document.getElementById("poll-continue").value;state.poll.next=document.getElementById("poll-next").value;state.poll.tie=document.querySelector('[data-toggle="poll-tie"]').checked;state.poll.zero=document.querySelector('[data-toggle="poll-zero"]').checked;save();toast("アンケート設定を保存しました");}
