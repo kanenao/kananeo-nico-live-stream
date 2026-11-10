@@ -628,7 +628,7 @@ function closeVideoPlayer() {
 function registerIpcHandlers() {
   ipcMain.handle("niconico:open-login",()=>openNiconicoLoginWindow());
   ipcMain.handle("niconico:find-next-queue-item",(event,items,currentId)=>{
-    if(event.sender!==mainWindow?.webContents||!Array.isArray(items)||items.length>200||typeof currentId!=="string"||currentId.length>128) return null;
+    if(event.sender!==mainWindow?.webContents||!Array.isArray(items)||items.length>1000||typeof currentId!=="string"||currentId.length>128) return null;
     const safeItems=items.map(item=>({id:typeof item?.id==="string"?item.id:"",status:typeof item?.status==="string"?item.status:"queued"}));
     return findNextQueueItem(safeItems,currentId);
   });
