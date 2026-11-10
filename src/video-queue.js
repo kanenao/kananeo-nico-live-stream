@@ -45,6 +45,12 @@ function normalizeNiconicoVideoUrl(input) {
   };
 }
 
+function extractRequestCandidate(commentText) {
+  if (typeof commentText !== "string" || commentText.length > 4000) return "";
+  const match = commentText.trim().match(/^(?:リクエスト|リク|request)\\s*[:：]?\\s*(\\S+)/i);
+  return match ? match[1].slice(0, 2048) : "";
+}
+
 function findNextQueueItem(items, currentId) {
   if (!Array.isArray(items) || items.length === 0) return null;
   const currentIndex = items.findIndex(item => item && item.id === currentId);
@@ -56,4 +62,4 @@ function findNextQueueItem(items, currentId) {
   return null;
 }
 
-module.exports = { normalizeNiconicoVideoUrl, findNextQueueItem };
+module.exports = { normalizeNiconicoVideoUrl, findNextQueueItem, extractRequestCandidate };
