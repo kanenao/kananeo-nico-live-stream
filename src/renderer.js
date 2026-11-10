@@ -3,10 +3,11 @@ const names={dashboard:"ダッシュボード",broadcast:"放送・枠管理",co
 const key="kananeo-beta2";
 let commentConnection={state:"disconnected",message:"コメントサーバー未接続",programId:"",recordingEnabled:false};
 let receivedComments=[];
+const pendingCommentRequestIds=new Set();
 let playerState={state:"closed",currentTime:0,duration:0,message:"プレイヤー未起動"};
 const MAX_DISPLAY_COMMENTS=1000;
 let nicoStatus={authenticated:false,label:"状態を確認中"};
-const initial={requests:[],ngWords:[],ngUsers:[],playlist:[],poll:{wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},external:{obs:"",nair:"",xsplit:""},logs:["β2 UIプロトタイプを起動しました"]};
+const initial={requests:[],ngWords:[],ngUsers:[],playlist:[],poll:{wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false},external:{obs:"",nair:"",xsplit:""},logs:["β2 UIプロトタイプを起動しました"]};
 let state=load(),page="dashboard";
 function load(){
 try{
@@ -39,7 +40,7 @@ panel("システムログ","ローカルに記録した直近の操作",state.lo
 }else if(page==="requests"){
 const waiting=state.requests.filter(x=>!["completed","skipped"].includes(x.status)).length;
 html=hero("REQUEST QUEUE","動画リクエスト","ニコニコ動画のURL・動画IDを登録し、重複を防いで再生順を管理します。")+
-panel("動画を追加","対応形式：sm / nm / so の動画ID、ニコニコ動画 watch URL",'<form id="request-form" class="grid2">'+field("動画タイトル（任意）","req-title","","未入力なら動画IDを表示") + field("動画URL / ID","req-url","","sm12345678 または動画URL")+'<button class="btn primary">キューに追加</button></form><div class="muted">現在はニコニコ動画のwatchページに対応しています。YouTube等の外部動画には未対応です。</div>')+
+panel("動画を追加","対応形式：sm / nm / so の動画ID、ニコニコ動画 watch URL",'<form id="request-form" class="grid2">'+field("動画タイトル（任意）","req-title","","未入力なら動画IDを表示") + field("動画URL / ID","req-url","","sm12345678 または動画URL")+'<button class="btn primary">キューに追加</button></form><div class="muted">現在はニコニコ動画のwatchページに対応しています。YouTube等の外部動画には未対応です。</div><label class="switchrow"><span><b>コメントからリクエスト自動受付</b><small>「リクエスト sm123…」の通常コメントのみ受付。過去コメント・NGユーザー・NGワードは対象外です。</small></span><input type="checkbox" id="request-from-comments" '+(state.requestSettings.acceptComments?"checked":"")+'></label></label>')+
 panel("再生キュー",waiting+" 件が未再生",state.requests.length?`<table class="table"><thead><tr><th>#</th><th>状態</th><th>タイトル</th><th>動画ID</th><th>操作</th></tr></thead><tbody>${state.requests.map((x,i)=>`<tr><td>${i+1}</td><td>${x.status==="playing"?"再生中":x.status==="completed"?"再生済み":x.status==="skipped"?"スキップ":"待機中"}</td><td>${esc(x.title)}</td><td>${esc(x.videoId||x.url)}</td><td><button class="btn primary" data-play="${esc(x.id)}">▶ 再生</button> <button class="btn" data-up="${i}" ${i===0?"disabled":""}>↑</button> <button class="btn" data-down="${i}" ${i===state.requests.length-1?"disabled":""}>↓</button> <button class="btn" data-remove="${esc(x.id)}">削除</button></td></tr>`).join("")}</tbody></table><div class="actions"><button class="btn" data-player-next>次の動画へ</button><button class="btn" data-clear>キューを全消去</button></div>`:'<div class="empty">キューは空です。上のフォームから動画を追加できます。</div>');
 }else if(page==="poll"){
 html=hero("AUTOMATIC POLL","自動アンケート","投票結果APIの選択肢名・投票率を読み取り、結果に応じて自動進行する設計です。")+
