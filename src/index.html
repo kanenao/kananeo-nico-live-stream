@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'">
+  <title>kananeo nico live stream</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand"><div class="mark">kn</div><div><b>kananeo</b><small>NICO LIVE STREAM</small></div></div>
+    <div class="side-caption">STREAM CONTROL</div>
+    <nav id="nav">
+      <button class="active" data-page="dashboard">⌂　ダッシュボード</button>
+      <button data-page="broadcast">◉　放送・枠管理</button>
+      <button data-page="comments">☷　コメントビューア</button>
+      <button data-page="requests">♫　動画リクエスト</button>
+      <button data-page="poll">◈　自動アンケート</button>
+      <button data-page="player">▶　プレイヤー・BGM</button>
+      <div class="side-caption gap">AUTOMATION & TOOLS</div>
+      <button data-page="automation">⟳　自動枠取り・延長</button>
+      <button data-page="external">▣　OBS・外部ツール</button>
+      <button data-page="voice">◖　音声・自動応答</button>
+      <button data-page="users">♙　ユーザー・NG管理</button>
+      <button data-page="logs">▤　履歴・バックアップ</button>
+      <button data-page="settings">⚙　設定</button>
+    </nav>
+    <div class="side-status"><i></i><span><b>ニコ生 未接続</b><small>接続機能を開発中</small></span><em>BETA 2</em></div>
+  </aside>
+  <main>
+    <header class="topbar"><div class="crumb">KANANEO　/　<b id="crumb">ダッシュボード</b></div><div class="right"><span class="pill">● アプリ正常</span><span class="version">v0.1.0-beta.2</span><span class="avatar">K</span></div></header>
+    <section id="content" class="content"></section>
+  </main>
+</div>
+<div id="toast" class="toast" role="status"></div>
+<script src="renderer.js"></script>
+</body>
+</html>
