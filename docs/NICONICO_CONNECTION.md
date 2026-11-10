@@ -1,35 +1,33 @@
-# β3 ニコ生接続基盤
+# ニコニコ接続・認証
 
-## 実装内容
+## 公式ログイン
 
-- ニコ生専用の永続Electronセッション `persist:kananeo-niconico`
-- ニコニコ公式トップページをログイン用の独立BrowserWindowで開く
-- アプリはメールアドレス・パスワードを受け取らず、フォームへ注入しない
-- メインプロセスは `user_session` Cookieの「存在」のみ確認し、値をUIやログに返さない
-- このアプリ専用セッションだけを削除するログアウト操作
-- 放送ID / `live.nicovideo.jp`・`live2.nicovideo.jp` の番組URLを検証
-- 専用セッションのCookieを含めて番組ページを取得し、埋め込み `data-props` を解析
-- `site.relive.webSocketUrl` が信頼できる `wss://*.nicovideo.jp` かどうかを真偽値で返す
-- タイムアウト、HTTPエラー、ログイン要求、URL不一致、ページ仕様変更を別エラーとして扱う
+- Electronの専用永続セッション `persist:kananeo-niconico` を使用
+- ニコニコ公式Webサイトを別BrowserWindowで開く
+- アプリ自身はメールアドレス・パスワードを受け取らず、入力フォームへ注入しない
+- Cookieの値はRenderer / ログ / GitHubへ出力しない
+- ログアウトはこのアプリ専用セッションだけを削除
 
-## 認証方式
+## 番組ページ確認
 
-旧メールアドレス・パスワード直接送信ログインAPIは、2026年8月時点のNDGRClient資料で廃止扱いと説明されています。継続的なNDGR収集にはOAuthが推奨されており、OAuthには発行済みクライアントID・シークレットが必要です。本アプリは現時点でOAuthクライアントを保有していないため、β3では公式Webログインの専用Chromiumセッションを採用しました。
+- 放送IDと公式番組URLだけ受け付ける
+- `embedded-data` を解析し、視聴用WebSocket URLの有無を確認
+- ニコニコ配下の `wss:` 以外は拒否
+- ページ仕様変更、認証要求、404 / 403、タイムアウトを区別する
 
-Cookie値、アクセストークン、リフレッシュトークンはアプリのログ・画面・GitHubへ出力しません。GitHubには認証ファイルを含めません。
+## β4：コメント受信
 
-## 番組ページ確認の制約
+- 現行NDGR方式を使い、視聴用WebSocketで視聴セッションを開始
+- メッセージサーバー・セグメントのProtobuf HTTPストリームは `nicomget` に委譲
+- NDGR HTTP URIは `https://mpn.live.nicovideo.jp` の指定パスだけを許可
+- `user_session` / `user_session_secure` Cookieはメインプロセス内の接続処理だけで使用
+- Rendererには表示用に正規化したコメント情報だけを渡す
+- Cookie、WebSocket URL、view URI、raw ProtobufはRenderer・ログ・CSVに渡さない
+- 切断時はライブラリの上限付き自動再接続を利用
 
-番組ページの `script#embedded-data` / `data-props` と `site.relive.webSocketUrl` の解析は公開API契約ではなく、ページ実装の変更に影響されます。接続前にIDとホストを検証し、取得したWebSocket URLは画面へ返さず、ニコニコ配下の `wss:` であるかだけを返します。
+## 制約
 
-番組ページ確認は次を意味しません。
-
-- コメント用NDGRメッセージサーバーへの接続
-- コメント・運営コメントの受信や送信
-- 配信主権限の確認
-- アンケートの作成・結果取得
-- 番組作成、次枠、無料延長
-
-## テスト
-
-`npm test` でIDパーサーと埋め込みデータパーサーの単体テストを実行します。ネットワーク通信や実アカウント認証を行わないテストです。
+- `connected` は視聴セッション確立を意味し、配信主権限やコメント送信権限を示しません。
+- コメント送信、運営コメント送信、番組作成、次枠、延長、アンケート操作は別途仕様・権限を確認してから実装します。
+- ログイン後の実アカウント・実放送による統合テストはまだ行っていません。
+- 詳細なNDGRフローは `docs/NDGR_COMMENTS.md` を参照してください。
