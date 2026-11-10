@@ -180,9 +180,33 @@ return '<div class="comment-entry"><div class="comment-meta"><b>'+esc(c.userName
 }).join("");
 list.scrollTop=list.scrollHeight;
 }
+async function maybeAddCommentRequest(comment){
+if(!state.requestSettings?.acceptComments||comment?.type!=="comment"||comment.isHistory)return;
+const content=String(comment.content||"");
+if(!content||state.ngUsers.includes(String(comment.userId||"")))return;
+if(state.ngWords.some(word=>String(word||"").length>0&&content.includes(word)))return;
+const candidate=await window.kananeoApp.niconico.extractRequestCandidate(content);
+if(!candidate)return;
+const idMatch=candidate.match(/(?:sm|nm|so)\d{1,12}/i);
+if(!idMatch)return;
+const pendingId=idMatch[0].toLowerCase();
+if(pendingCommentRequestIds.has(pendingId)||state.requests.some(item=>(item.videoId||"").toLowerCase()===pendingId))return;
+if(state.requests.length>=200){toast("リクエストキューが上限200件に達しています。");return;}
+pendingCommentRequestIds.add(pendingId);
+try{
+const validation=await window.kananeoApp.niconico.validateVideo(candidate);
+if(!validation?.ok)return;
+if(state.requests.some(item=>(item.videoId||"").toLowerCase()===validation.videoId))return;
+const item={id:"req-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8),title:validation.videoId,url:validation.url,videoId:validation.videoId,status:"queued",addedAt:new Date().toISOString(),source:"comment",requestedBy:String(comment.userName||"")};
+state.requests.push(item);state.logs.unshift("コメントから動画リクエスト："+item.videoId);save();
+if(page==="requests")render();
+toast("コメントからリクエストを受け付けました："+item.videoId);
+}catch{}finally{pendingCommentRequestIds.delete(pendingId);}
+}
 function receiveComment(comment){
 if(!comment||typeof comment!=="object")return;
 receivedComments.push(comment);
+void maybeAddCommentRequest(comment);
 if(receivedComments.length>MAX_DISPLAY_COMMENTS)receivedComments.splice(0,receivedComments.length-MAX_DISPLAY_COMMENTS);
 renderComments();
 }
@@ -301,7 +325,7 @@ if(b.hasAttribute("data-clear-logs")){state.logs=[];save();render()}
 if(b.hasAttribute("data-placeholder"))toast("現在の段階ではこの操作は未実装です。");
 });
 document.addEventListener("input",e=>{if(e.target.id==="comments-search")renderComments();});
-document.addEventListener("change",e=>{if(e.target.id==="comments-filter")renderComments();if(e.target.id==="player-auto-next"){state.player.autoNext=e.target.checked;save();toast(e.target.checked?"自動で次の動画へ切り替えます。":"自動次動画切替をOFFにしました。");}});
+document.addEventListener("change",e=>{if(e.target.id==="comments-filter")renderComments();if(e.target.id==="player-auto-next"){state.player.autoNext=e.target.checked;save();toast(e.target.checked?"自動で次の動画へ切り替えます。":"自動次動画切替をOFFにしました。");}if(e.target.id==="request-from-comments"){state.requestSettings.acceptComments=e.target.checked;save();toast(e.target.checked?"コメントからのリクエスト受付をONにしました。":"コメントからのリクエスト受付をOFFにしました。");}});
 document.addEventListener("submit",async e=>{
 e.preventDefault();
 if(e.target.id==="request-form"){
