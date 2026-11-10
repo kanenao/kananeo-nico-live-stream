@@ -10,3 +10,6 @@
 .comment-meta .chip{font-size:8px}
 .comment-body{font-size:11px;line-height:1.7;color:#e4e9f5;white-space:pre-wrap;overflow-wrap:anywhere;margin-top:6px}
 .comment-user-id{font-size:8px;color:#71809a;margin-top:4px}
+
+/* β6 video player */
+progress{display:block;width:100%;height:8px;margin:12px 0 16px;accent-color:#8c7cff;background:#0e1729;border:0;border-radius:8px;overflow:hidden}progress::-webkit-progress-bar{background:#0e1729;border-radius:8px}progress::-webkit-progress-value{background:linear-gradient(90deg,#7969f2,#36c6d7);border-radius:8px}.btn:disabled{opacity:.4;cursor:not-allowed;filter:none}
