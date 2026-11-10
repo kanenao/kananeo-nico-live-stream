@@ -101,7 +101,7 @@ const h=Math.floor(seconds/3600),m=Math.floor((seconds%3600)/60),sec=seconds%60;
 return h?String(h)+":"+String(m).padStart(2,"0")+":"+String(sec).padStart(2,"0"):String(m)+":"+String(sec).padStart(2,"0");
 }
 function currentQueueItem(){return state.requests.find(x=>x.id===state.player.currentId)||null;}
-function getNextQueueItem(){return window.kananeoApp.niconico.findNextQueueItem(state.requests,state.player.currentId)||null;}
+async function getNextQueueItem(){const selected=await window.kananeoApp.niconico.findNextQueueItem(state.requests.map(x=>({id:x.id,status:x.status})),state.player.currentId);return selected?state.requests.find(x=>x.id===selected.id)||null:null;}
 async function playQueueItem(item){
 if(!item)return;
 try{
@@ -119,7 +119,7 @@ async function playNextQueueItem(manual=false){
 const current=currentQueueItem();
 const previousStatus=current?.status;
 if(manual&&current&&current.status==="playing")current.status="skipped";
-const next=getNextQueueItem();
+const next=await getNextQueueItem();
 if(!next){
 if(manual&&current)current.status=previousStatus||"playing";
 save();if(page==="requests"||page==="player")render();toast("次に再生できる動画はありません。");return;
