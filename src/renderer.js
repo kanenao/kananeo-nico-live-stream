@@ -1,6 +1,7 @@
 (() => {
 const names={dashboard:"ダッシュボード",broadcast:"放送・枠管理",comments:"コメントビューア",requests:"動画リクエスト",poll:"自動アンケート",player:"プレイヤー・BGM",automation:"自動枠取り・延長",external:"OBS・外部ツール",voice:"音声・自動応答",users:"ユーザー・NG管理",logs:"履歴・バックアップ",settings:"設定"};
 const key="kananeo-beta2";
+let nicoStatus={authenticated:false,label:"状態を確認中"};
 const initial={requests:[],ngWords:[],ngUsers:[],playlist:[],poll:{wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},external:{obs:"",nair:"",xsplit:""},logs:["β2 UIプロトタイプを起動しました"]};
 let state=load(),page="dashboard";
 function load(){try{return {...initial,...JSON.parse(localStorage.getItem(key)||"{}")}}catch{return structuredClone(initial)}}
@@ -22,7 +23,7 @@ html=hero("STREAM CONTROL CENTER","配信コントロールセンター","配信
 `<div class="stats">${[["視聴者数","—"],["コメント数","—"],["リクエスト待ち",state.requests.length],["放送残り時間","—"]].map(x=>`<div class="card"><label>${x[0]}</label><strong>${x[1]}</strong><small>接続待ち</small></div>`).join("")}</div>`+
 '<div class="columns">'+panel("クイック操作","よく使う機能",'<div class="quick">'+[["♫","動画リクエスト","requests"],["◈","自動アンケート","poll"],["⟳","次枠・自動延長","automation"],["▣","OBS・外部ツール","external"]].map(x=>`<button data-go="${x[2]}"><span>${x[0]}</span><b>${x[1]}</b><small>機能を開く</small></button>`).join("")+'</div>')+
 panel("システムログ","ローカルに記録した直近の操作",state.logs.slice(0,5).map(x=>`<div class="row"><i></i><div><b>${esc(x)}</b><small>ローカル記録</small></div></div>`).join(""))+'</div>'+
-'<footer>kananeo nico live stream <span>0.1.0-beta.2 · Beta preview</span></footer>';
+'<footer>kananeo nico live stream <span>0.1.0-beta.3 · Beta preview</span></footer>';
 }else if(page==="requests"){
 html=hero("REQUEST QUEUE","動画リクエスト","動画タイトルとURLをキューに登録し、再生順を管理します。")+
 panel("動画を追加","ローカルキューへの登録",'<form id="request-form" class="grid2">'+field("動画タイトル","req-title","","タイトル") + field("動画URL / ID","req-url","","URLまたは動画ID")+'<button class="btn primary">キューに追加</button></form>')+
@@ -51,9 +52,15 @@ panel("BGMプレイリスト","曲名の登録・削除",'<form id="track-form" 
 html=hero("COMMENT VIEWER","コメントビューア","リアルタイムコメント、来場者数、検索・コピー・保存をまとめます。")+
 panel("コメント一覧","放送に接続するとコメントを受信します。",'<div class="empty">コメントサーバー未接続。現在はコメント受信・運営コメント送信は未実装です。</div>');
 }else if(page==="broadcast"){
-html=hero("LIVE SESSION","放送・枠管理","ログイン、放送自動検出、手動ID接続、番組作成をまとめます。")+
-'<div class="grid2">'+panel("アカウント接続","パスワードを独自保存せず、許可されたログイン方式で接続予定",'<div class="empty">ログイン機能を開発中です。</div>')+
-panel("放送を検出・接続","放送IDによる手動接続",field("放送ID / URL","live-id","","lv0000000000")+'<button class="btn" data-placeholder>接続（準備中）</button>')+'</div>';
+const authTitle=nicoStatus.authenticated?"ログインCookieを確認しました":"ニコニコにログインしていません";
+const authText=nicoStatus.authenticated?"このアプリ専用のセッションにログインCookieがあります。Cookie値は表示しません。":"下のボタンからニコニコ公式ログインを開いてください。パスワードはアプリに入力しません。";
+html=hero("LIVE SESSION","放送・枠管理","ニコニコ公式ログイン、放送IDによる番組ページ確認を行います。コメント受信は次の段階です。")+
+'<div class="grid2">'+
+panel("ニコニコアカウント接続","公式ログインを専用セッションで開く",'<div class="empty" id="auth-status"><b>'+authTitle+'</b><br>'+authText+'</div><div class="actions"><button class="btn primary" data-nico-login>公式ログインを開く</button><button class="btn" data-nico-refresh>状態を再確認</button><button class="btn" data-nico-logout>このアプリからログアウト</button></div>')+
+panel("番組ページを確認","放送IDまたはニコ生番組URLを入力",'<div class="field"><label>放送ID / URL</label><input class="input" id="live-id" placeholder="lv123456789 または放送URL" maxlength="512"></div><div class="actions"><button class="btn primary" data-nico-check>番組ページを確認</button></div><div class="empty" id="program-result">確認結果はここに表示します。</div>')+
+'</div>'+
+panel("この段階で確認すること","番組ページ確認とコメント受信を区別します。",'<div class="row"><i></i><div><b>実装済み</b><small>公式ログイン画面、専用セッション、Cookieの存在確認、放送ID検証、番組ページの取得</small></div></div><div class="row"><i></i><div><b>次段階</b><small>NDGRコメントサーバー接続、コメント受信、配信主権限確認</small></div></div>')+
+'<div class="banner"><i class="led"></i><div><b>注意</b><small>番組ページを確認しても、コメント接続や配信操作が成功したことにはなりません。</small></div></div>';
 }else if(page==="voice"){
 html=hero("VOICE & AUTO RESPONSE","音声・自動応答","コメント読み上げ、音声認識コマンド、定時通知、自動応答を追加予定です。")+
 panel("音声・通知", "オプション機能",toggle("read","コメント読み上げ","棒読みちゃん等と連携予定",false)+toggle("reply","自動応答","許可ユーザー・頻度制限付きで実装予定",false));
@@ -66,11 +73,30 @@ panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Ve
 }
 document.getElementById("content").innerHTML=html;
 }
+function applyNicoStatus(status){
+nicoStatus=status||{authenticated:false,label:"状態を確認できません"};
+const node=document.getElementById("auth-status");
+if(node){node.replaceChildren();const strong=document.createElement("b");strong.textContent=nicoStatus.authenticated?"ログインCookieを確認しました":"ニコニコにログインしていません";const br=document.createElement("br");const detail=document.createElement("span");detail.textContent=nicoStatus.authenticated?"このアプリ専用のログインセッションが見つかりました。":"公式ログイン画面でログイン後、状態を再確認してください。";node.append(strong,br,detail);}
+const side=document.querySelector(".side-status span b");if(side)side.textContent=nicoStatus.authenticated?"ニコ生ログイン確認済み":"ニコ生 未接続";
+}
+async function checkProgram(){
+const input=document.getElementById("live-id")?.value||"";
+const node=document.getElementById("program-result");if(!node)return;
+node.textContent="番組ページを確認しています…";
+const button=document.querySelector("[data-nico-check]");if(button)button.disabled=true;
+try{const r=await window.kananeoApp.niconico.checkProgram(input);node.replaceChildren();const title=document.createElement("b");title.textContent=r.ok?(r.title||r.programId):"確認できませんでした";const detail=document.createElement("div");detail.textContent=r.message||"";node.append(title,detail);if(r.ok){state.lastProgramId=r.programId;save();state.logs.unshift("番組ページを確認："+r.programId);save();}}
+catch{node.textContent="確認中にエラーが発生しました。";}
+finally{if(button)button.disabled=false;}
+}
 function go(p){page=p;render()}
 document.getElementById("nav").addEventListener("click",e=>{const b=e.target.closest("[data-page]");if(b)go(b.dataset.page)});
 document.addEventListener("click",e=>{
 const goBtn=e.target.closest("[data-go]");if(goBtn){go(goBtn.dataset.go);return}
 const b=e.target.closest("button");if(!b)return;
+if(b.hasAttribute("data-nico-login")){window.kananeoApp.niconico.openLogin().then(()=>toast("ニコニコ公式ログイン画面を開きました"));return;}
+if(b.hasAttribute("data-nico-refresh")){window.kananeoApp.niconico.getSessionStatus().then(applyNicoStatus);return;}
+if(b.hasAttribute("data-nico-logout")){if(confirm("このアプリ専用のニコニコセッションを削除しますか？"))window.kananeoApp.niconico.logout().then(r=>{toast(r.message);return window.kananeoApp.niconico.getSessionStatus()}).then(applyNicoStatus);return;}
+if(b.hasAttribute("data-nico-check")){void checkProgram();return;}
 if(b.hasAttribute("data-save-poll")){state.poll.wait=+document.getElementById("poll-wait").value||15;state.poll.result=+document.getElementById("poll-result").value||0;state.poll.continue=document.getElementById("poll-continue").value;state.poll.next=document.getElementById("poll-next").value;state.poll.tie=document.querySelector('[data-toggle="poll-tie"]').checked;state.poll.zero=document.querySelector('[data-toggle="poll-zero"]').checked;save();toast("アンケート設定を保存しました");}
 if(b.hasAttribute("data-save-auto")){state.automation.autoNext=document.querySelector('[data-toggle="auto-next"]').checked;state.automation.keepPosition=document.querySelector('[data-toggle="keep-position"]').checked;state.automation.autoExtend=document.querySelector('[data-toggle="auto-extend"]').checked;state.automation.adjustVideo=document.querySelector('[data-toggle="adjust-video"]').checked;state.automation.extend=+document.getElementById("extend").value||30;save();toast("自動化設定を保存しました");}
 if(b.hasAttribute("data-save-paths")){state.external={obs:document.getElementById("obs").value,nair:document.getElementById("nair").value,xsplit:document.getElementById("xsplit").value};save();toast("外部ツールのパスを保存しました");}
@@ -83,7 +109,7 @@ if(b.hasAttribute("data-ngu")){state.ngUsers.splice(+b.dataset.ngu,1);save();ren
 if(b.hasAttribute("data-track")){state.playlist.splice(+b.dataset.track,1);save();render()}
 if(b.hasAttribute("data-export")){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:"application/json"}));a.download="kananeo-settings.json";a.click();URL.revokeObjectURL(a.href)}
 if(b.hasAttribute("data-clear-logs")){state.logs=[];save();render()}
-if(b.hasAttribute("data-placeholder"))toast("ニコ生との接続機能は今後実装します。通信は行いません。");
+if(b.hasAttribute("data-placeholder"))toast("β3：公式ログインセッションと番組ページ確認を追加しました。コメント受信は次段階です。");
 });
 document.addEventListener("submit",e=>{
 e.preventDefault();
@@ -92,5 +118,6 @@ if(e.target.id==="ng-word-form"){state.ngWords.push(document.getElementById("ng-
 if(e.target.id==="ng-user-form"){state.ngUsers.push(document.getElementById("ng-user").value.trim());save();render()}
 if(e.target.id==="track-form"){state.playlist.push(document.getElementById("track").value.trim());save();render()}
 });
+if(window.kananeoApp?.niconico){window.kananeoApp.niconico.getSessionStatus().then(applyNicoStatus).catch(()=>{});window.kananeoApp.niconico.onSessionChanged(applyNicoStatus);}
 render();
 })();
