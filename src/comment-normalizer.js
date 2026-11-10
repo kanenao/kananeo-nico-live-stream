@@ -12,7 +12,7 @@ function normalizeComment(comment){
   const userId=safeString(comment?.userId,128);
   const userName=safeString(comment?.userName,128)||(userId?`ID:${userId}`:"匿名");
   return {
-    id:safeString(comment?.id,128)||`${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+    id:safeString(comment?.id ?? comment?.no,128)||`${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
     type:"comment",content:safeString(comment?.content),userId,userName,
     timestamp:safeTimestamp(comment?.timestamp),isHistory:Boolean(comment?.isHistory)
   };
