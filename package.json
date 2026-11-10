@@ -1,6 +1,6 @@
 {
   "name": "kananeo-nico-live-stream",
-  "version": "0.1.0-beta.3",
+  "version": "0.1.0-beta.4",
   "private": true,
   "description": "総合ニコ生管理デスクトップアプリ",
   "main": "src/main.js",
@@ -11,5 +11,13 @@
   },
   "devDependencies": {
     "electron": "45.2.3"
+  },
+  "dependencies": {
+    "nicomget": "https://codeload.github.com/Segu-g/nicomget/tar.gz/05899c0d350bf5b873c9b083ea620f42c3d1fa4f"
+  },
+  "overrides": {
+    "nicomget": {
+      "@n-air-app/nicolive-comment-protobuf": "https://codeload.github.com/Segu-g/nicolive-comment-protobuf/tar.gz/ad9fa2a1acce100f62aa0b5f2e4634b51fcf1d87"
+    }
   }
 }
