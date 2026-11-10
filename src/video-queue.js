@@ -26,7 +26,7 @@ function normalizeNiconicoVideoUrl(input) {
       return { ok:false, code:"INVALID_VIDEO_URL", message:"URLの形式を確認してください。動画ID（sm12345678等）でも登録できます。" };
     }
 
-    if (url.protocol !== "https:" || url.username || url.password || !ALLOWED_HOSTS.has(url.hostname.toLowerCase())) {
+    if (url.protocol !== "https:" || url.username || url.password || (url.port && url.port !== "443") || !ALLOWED_HOSTS.has(url.hostname.toLowerCase())) {
       return { ok:false, code:"UNSUPPORTED_VIDEO_HOST", message:"現在はHTTPSのニコニコ動画 watch URLのみ対応しています。" };
     }
 
