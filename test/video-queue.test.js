@@ -13,7 +13,7 @@ test("normalizes supported NicoNico video IDs and watch URLs", () => {
 });
 
 test("rejects non-NicoNico hosts, insecure URLs, and non-video pages", () => {
-  for (const input of ["https://example.com/watch/sm123", "http://www.nicovideo.jp/watch/sm123", "https://www.nicovideo.jp/user/123", "javascript:alert(1)", ""]) {
+  for (const input of ["https://example.com/watch/sm123", "http://www.nicovideo.jp/watch/sm123", "https://www.nicovideo.jp/user/123", "https://www.nicovideo.jp:444/watch/sm123", "javascript:alert(1)", ""]) {
     assert.equal(normalizeNiconicoVideoUrl(input).ok, false);
   }
 });
