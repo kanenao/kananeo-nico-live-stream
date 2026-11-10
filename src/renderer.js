@@ -134,6 +134,7 @@ save();await playQueueItem(next);
 function updateVideoPlayerState(status){
 if(!status||typeof status!=="object")return;
 playerState={...playerState,...status};
+if((status.state==="closed"||status.state==="error")&&currentQueueItem()?.status==="playing"){currentQueueItem().status="queued";save();}
 state.player.status=playerState.state;
 state.player.currentTime=Number(playerState.currentTime)||0;
 state.player.duration=Number(playerState.duration)||0;
