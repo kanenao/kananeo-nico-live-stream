@@ -21,5 +21,6 @@ jobs:
           node --check src/renderer.js
           node --check src/comment-normalizer.js
           node --check src/ndgr-security.js
+          node --check src/comment-recorder.js
       - name: Run unit tests
         run: npm test
