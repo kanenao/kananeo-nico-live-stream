@@ -6,6 +6,7 @@ let receivedComments=[];
 const pendingCommentRequestIds=new Set();
 let playerState={state:"closed",currentTime:0,duration:0,message:"プレイヤー未起動"};
 const MAX_DISPLAY_COMMENTS=1000;
+const MAX_QUEUE_ITEMS=1000;
 let nicoStatus={authenticated:false,label:"状態を確認中"};
 const initial={requests:[],ngWords:[],ngUsers:[],playlist:[],poll:{wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false},external:{obs:"",nair:"",xsplit:""},logs:["β2 UIプロトタイプを起動しました"]};
 let state=load(),page="dashboard";
@@ -326,6 +327,7 @@ if(e.target.id==="request-form"){
 const title=document.getElementById("req-title").value.trim();
 const input=document.getElementById("req-url").value.trim();
 if(!input){toast("動画URLまたは動画IDを入力してください。");return;}
+if(state.requests.length>=MAX_QUEUE_ITEMS){toast("再生キューは最大1,000件です。");return;}
 try{
 const validation=await window.kananeoApp.niconico.validateVideo(input);
 if(!validation?.ok){toast(validation?.message||"対応していない動画URLです。");return;}
