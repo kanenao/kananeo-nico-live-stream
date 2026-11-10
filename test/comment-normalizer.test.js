@@ -15,7 +15,7 @@ test("normalizes a regular comment without forwarding raw protobuf",()=>{
   assert.equal(JSON.stringify(value).includes("secret"),false);
 });
 
-test("uses a safe anonymous label and bounds oversized content",()=>{
+test("uses the NDGR chat number when the provider ID is absent",()=>{\n  const value=normalizeComment({no:42,content:"番号付きコメント"});\n  assert.equal(value.id,"42");\n});\n\ntest("uses a safe anonymous label and bounds oversized content",()=>{
   const value=normalizeComment({content:"x".repeat(6000),userName:"",userId:""});
   assert.equal(value.userName,"匿名");
   assert.equal(value.content.length,4000);
