@@ -8,7 +8,7 @@ const {
 const { normalizeComment, normalizeOperatorComment, normalizeNotification } = require("./comment-normalizer");
 const { isTrustedNdgrUri } = require("./ndgr-security");
 const { CommentRecorder } = require("./comment-recorder");
-const { normalizeNiconicoVideoUrl, extractRequestCandidate } = require("./video-queue");
+const { normalizeNiconicoVideoUrl, extractRequestCandidate, findNextQueueItem } = require("./video-queue");
 
 const NICONICO_HOME = "https://live.nicovideo.jp/";
 const NICONICO_WATCH_BASE = "https://live2.nicovideo.jp/watch/";
@@ -627,6 +627,11 @@ function closeVideoPlayer() {
 
 function registerIpcHandlers() {
   ipcMain.handle("niconico:open-login",()=>openNiconicoLoginWindow());
+  ipcMain.handle("niconico:find-next-queue-item",(event,items,currentId)=>{
+    if(event.sender!==mainWindow?.webContents||!Array.isArray(items)||items.length>200||typeof currentId!=="string"||currentId.length>128) return null;
+    const safeItems=items.map(item=>({id:typeof item?.id==="string"?item.id:"",status:typeof item?.status==="string"?item.status:"queued"}));
+    return findNextQueueItem(safeItems,currentId);
+  });
   ipcMain.handle("niconico:extract-request",(event,input)=>{
     if(event.sender!==mainWindow?.webContents||typeof input!=="string"||input.length>4000) return "";
     return extractRequestCandidate(input);
