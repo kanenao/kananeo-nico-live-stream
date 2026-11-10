@@ -47,7 +47,7 @@ function normalizeNiconicoVideoUrl(input) {
 
 function extractRequestCandidate(commentText) {
   if (typeof commentText !== "string" || commentText.length > 4000) return "";
-  const match = commentText.trim().match(/^(?:リクエスト|リク|request)\\s*[:：]?\\s*(\\S+)/i);
+  const match = commentText.trim().match(/^(?:リクエスト|リク|request)\s*[:：]?\s*(\S+)/i);
   return match ? match[1].slice(0, 2048) : "";
 }
 
