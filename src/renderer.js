@@ -82,7 +82,7 @@ html=hero("STREAM CONTROL CENTER","配信コントロールセンター","配信
 '<div class="muted" id="dashboard-stats-error">'+esc(dashboardStats.error||"")+'</div>'+
 '<div class="columns">'+panel("クイック操作","よく使う機能",'<div class="quick">'+[["♫","動画リクエスト","requests"],["◈","自動アンケート","poll"],["⟳","次枠・自動延長","automation"],["▣","OBS・外部ツール","external"]].map(x=>`<button data-go="${x[2]}"><span>${x[0]}</span><b>${x[1]}</b><small>機能を開く</small></button>`).join("")+'</div>')+
 panel("システムログ","ローカルに記録した直近の操作",state.logs.slice(0,5).map(x=>`<div class="row"><i></i><div><b>${esc(x)}</b><small>ローカル記録</small></div></div>`).join(""))+'</div>'+
-'<footer>kananeo nico live stream <span>0.1.0-beta.12 · Beta preview</span></footer>';
+'<footer>kananeo nico live stream <span>0.1.0-beta.13 · Beta preview</span></footer>';
 }else if(page==="requests"){
 const waiting=state.requests.filter(x=>!["completed","skipped","rejected"].includes(x.status)).length;
 const requestRows=state.requests.map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+(x.status==="playing"?"再生中":x.status==="completed"?"再生済み":x.status==="skipped"?"スキップ":x.status==="rejected"?"引用不可":"待機中")+'</td><td>'+esc(x.title)+'</td><td>'+esc(x.videoId||x.url)+'</td><td><button class="btn" data-play="'+esc(x.id)+'">プレビュー</button> <button class="btn primary" data-quote-request="'+esc(x.id)+'">ニコ生へ送る</button> <button class="btn" data-up="'+i+'" '+(i===0?"disabled":"")+'>&uarr;</button> <button class="btn" data-down="'+i+'" '+(i===state.requests.length-1?"disabled":"")+'>&darr;</button> <button class="btn" data-remove="'+esc(x.id)+'">削除</button></td></tr>').join("");
@@ -122,7 +122,7 @@ html=hero("PLAYER & BGM","プレイヤー・BGM","プレビュー再生と、配
 panel("プレビュー用Webプレイヤー",current?esc(current.title):"プレビュー対象の動画はありません",'<div class="row"><b>プレイヤー状態</b><span id="player-state-label">'+playerLabel+'</span></div><div class="row"><b>再生位置</b><span id="player-time-label">'+formatVideoTime(playerState.currentTime)+' / '+formatVideoTime(playerState.duration)+'</span></div><progress id="player-progress" max="100" value="'+(playerState.duration?Math.min(100,playerState.currentTime/playerState.duration*100):0)+'"></progress><div class="muted" id="player-message">'+esc(playerState.message||"")+'</div><label class="switchrow"><span><b>プレビュー終了後に自動で次へ</b><small>公式Webプレイヤーの終了を検知した場合だけ次のプレビューを開きます。</small></span><input type="checkbox" id="player-auto-next" '+(state.player.autoNext?"checked":"")+'></label><div class="actions"><button class="btn" data-player-focus>プレビューを前面に表示</button><button class="btn" data-player-next>次のプレビュー</button><button class="btn" data-player-close>プレビューを閉じる</button></div>')+
 panel("ニコ生への引用再生",quotePlayback.videoId?"現在の動画ID："+esc(quotePlayback.videoId):"引用再生中の動画はありません。",'<div class="banner"><i class="led"></i><div><b>'+quoteLabel+'</b><small>'+esc(quotePlayback.message)+'</small></div></div><div class="row"><b>対象放送</b><span>'+esc(quotePlayback.programId||state.lastProgramId||"放送ID未確認")+'</span></div><div class="actions"><button class="btn" data-quote-refresh>引用再生状態を確認</button><button class="btn primary" data-quote-next>次の候補をニコ生へ送る</button><button class="btn danger" data-quote-stop '+(!quotePlayback.active?"disabled":"")+'>引用再生を停止</button></div><div class="muted">「ニコ生へ送る」を押すと放送中の視聴者へ実際に動画が流れます。実行前に確認ダイアログを表示します。引用再生は放送主権限が必要です。</div>')+
 panel("再生スケジューラー","リクエストを優先し、リクエストが無い場合はストックから選びます。",'<div class="grid2">'+
-'<div class="field"><label>リクエスト再生順</label><select class="input" id="play-style"><option value="1" '+(state.playback.playStyle===1?"selected":"")+'>登録順</option><option value="2" '+(state.playback.playStyle===2?"selected":"")+'>ランダム</option></select></div>'+
+'<div class="field"><label>再生モード</label><select class="input" id="play-style"><option value="0" '+(state.playback.playStyle===0?"selected":"")+ '>手動（自分で次へ）</option><option value="1" '+(state.playback.playStyle===1?"selected":"")+ '>自動順次</option><option value="2" '+(state.playback.playStyle===2?"selected":"")+ '>自動ランダム</option></select><small class="muted">手動モードでは自動次動画を無効にし、ボタン操作だけで次へ進みます。</small></div>'+
 '<label class="switchrow"><span><b>ストックをランダム再生</b><small>リクエストを優先した後、ストックをランダムに選びます。</small></span><input type="checkbox" id="random-stock" '+(state.playback.randomStock?"checked":"")+'></label>'+
 toggle("quote-auto-next","引用再生の終了後に自動で次動画へ","登録した動画時間＋待ち時間で次の動画へ差し替えます。初期状態はOFFです。",state.playback.quoteAutoNext)+
 field("次動画へ移る待ち時間（秒）","quote-gap",state.playback.nextIntervalSeconds)+
@@ -154,7 +154,7 @@ html=hero("ACTIVITY & BACKUP","履歴・バックアップ","設定データのJ
 panel("システムログ","操作履歴",state.logs.map(x=>`<div class="row"><i></i><b>${esc(x)}</b></div>`).join("")+'<div class="actions"><button class="btn primary" data-export>設定JSONを書き出す</button><button class="btn" data-clear-logs>ログを消去</button></div>');
 }else{
 html=hero("APPLICATION SETTINGS","設定","アプリのバージョンとローカル設定を管理します。")+
-panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>0.1.0-beta.12</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Beta 12 / quote auto-next scheduler</span></div>');
+panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>0.1.0-beta.13</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Beta 13 / manual, sequential and random playback</span></div>');
 }
 document.getElementById("content").innerHTML=html;
 }
@@ -202,6 +202,11 @@ if(!state.playback.quoteAutoNext){
 quoteAutoMessage="引用再生の自動次動画はOFFです。";
 save();updateQuoteScheduleUi();return false;
 }
+if(state.playback.playStyle===0){
+state.playback.quoteAutoNext=false;
+quoteAutoMessage="手動モードでは自動次動画を行いません。次の動画ボタンから進めてください。";
+save();updateQuoteScheduleUi();return false;
+}
 const schedule=window.KananeoQuoteScheduler.createQuoteSchedule({
 startedAt:start,durationMs,gapSeconds:Number(state.playback.nextIntervalSeconds)
 });
@@ -226,7 +231,7 @@ quoteAutoTimer=setTimeout(()=>{void handleQuoteAutoNext(token);},1000);
 return;
 }
 quoteAutoTimer=null;
-if(!state.playback.quoteAutoNext||!quoteAutoSchedule)return;
+if(!state.playback.quoteAutoNext||state.playback.playStyle===0||!quoteAutoSchedule)return;
 quoteAutoBusy=true;
 quoteAutoMessage="引用再生の状態を確認しています。";
 updateQuoteScheduleUi();
@@ -761,7 +766,7 @@ if(b.hasAttribute("data-quote-stock")){const item=state.stocks.find(x=>x.id===b.
 if(b.hasAttribute("data-quote-next")){void playNextQuoteItem();return;}
 if(b.hasAttribute("data-quote-refresh")){void refreshQuotePlayback();return;}
 if(b.hasAttribute("data-quote-stop")){void stopQuotedPlayback();return;}
-if(b.hasAttribute("data-save-playback")){state.playback.playStyle=Number(document.getElementById("play-style").value)===2?2:1;state.playback.randomStock=document.getElementById("random-stock").checked;state.playback.quoteAutoNext=document.querySelector('[data-toggle="quote-auto-next"]').checked;const gap=Number(document.getElementById("quote-gap").value);state.playback.nextIntervalSeconds=Number.isInteger(gap)?Math.max(0,Math.min(300,gap)):10;const mainVolume=Number(document.getElementById("quote-main-volume").value);const subVolume=Number(document.getElementById("quote-sub-volume").value);state.playback.mainVolume=Number.isFinite(mainVolume)?Math.max(0,Math.min(1,mainVolume)):1;state.playback.subVolume=Number.isFinite(subVolume)?Math.max(0,Math.min(1,subVolume)):0;save();if(quotePlayback.active){if(state.playback.quoteAutoNext){const active=currentQueueItem();const started=Number(state.player.quoteStartedAt);if(started>0)scheduleQuoteAutoNext(active||{videoId:quotePlayback.videoId,lengthMs:state.player.quoteDurationMs},started);else quoteAutoMessage="引用再生の開始時刻が分からないため、次の動画から自動予約します。";}else clearQuoteAutoTimer("引用再生の自動次動画はOFFです。");}else updateQuoteScheduleUi();toast("引用再生・スケジューラー設定を保存しました。");}
+if(b.hasAttribute("data-save-playback")){const selectedStyle=Number(document.getElementById("play-style").value);state.playback.playStyle=[0,1,2].includes(selectedStyle)?selectedStyle:1;state.playback.randomStock=document.getElementById("random-stock").checked;state.playback.quoteAutoNext=state.playback.playStyle===0?false:document.querySelector('[data-toggle="quote-auto-next"]').checked;const gap=Number(document.getElementById("quote-gap").value);state.playback.nextIntervalSeconds=Number.isInteger(gap)?Math.max(0,Math.min(300,gap)):10;const mainVolume=Number(document.getElementById("quote-main-volume").value);const subVolume=Number(document.getElementById("quote-sub-volume").value);state.playback.mainVolume=Number.isFinite(mainVolume)?Math.max(0,Math.min(1,mainVolume)):1;state.playback.subVolume=Number.isFinite(subVolume)?Math.max(0,Math.min(1,subVolume)):0;save();if(quotePlayback.active){if(state.playback.quoteAutoNext){const active=currentQueueItem();const started=Number(state.player.quoteStartedAt);if(started>0)scheduleQuoteAutoNext(active||{videoId:quotePlayback.videoId,lengthMs:state.player.quoteDurationMs},started);else quoteAutoMessage="引用再生の開始時刻が分からないため、次の動画から自動予約します。";}else clearQuoteAutoTimer("引用再生の自動次動画はOFFです。");}else updateQuoteScheduleUi();toast("引用再生・スケジューラー設定を保存しました。");}
 if(b.hasAttribute("data-player-next")){void playNextQueueItem(true);return;}
 if(b.hasAttribute("data-player-focus")){window.kananeoApp.niconico.focusVideo().then(r=>toast(r?.message||"プレイヤーを開けませんでした。"));return;}
 if(b.hasAttribute("data-player-close")){window.kananeoApp.niconico.closeVideo().then(r=>{playerState={state:"closed",message:r?.message||"プレイヤーを閉じました。"};updateVideoPlayerState(playerState);toast(r?.message||"プレイヤーを閉じました。");});return;}
@@ -792,7 +797,7 @@ if(b.hasAttribute("data-clear-logs")){state.logs=[];save();render()}
 if(b.hasAttribute("data-placeholder"))toast("現在の段階ではこの操作は未実装です。");
 });
 document.addEventListener("input",e=>{if(e.target.id==="comments-search")renderComments();});
-document.addEventListener("change",e=>{if(e.target.matches('[data-toggle="quote-auto-next"]')){state.playback.quoteAutoNext=e.target.checked;save();if(e.target.checked&&quotePlayback.active){const active=currentQueueItem();const started=Number(state.player.quoteStartedAt);if(started>0)scheduleQuoteAutoNext(active||{videoId:quotePlayback.videoId,lengthMs:state.player.quoteDurationMs},started);else{quoteAutoMessage="引用再生の開始時刻が不明です。次の動画から自動予約します。";updateQuoteScheduleUi();}}else clearQuoteAutoTimer("引用再生の自動次動画はOFFです。");toast(e.target.checked?"引用再生の自動次動画をONにしました。":"引用再生の自動次動画をOFFにしました。");}if(e.target.id==="comments-filter")renderComments();if(e.target.id==="player-auto-next"){state.player.autoNext=e.target.checked;save();toast(e.target.checked?"自動で次の動画へ切り替えます。":"自動次動画切替をOFFにしました。");}if(e.target.id==="request-from-comments"){state.requestSettings.acceptComments=e.target.checked;save();toast(e.target.checked?"コメントからのリクエスト受付をONにしました。":"コメントからのリクエスト受付をOFFにしました。");}if(e.target.id==="request-max-per-user"){state.requestSettings.maxPerUser=Math.min(50,Math.max(1,Number(e.target.value)||5));save();toast("ユーザー別リクエスト上限を保存しました。");}});
+document.addEventListener("change",e=>{if(e.target.matches('[data-toggle="quote-auto-next"]')){if(state.playback.playStyle===0&&e.target.checked){e.target.checked=false;state.playback.quoteAutoNext=false;save();toast("手動モードでは自動次動画を使えません。自動順次または自動ランダムに変更してください。");return;}state.playback.quoteAutoNext=e.target.checked;save();if(e.target.checked&&quotePlayback.active){const active=currentQueueItem();const started=Number(state.player.quoteStartedAt);if(started>0)scheduleQuoteAutoNext(active||{videoId:quotePlayback.videoId,lengthMs:state.player.quoteDurationMs},started);else{quoteAutoMessage="引用再生の開始時刻が不明です。次の動画から自動予約します。";updateQuoteScheduleUi();}}else clearQuoteAutoTimer("引用再生の自動次動画はOFFです。");toast(e.target.checked?"引用再生の自動次動画をONにしました。":"引用再生の自動次動画をOFFにしました。");}if(e.target.id==="comments-filter")renderComments();if(e.target.id==="player-auto-next"){state.player.autoNext=e.target.checked;save();toast(e.target.checked?"自動で次の動画へ切り替えます。":"自動次動画切替をOFFにしました。");}if(e.target.id==="request-from-comments"){state.requestSettings.acceptComments=e.target.checked;save();toast(e.target.checked?"コメントからのリクエスト受付をONにしました。":"コメントからのリクエスト受付をOFFにしました。");}if(e.target.id==="request-max-per-user"){state.requestSettings.maxPerUser=Math.min(50,Math.max(1,Number(e.target.value)||5));save();toast("ユーザー別リクエスト上限を保存しました。");}});
 document.addEventListener("submit",async e=>{
 e.preventDefault();
 if(e.target.id==="request-form"){
