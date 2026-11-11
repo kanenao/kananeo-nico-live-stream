@@ -35,5 +35,7 @@ test("maps authentication and rate-limit responses", () => {
 test("accepts a successful API response and rejects malformed JSON", () => {
   assert.equal(parseBroadcasterCommentResponse('{"meta":{"status":200,"errorCode":"OK"}}',200).ok,true);
   assert.equal(parseBroadcasterCommentResponse("{broken",200).code,"BROADCASTER_RESPONSE_INVALID");
+  assert.equal(parseBroadcasterCommentResponse("",200).code,"BROADCASTER_RESPONSE_INVALID");
+  assert.equal(parseBroadcasterCommentResponse('{"success":true}',200).code,"BROADCASTER_RESPONSE_INVALID");
   assert.equal(parseBroadcasterCommentResponse("",500).code,"BROADCASTER_HTTP_ERROR");
 });
