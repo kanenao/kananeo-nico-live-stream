@@ -5,7 +5,7 @@ const { normalizeNiconicoVideoUrl } = require("./video-queue");
 const VIDEO_LIBRARY_VERSION = 1;
 const MAX_LIBRARY_ENTRIES = 20000;
 const MAX_HISTORY_ENTRIES = 10000;
-const MAX_IMPORT_TEXT_LENGTH = 2 * 1024 * 1024;
+const MAX_IMPORT_TEXT_LENGTH = 16 * 1024 * 1024;
 
 function safeText(value, maxLength = 500) {
   if (value === null || value === undefined) return "";
