@@ -45,6 +45,24 @@ test("parses watch-later and mylist shapes into normalized video rows",()=>{
   assert.equal(mylist.entries[0].videoId,"so789");
 });
 
+test("marks watch-later pages that reached the page-size limit",()=>{
+  const items=Array.from({length:100},(_,index)=>({watchId:"sm"+(10000+index),video:{title:"Video "+index}}));
+  const watch=parseNiconicoLibraryResponse(JSON.stringify({meta:{status:200},data:{watchLater:{items}}}),"watch-later");
+  const mylist=parseNiconicoLibraryResponse(JSON.stringify({meta:{status:200},data:{mylist:{items}}}),"mylist");
+  assert.equal(watch.entries.length,100);
+  assert.equal(watch.hasMore,true);
+  assert.equal(mylist.hasMore,false);
+});
+
+test("normalizes selected source metadata from list responses",()=>{
+  const result=parseNiconicoLibraryResponse(JSON.stringify({meta:{status:200},data:{series:{name:"作品シリーズ",items:[
+    {video:{id:"sm2026",title:"選択候補",duration:60}}
+  ]}}}),"series");
+  assert.equal(result.listTitle,"作品シリーズ");
+  assert.equal(result.entries[0].source,"series");
+  assert.equal(result.entries[0].lengthMs,60000);
+});
+
 test("rejects malformed and API error responses",()=>{
   assert.equal(parseNiconicoLibraryResponse("{broken","watch-later").code,"INVALID_RESPONSE");
   assert.equal(parseNiconicoLibraryResponse(JSON.stringify({meta:{status:403,errorCode:"FORBIDDEN"}}),"mylist").code,"FORBIDDEN");
