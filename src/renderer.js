@@ -220,7 +220,7 @@ if(!librarySourceEntries.length){host.innerHTML='<div class="empty">取り込み
 const sourceName=librarySourceType==="watch-later"?"あとで見る":librarySourceType==="mylist"?"マイリスト":"シリーズ";
 const visibleEntries=getFilteredLibrarySourceEntries();
 const selectedCount=librarySourceSelected.size;
-const limitNote=librarySourceLimited?'<div class="muted">取得上限に達しました。現在は先頭'+(librarySourceType==="watch-later"?"1,000":"500")+'件までを表示しています。</div>':"";
+const limitNote=librarySourceLimited?'<div class="muted">取得上限に達しました。現在は先頭'+"1,000"+'件までを表示しています。</div>':"";
 const rows=visibleEntries.map(item=>{
 const index=librarySourceEntries.indexOf(item)+1;
 const checked=librarySourceSelected.has(item.videoId)?"checked":"";
