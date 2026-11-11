@@ -8,6 +8,7 @@ const {
   normalizeVideoLibrary,
   mergeVideoEntries,
   addPlaybackHistory,
+  mergeVideoHistory,
   removeVideoEntry,
   clearVideoHistory,
   filterVideoEntries,
