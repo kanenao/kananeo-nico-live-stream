@@ -11,6 +11,7 @@ const { CommentRecorder } = require("./comment-recorder");
 const { normalizeNiconicoVideoUrl, extractRequestCandidate, findNextQueueItem } = require("./video-queue");
 const { decideEnqueteResult } = require("./poll-engine");
 const { buildEnqueteRequest, mapEnqueteHttpError, parseEnqueteResultResponse } = require("./enquete-api");
+const { buildStatisticsRequest, parseStatisticsResponse } = require("./program-api");
 
 const NICONICO_HOME = "https://live.nicovideo.jp/";
 const NICONICO_WATCH_BASE = "https://live2.nicovideo.jp/watch/";
@@ -627,6 +628,61 @@ function closeVideoPlayer() {
   return { ok:true, message:"プレイヤーウィンドウを閉じました。" };
 }
 
+async function getProgramStatistics(input = {}) {
+  let programId;
+  try {
+    programId = normalizeProgramId(input.programId);
+  } catch {
+    return {ok:false,code:"INVALID_PROGRAM_ID",message:"放送IDを確認してください。"};
+  }
+
+  const request = buildStatisticsRequest(programId);
+  if (!request.ok) return request;
+
+  let cookies;
+  try {
+    cookies = await niconicoSession.cookies.get({url:NICONICO_HOME});
+  } catch {
+    return {ok:false,code:"COOKIE_READ_FAILED",message:"ログインセッションを確認できませんでした。"};
+  }
+  const sessionCookie = cookies.find(cookie =>
+    cookie.name === "user_session" &&
+    cookie.value &&
+    (!cookie.expirationDate || cookie.expirationDate > Date.now()/1000)
+  );
+  if (!sessionCookie) return {ok:false,code:"AUTH_REQUIRED",message:"ニコニコ公式ログインが必要です。"};
+
+  let response;
+  try {
+    response = await niconicoSession.fetch(request.url,{
+      method:request.method,
+      credentials:"include",
+      redirect:"error",
+      headers:{Accept:"application/json"},
+      signal:AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+    });
+  } catch (error) {
+    const timeout = error && (error.name === "TimeoutError" || error.name === "AbortError");
+    return {ok:false,code:timeout ? "STATISTICS_TIMEOUT" : "STATISTICS_NETWORK_ERROR",
+      message:timeout ? "番組統計の取得がタイムアウトしました。" : "番組統計APIへ接続できませんでした。"};
+  }
+
+  if (!isTrustedNiconicoUrl(response.url || request.url)) {
+    return {ok:false,code:"UNTRUSTED_REDIRECT",message:"安全確認できない転送先のため統計取得を中止しました。"};
+  }
+  if (response.status === 401) return {ok:false,code:"AUTH_REQUIRED",message:"ログインの有効期限が切れました。"};
+  if (response.status === 403) return {ok:false,code:"STATISTICS_FORBIDDEN",message:"番組統計の取得が拒否されました。"};
+  if (response.status === 404) return {ok:false,code:"PROGRAM_NOT_FOUND",message:"番組ページが見つかりません。"};
+  if (!response.ok) return {ok:false,code:"STATISTICS_HTTP_ERROR",message:"番組統計APIがエラーを返しました（HTTP "+response.status+"）。"};
+
+  let responseText;
+  try { responseText = await response.text(); }
+  catch { return {ok:false,code:"STATISTICS_RESPONSE_INVALID",message:"番組統計を読み取れませんでした。"}; }
+  const parsed = parseStatisticsResponse(responseText);
+  if (!parsed.ok) return parsed;
+  return {ok:true,programId,watchCount:parsed.watchCount,commentCount:parsed.commentCount,updatedAt:new Date().toISOString()};
+}
+
 async function callEnqueteApi(action, input = {}) {
   let programId;
   try {
@@ -700,6 +756,10 @@ async function callEnqueteApi(action, input = {}) {
 
 function registerIpcHandlers() {
   ipcMain.handle("niconico:open-login",()=>openNiconicoLoginWindow());
+  ipcMain.handle("niconico:get-program-statistics",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    return getProgramStatistics(input||{});
+  });
   ipcMain.handle("niconico:start-enquete",(event,input)=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     if(!input||typeof input!=="object") return {ok:false,code:"INVALID_INPUT",message:"アンケート設定を確認してください。"};
