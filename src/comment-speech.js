@@ -40,8 +40,8 @@ function createCommentSpeechText(comment, profile, settingsInput = {}, ngWordsIn
     return {ok:false,code:"UNSUPPORTED_TYPE"};
   }
   const content = String(comment.content || comment.text || "")
-    .replace(/[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f]/g,"")
-    .replace(/[\\r\\n]+/g," ")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,"")
+    .replace(/[\r\n]+/g," ")
     .trim();
   if (!content) return {ok:false,code:"EMPTY"};
   const lower = content.toLocaleLowerCase("ja-JP");
@@ -52,7 +52,7 @@ function createCommentSpeechText(comment, profile, settingsInput = {}, ngWordsIn
   })) return {ok:false,code:"NG_WORD"};
 
   const safeContent = Array.from(content).slice(0,300).join("");
-  const nickname = String(profile?.nickname || comment.userName || "").replace(/[\\r\\n]+/g," ").trim().slice(0,80);
+  const nickname = String(profile?.nickname || comment.userName || "").replace(/[\r\n]+/g," ").trim().slice(0,80);
   const text = settings.includeName && nickname ? nickname + "、" + safeContent : safeContent;
   return {ok:true,text,settings};
 }
