@@ -57,12 +57,14 @@ function parseBroadcasterCommentResponse(responseText, httpStatus = 200) {
   }
 
   let parsed = null;
-  if (typeof responseText === "string" && responseText.trim()) {
-    try { parsed = JSON.parse(responseText); }
-    catch { return { ok:false, code:"BROADCASTER_RESPONSE_INVALID", message:"運営コメントAPIの応答を解析できませんでした。" }; }
+  if (typeof responseText !== "string" || !responseText.trim()) {
+    return { ok:false, code:"BROADCASTER_RESPONSE_INVALID", message:"運営コメントAPIから成功応答を確認できませんでした。" };
   }
+  try { parsed = JSON.parse(responseText); }
+  catch { return { ok:false, code:"BROADCASTER_RESPONSE_INVALID", message:"運営コメントAPIの応答を解析できませんでした。" }; }
   const meta = parsed && typeof parsed.meta === "object" ? parsed.meta : null;
-  if (meta && Number(meta.status) !== 200) {
+  if (!meta) return { ok:false, code:"BROADCASTER_RESPONSE_INVALID", message:"運営コメントAPIの応答形式が想定と異なります。" };
+  if (Number(meta.status) !== 200) {
     const errorCode = typeof meta.errorCode === "string" ? meta.errorCode.slice(0, 80) : "";
     if (errorCode === "AUTHENTICATION_FAILED" || errorCode === "FORBIDDEN") {
       return { ok:false, code:"BROADCASTER_PERMISSION_REQUIRED", message:"運営コメントの送信権限がありません。配信主アカウントでログインしてください。" };
