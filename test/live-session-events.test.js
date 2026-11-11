@@ -50,10 +50,11 @@ test("wraps a provider's existing watch socket and updates token on reconnect",a
     retryIntervalMs:5000,
     fetchWebSocketUrl:async()=>({wsUrl:"wss://a.live.nicovideo.jp/ws"}),
     async connectWebSocket(url){
-      client={
+      this.wsClient={
         handleMessage(message){events.push("original:"+message.type);},
         disconnect(){events.push("closed");}
       };
+      client=this.wsClient;
       events.push("connect:"+url);
     }
   };
