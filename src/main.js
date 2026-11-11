@@ -9,7 +9,7 @@ const { normalizeComment, normalizeOperatorComment, normalizeNotification } = re
 const { isTrustedNdgrUri } = require("./ndgr-security");
 const { CommentRecorder } = require("./comment-recorder");
 const { normalizeNiconicoVideoUrl, extractRequestCandidate, findNextQueueItem } = require("./video-queue");
-const { normalizeEnqueteDefinition } = require("./poll-engine");
+const { normalizeEnqueteDefinition, decideEnqueteResult } = require("./poll-engine");
 
 const NICONICO_HOME = "https://live.nicovideo.jp/";
 const NICONICO_WATCH_BASE = "https://live2.nicovideo.jp/watch/";
@@ -737,6 +737,11 @@ function registerIpcHandlers() {
   ipcMain.handle("niconico:show-enquete-result",(event,input)=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     return callEnqueteApi("result",input||{});
+  });
+  ipcMain.handle("niconico:decide-enquete",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents) return {decision:"invalid",reason:"この操作は許可されていません。"};
+    if(!input||typeof input!=="object") return {decision:"invalid",reason:"投票結果を確認できません。"};
+    return decideEnqueteResult(input.items,input.choices,input.rules||{});
   });
   ipcMain.handle("niconico:finish-enquete",(event,input)=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
