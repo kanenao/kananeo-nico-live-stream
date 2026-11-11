@@ -26,8 +26,16 @@ test("builds watch-later and private-mylist fallback requests",()=>{
   assert.equal(watch.page,2);
   assert.match(watch.url,/watch-later\?.*page=2/);
   const mylist=buildNiconicoLibraryRequest("mylist",{listId:"123"});
-  assert.equal(mylist.url,"https://nvapi.nicovideo.jp/v2/mylists/123?pageSize=500");
-  assert.equal(mylist.fallbackUrl,"https://nvapi.nicovideo.jp/v1/users/me/mylists/123?pageSize=500");
+  assert.equal(mylist.url,"https://nvapi.nicovideo.jp/v2/mylists/123?pageSize=500&page=1");
+  assert.equal(mylist.fallbackUrl,"https://nvapi.nicovideo.jp/v1/users/me/mylists/123?pageSize=500&page=1");
+});
+
+test("builds mylist page two and expanded series page-size requests",()=>{
+  const mylist=buildNiconicoLibraryRequest("mylist",{listId:"123",page:2});
+  assert.equal(mylist.page,2);
+  assert.match(mylist.url,/pageSize=500&page=2$/);
+  const series=buildNiconicoLibraryRequest("series",{listId:"987",pageSize:1000});
+  assert.match(series.url,/pageSize=1000$/);
 });
 
 test("parses watch-later and mylist shapes into normalized video rows",()=>{
@@ -61,6 +69,19 @@ test("normalizes selected source metadata from list responses",()=>{
   assert.equal(result.listTitle,"作品シリーズ");
   assert.equal(result.entries[0].source,"series");
   assert.equal(result.entries[0].lengthMs,60000);
+});
+
+test("parses mylist pagination metadata and series total count",()=>{
+  const mylist=parseNiconicoLibraryResponse(JSON.stringify({data:{mylist:{
+    totalItemCount:1200,hasNext:true,items:[{watchId:"sm501"}]
+  }}}),"mylist");
+  assert.equal(mylist.totalCount,1200);
+  assert.equal(mylist.hasMore,true);
+  const series=parseNiconicoLibraryResponse(JSON.stringify({data:{totalCount:900,items:[
+    {video:{id:"sm502",title:"Series item"}}
+  ]}}),"series");
+  assert.equal(series.totalCount,900);
+  assert.equal(series.hasMore,true);
 });
 
 test("rejects malformed and API error responses",()=>{
