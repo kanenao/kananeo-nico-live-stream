@@ -5,7 +5,7 @@ const path = require("node:path");
 const fs = require("node:fs/promises");
 const {
   createEmptyVideoLibrary, normalizeVideoLibrary, normalizeVideoEntry,
-  mergeVideoEntries, addPlaybackHistory, removeVideoEntry, clearVideoHistory,
+  mergeVideoEntries, mergeVideoHistory, addPlaybackHistory, removeVideoEntry, clearVideoHistory,
   parseVideoImportText
 } = require("./video-library");
 const { buildNiconicoLibraryRequest, parseNiconicoLibraryResponse } = require("./niconico-library-api");
@@ -1294,6 +1294,7 @@ function registerIpcHandlers() {
   ipcMain.handle("app:video-library-import",async(event,input)=>{
     if(!isVideoLibrarySender(event)||!input||typeof input!=="object") return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     let entries=[];
+    let historyEntries=[];
     let sourceType=typeof input.type==="string"?input.type:"text";
     let skipped=0;
     if(sourceType==="text"||sourceType==="json"){
@@ -1301,6 +1302,7 @@ function registerIpcHandlers() {
       const parsed=parseVideoImportText(input.text,{source:sourceType==="json"?"json-import":"text-import"});
       if(!parsed.ok) return parsed;
       entries=parsed.entries;
+      historyEntries=Array.isArray(parsed.history)?parsed.history:[];
       skipped=parsed.skipped;
     }else{
       if(typeof input.listId!=="string"&&typeof input.url!=="string") return {ok:false,code:"INVALID_LIST_ID",message:"マイリストまたはシリーズのURL・IDを入力してください。"};
@@ -1312,7 +1314,11 @@ function registerIpcHandlers() {
     }
     if(!entries.length) return {ok:false,code:"NO_VALID_VIDEOS",message:"取り込める動画がありませんでした。"};
     const tagged=entries.map(entry=>({...entry,source:sourceType}));
-    const saved=await updateVideoLibrary(library=>mergeVideoEntries(library,tagged));
+    const saved=await updateVideoLibrary(library=>{
+      const merged=mergeVideoEntries(library,tagged);
+      const withHistory=historyEntries.length?mergeVideoHistory(merged.library,historyEntries):{library:merged.library,addedHistory:0};
+      return {...merged,library:withHistory.library,historyImported:withHistory.addedHistory};
+    });
     if(!saved.ok) return saved;
     return {...saved,imported:entries.length,skipped:skipped+saved.skipped,sourceType};
   });
