@@ -130,7 +130,7 @@ html=hero("ACTIVITY & BACKUP","履歴・バックアップ","設定データのJ
 panel("システムログ","操作履歴",state.logs.map(x=>`<div class="row"><i></i><b>${esc(x)}</b></div>`).join("")+'<div class="actions"><button class="btn primary" data-export>設定JSONを書き出す</button><button class="btn" data-clear-logs>ログを消去</button></div>');
 }else{
 html=hero("APPLICATION SETTINGS","設定","アプリのバージョンとローカル設定を管理します。")+
-panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>0.1.0-beta.5</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Beta 6 / video queue & player</span></div>');
+panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>0.1.0-beta.10</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Beta 10 / extension availability & Windows build</span></div>');
 }
 document.getElementById("content").innerHTML=html;
 }
