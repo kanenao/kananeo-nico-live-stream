@@ -9,7 +9,8 @@ const { normalizeComment, normalizeOperatorComment, normalizeNotification } = re
 const { isTrustedNdgrUri } = require("./ndgr-security");
 const { CommentRecorder } = require("./comment-recorder");
 const { normalizeNiconicoVideoUrl, extractRequestCandidate, findNextQueueItem } = require("./video-queue");
-const { normalizeEnqueteDefinition, decideEnqueteResult } = require("./poll-engine");
+const { decideEnqueteResult } = require("./poll-engine");
+const { buildEnqueteRequest, mapEnqueteHttpError, parseEnqueteResultResponse } = require("./enquete-api");
 
 const NICONICO_HOME = "https://live.nicovideo.jp/";
 const NICONICO_WATCH_BASE = "https://live2.nicovideo.jp/watch/";
@@ -634,7 +635,15 @@ async function callEnqueteApi(action, input = {}) {
     return {ok:false,code:"INVALID_PROGRAM_ID",message:"配信中の放送ID（lvから始まるID）を確認してください。"};
   }
 
-  const cookies = await niconicoSession.cookies.get({url:NICONICO_HOME});
+  const request = buildEnqueteRequest(action, programId, input);
+  if (!request.ok) return request;
+
+  let cookies;
+  try {
+    cookies = await niconicoSession.cookies.get({url:NICONICO_HOME});
+  } catch {
+    return {ok:false,code:"COOKIE_READ_FAILED",message:"ログインセッションを確認できませんでした。"};
+  }
   const sessionCookie = cookies.find(cookie =>
     cookie.name === "user_session" &&
     cookie.value &&
@@ -644,36 +653,17 @@ async function callEnqueteApi(action, input = {}) {
     return {ok:false,code:"AUTH_REQUIRED",message:"ニコニコ公式ログインが必要です。"};
   }
 
-  const base = "https://live2.nicovideo.jp/unama/watch/" + encodeURIComponent(programId) + "/enquete";
-  const routes = {
-    start:{url:base,method:"POST"},
-    result:{url:base + "/result",method:"POST"},
-    finish:{url:base,method:"DELETE"}
-  };
-  const route = routes[action];
-  if (!route) return {ok:false,code:"INVALID_ACTION",message:"アンケート操作を確認できません。"};
-
-  let body;
-  if (action === "start") {
-    const definition = normalizeEnqueteDefinition(input);
-    if (!definition.ok) return definition;
-    body = JSON.stringify({
-      question:definition.question,
-      items:definition.choices
-    });
-  }
-
   let response;
   try {
-    response = await niconicoSession.fetch(route.url, {
-      method:route.method,
+    response = await niconicoSession.fetch(request.url, {
+      method:request.method,
       credentials:"include",
       redirect:"error",
       headers:{
         Accept:"application/json",
         "Content-Type":"application/json"
       },
-      ...(body !== undefined ? {body} : {}),
+      ...(request.body !== undefined ? {body:request.body} : {}),
       signal:AbortSignal.timeout(REQUEST_TIMEOUT_MS)
     });
   } catch (error) {
@@ -685,44 +675,25 @@ async function callEnqueteApi(action, input = {}) {
     };
   }
 
-  if (!isTrustedNiconicoUrl(response.url || route.url)) {
+  if (!isTrustedNiconicoUrl(response.url || request.url)) {
     return {ok:false,code:"UNTRUSTED_REDIRECT",message:"安全確認できない転送先のためアンケート操作を中止しました。"};
   }
-  if (response.status === 401) return {ok:false,code:"AUTH_REQUIRED",message:"ログインの有効期限が切れました。公式ログインを確認してください。"};
-  if (response.status === 403) return {ok:false,code:"BROADCASTER_PERMISSION_REQUIRED",message:"アンケート操作が拒否されました。放送主アカウントでログインしているか確認してください。"};
-  if (response.status === 404) return {ok:false,code:"PROGRAM_NOT_FOUND",message:"放送ページが見つかりません。放送IDと放送状態を確認してください。"};
-  if (response.status === 409) return {ok:false,code:"ENQUETE_CONFLICT",message:"現在のアンケート状態と操作が一致しません。画面を更新して確認してください。"};
-  if (!response.ok) return {ok:false,code:"ENQUETE_HTTP_ERROR",message:"アンケートAPIがエラーを返しました（HTTP " + response.status + "）。"};
+  if (!response.ok) return {ok:false,...mapEnqueteHttpError(response.status)};
 
   if (action !== "result") {
     return {ok:true,programId,message:action === "start" ? "アンケートを開始しました。" : "アンケートを終了しました。"};
   }
 
-  let payload;
-  try {
-    const text = await response.text();
-    if (!text || text.length > 256 * 1024) throw new Error("Invalid response size");
-    payload = JSON.parse(text);
-  } catch {
-    return {ok:false,code:"ENQUETE_RESPONSE_INVALID",message:"アンケート結果を読み取れませんでした。"};
-  }
-
-  const data = payload && payload.data;
-  if (!data || !Array.isArray(data.items) || data.items.length > 10) {
-    return {ok:false,code:"ENQUETE_RESULT_MISSING",message:"アンケート結果がまだ取得できません。投票が終了しているか確認してください。"};
-  }
-  const items = data.items.map(item => ({
-    name:typeof item?.name === "string" ? item.name.slice(0,50) : "",
-    rate:Number(item?.rate)
-  }));
-  if (items.some(item => !item.name || !Number.isFinite(item.rate) || item.rate < 0 || item.rate > 100)) {
-    return {ok:false,code:"ENQUETE_RESULT_INVALID",message:"アンケート結果の内容が想定と異なります。自動進行を停止しました。"};
-  }
+  let responseText;
+  try { responseText = await response.text(); }
+  catch { return {ok:false,code:"ENQUETE_RESPONSE_INVALID",message:"アンケート結果を読み取れませんでした。"}; }
+  const parsed = parseEnqueteResultResponse(responseText);
+  if (!parsed.ok) return parsed;
   return {
     ok:true,
     programId,
-    title:typeof data.title === "string" ? data.title.slice(0,100) : "",
-    items,
+    title:parsed.title,
+    items:parsed.items,
     message:"アンケート結果を取得しました。"
   };
 }
