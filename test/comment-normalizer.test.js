@@ -40,3 +40,13 @@ test("normalizes gifts and notifications as display-safe events",()=>{
   assert.match(gift.content,/100pt/);
   assert.match(notice.content,/延長/);
 });
+
+test("preserves a numeric comment number for broadcaster reply templates",()=>{
+  const comment=normalizeComment({no:12345,content:"リクエスト sm12345678",userId:"user-1"});
+  assert.equal(comment.commentNo,"12345");
+});
+
+test("does not treat non-numeric comment IDs as reply comment numbers",()=>{
+  const comment=normalizeComment({id:"chat-abc",content:"test"});
+  assert.equal(comment.commentNo,"");
+});
