@@ -164,13 +164,19 @@ const programId=state.lastProgramId;
 if(!programId){toast("先に「放送・枠管理」で番組IDを確認してください。");return;}
 const result=await window.kananeoApp.niconico.getCurrentQuotation({programId});
 if(!result?.ok){quotePlayback={...quotePlayback,message:result?.message||"引用再生状態を取得できませんでした。"};toast(quotePlayback.message);if(page==="player")render();return;}
-const matched=[...state.requests,...state.stocks].find(item=>item.videoId===result.currentVideoId);
+const previousItemId=quotePlayback.itemId;
+const matched=result.exists?[...state.requests,...state.stocks].find(item=>item.videoId===result.currentVideoId):null;
+if(previousItemId&&previousItemId!==matched?.id){
+for(const list of [state.requests,state.stocks])list.forEach(item=>{if(item.id===previousItemId&&item.status==="playing")item.status="queued";});
+}
 if(matched){
 for(const list of [state.requests,state.stocks])list.forEach(item=>{if(item.status==="playing"&&item.id!==matched.id)item.status="queued";});
 matched.status="playing";
 }
 quotePlayback={active:!!result.exists,verified:true,programId,videoId:result.currentVideoId||"",queueType:matched?(state.stocks.includes(matched)?"stock":"request"):"",itemId:matched?.id||"",message:result.exists?"ニコ生の引用再生状態を確認しました。":"現在、引用再生は行われていません。"};
-if(matched){state.player.currentId=matched.id;state.player.currentQueueType=quotePlayback.queueType;save();}
+if(matched){state.player.currentId=matched.id;state.player.currentQueueType=quotePlayback.queueType;}
+else if(!result.exists&&state.player.currentId===previousItemId){state.player.currentId="";}
+save();
 if(page==="player")render();
 }
 async function playQuotedQueueItem(item,queueType="request"){
