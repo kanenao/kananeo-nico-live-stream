@@ -3,7 +3,7 @@
 const { app, BrowserWindow, shell, session, ipcMain, clipboard } = require("electron");
 const path = require("node:path");
 const {
-  normalizeProgramId, inspectWatchPage, extractEmbeddedData, NiconicoPageError, isTrustedWebSocketEndpoint
+  normalizeProgramId, inspectWatchPage, extractEmbeddedData, extractBroadcasterCommentToken, NiconicoPageError, isTrustedWebSocketEndpoint
 } = require("./niconico-program");
 const { normalizeComment, normalizeOperatorComment, normalizeNotification } = require("./comment-normalizer");
 const { isTrustedNdgrUri } = require("./ndgr-security");
@@ -19,11 +19,14 @@ const {
   parseCurrentQuotationResponse, parseQuotationMutationResponse
 } = require("./quotation-api");
 const { selectNextPlaybackCandidate } = require("./playback-scheduler");
+const { buildBroadcasterCommentRequest, parseBroadcasterCommentResponse } = require("./broadcaster-comment-api");
 
 const NICONICO_HOME = "https://live.nicovideo.jp/";
 const NICONICO_WATCH_BASE = "https://live2.nicovideo.jp/watch/";
 const NICONICO_PARTITION = "persist:kananeo-niconico";
 const REQUEST_TIMEOUT_MS = 15000;
+const BROADCASTER_COMMENT_MIN_INTERVAL_MS = 5000;
+let lastBroadcasterCommentAttemptAt = 0;
 let mainWindow = null;
 let loginWindow = null;
 let niconicoSession = null;
@@ -133,6 +136,64 @@ async function checkNiconicoProgram(input) {
   } catch(error) {
     if (error instanceof NiconicoPageError) return {ok:false,code:error.code,programId,message:error.message};
     return {ok:false,code:"PARSE_ERROR",programId,message:"番組情報を解析できませんでした。"};
+  }
+}
+
+async function sendNiconicoBroadcasterComment(input) {
+  let programId;
+  try { programId=normalizeProgramId(input?.programId); }
+  catch(error) { return {ok:false,code:error.code||"INVALID_PROGRAM_ID",message:error.message||"放送IDを確認してください。"}; }
+
+  const now=Date.now();
+  const waitMs=BROADCASTER_COMMENT_MIN_INTERVAL_MS-(now-lastBroadcasterCommentAttemptAt);
+  if(waitMs>0) return {ok:false,code:"BROADCASTER_RATE_LIMITED",retryAfterMs:waitMs,message:"コメントの連投を防ぐため、投稿間隔を空けています。"};
+  if(!niconicoSession) return {ok:false,code:"AUTH_REQUIRED",message:"ニコニコ公式ログインが必要です。"};
+
+  try {
+    const cookies=await niconicoSession.cookies.get({url:NICONICO_HOME});
+    const sessionCookie=cookies.some(cookie=>cookie.name==="user_session"&&(!cookie.expirationDate||cookie.expirationDate>Date.now()/1000));
+    if(!sessionCookie) return {ok:false,code:"AUTH_REQUIRED",message:"ニコニコ公式ログインが必要です。"};
+
+    const pageUrl=NICONICO_WATCH_BASE+encodeURIComponent(programId);
+    const pageResponse=await niconicoSession.fetch(pageUrl,{
+      method:"GET",credentials:"include",redirect:"follow",
+      headers:{Accept:"text/html,application/xhtml+xml"},
+      signal:AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+    });
+    if(!isTrustedNiconicoUrl(pageResponse.url||pageUrl)) return {ok:false,code:"UNTRUSTED_REDIRECT",message:"安全確認できない番組ページへの転送を検出しました。"};
+    if(!pageResponse.ok) return {ok:false,code:pageResponse.status===401||pageResponse.status===403?"AUTH_REQUIRED":"PROGRAM_PAGE_ERROR",message:"コメント送信前に番組ページを確認できませんでした（HTTP "+pageResponse.status+"）。"};
+    const html=await pageResponse.text();
+    if(html.length>6*1024*1024) return {ok:false,code:"RESPONSE_TOO_LARGE",message:"番組ページが大きすぎるため送信を中止しました。"};
+    const pageInfo=inspectWatchPage(html,programId);
+    if(!["onAir","ON_AIR"].includes(pageInfo.programStatus)) {
+      return {ok:false,code:"PROGRAM_NOT_ON_AIR",message:"番組が放送中ではないため運営コメントを送信しませんでした。"};
+    }
+    const csrfToken=extractBroadcasterCommentToken(html);
+    const request=buildBroadcasterCommentRequest({
+      programId,
+      csrfToken,
+      text:input?.text,
+      name:"",
+      command:"",
+      isPermanent:false
+    });
+    if(!request.ok) return request;
+    if(!isTrustedNiconicoUrl(request.url)) return {ok:false,code:"UNTRUSTED_API_URL",message:"安全確認できない送信先のため中止しました。"};
+
+    lastBroadcasterCommentAttemptAt=Date.now();
+    const response=await niconicoSession.fetch(request.url,{
+      method:request.method,credentials:"include",redirect:"error",
+      headers:request.headers,body:request.body,
+      signal:AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+    });
+    if(!isTrustedNiconicoUrl(response.url||request.url)) return {ok:false,code:"UNTRUSTED_REDIRECT",message:"安全確認できない送信先への転送を検出しました。"};
+    let responseText="";
+    try { responseText=await response.text(); }
+    catch { return {ok:false,code:"BROADCASTER_RESPONSE_INVALID",message:"運営コメントAPIの応答を読み取れませんでした。"}; }
+    return parseBroadcasterCommentResponse(responseText,response.status);
+  } catch(error) {
+    const timeout=error&&(error.name==="TimeoutError"||error.name==="AbortError");
+    return {ok:false,code:timeout?"REQUEST_TIMEOUT":"BROADCASTER_NETWORK_ERROR",message:timeout?"運営コメント送信がタイムアウトしました。":"運営コメントを送信できませんでした。ログイン状態と通信を確認してください。"};
   }
 }
 
@@ -988,6 +1049,11 @@ function registerIpcHandlers() {
     if(event.sender!==mainWindow?.webContents||!Array.isArray(items)||items.length>1000||typeof currentId!=="string"||currentId.length>128) return null;
     const safeItems=items.map(item=>({id:typeof item?.id==="string"?item.id:"",status:typeof item?.status==="string"?item.status:"queued"}));
     return findNextQueueItem(safeItems,currentId);
+  });
+  ipcMain.handle("niconico:post-broadcaster-comment",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    if(!input||typeof input!=="object"||typeof input.text!=="string"||input.text.length>200) return {ok:false,code:"INVALID_INPUT",message:"運営コメントの内容を確認してください。"};
+    return sendNiconicoBroadcasterComment(input);
   });
   ipcMain.handle("niconico:evaluate-comment-request",(event,input)=>{
     if(event.sender!==mainWindow?.webContents||!input||typeof input!=="object") return {accepted:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
