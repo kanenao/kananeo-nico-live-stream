@@ -46,6 +46,11 @@ test("preserves a numeric comment number for broadcaster reply templates",()=>{
   assert.equal(comment.commentNo,"12345");
 });
 
+test("also uses a numeric provider ID when no field is present",()=>{
+  const comment=normalizeComment({id:6789,content:"test"});
+  assert.equal(comment.commentNo,"6789");
+});
+
 test("does not treat non-numeric comment IDs as reply comment numbers",()=>{
   const comment=normalizeComment({id:"chat-abc",content:"test"});
   assert.equal(comment.commentNo,"");
