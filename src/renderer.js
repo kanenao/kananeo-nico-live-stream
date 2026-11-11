@@ -12,6 +12,7 @@ let librarySource="";
 let libraryEditId="";
 let librarySourceEntries=[];
 let librarySourceTitle="";
+let librarySourceQuery="";
 let librarySourceType="";
 let librarySourceLimited=false;
 let librarySourceLoading=false;
@@ -204,20 +205,33 @@ finally{videoLibraryLoading=false;if(page==="library"){render();renderVideoLibra
 function librarySourceLabel(source){
 return ({manual:"手動登録","watch-later":"あとで見る",mylist:"マイリスト",series:"シリーズ",text:"テキスト取り込み",json:"JSON取り込み"}[source]||source||"不明");
 }
+function getFilteredLibrarySourceEntries(){
+const query=String(librarySourceQuery||"").trim().toLocaleLowerCase("ja-JP");
+if(!query)return librarySourceEntries;
+return librarySourceEntries.filter(item=>[item.title,item.videoId].join(" ").toLocaleLowerCase("ja-JP").includes(query));
+}
 function renderLibrarySourcePreview(){
 const host=document.getElementById("library-source-preview");
 if(!host)return;
+const activeSearch=document.activeElement?.id==="library-source-search";
+const caret=activeSearch?document.activeElement.selectionStart:null;
 if(librarySourceLoading){host.innerHTML='<div class="empty">ニコニコから動画一覧を取得しています…</div>';return;}
 if(!librarySourceEntries.length){host.innerHTML='<div class="empty">取り込み元を選んで「一覧を表示して選択」を押してください。</div>';return;}
 const sourceName=librarySourceType==="watch-later"?"あとで見る":librarySourceType==="mylist"?"マイリスト":"シリーズ";
+const visibleEntries=getFilteredLibrarySourceEntries();
 const selectedCount=librarySourceSelected.size;
 const limitNote=librarySourceLimited?'<div class="muted">取得上限に達しました。現在は先頭'+(librarySourceType==="watch-later"?"1,000":"500")+'件までを表示しています。</div>':"";
-const rows=librarySourceEntries.map((item,index)=>{
+const rows=visibleEntries.map(item=>{
+const index=librarySourceEntries.indexOf(item)+1;
 const checked=librarySourceSelected.has(item.videoId)?"checked":"";
-return '<tr><td><input type="checkbox" data-library-source-check="'+esc(item.videoId)+'" '+checked+'></td><td>'+(index+1)+'</td><td><b>'+esc(item.title)+'</b><div class="muted">'+esc(item.videoId)+'</div></td><td>'+(item.lengthMs?formatVideoTime(item.lengthMs/1000):"—")+'</td></tr>';
+return '<tr><td><input type="checkbox" data-library-source-check="'+esc(item.videoId)+'" '+checked+'></td><td>'+index+'</td><td><b>'+esc(item.title)+'</b><div class="muted">'+esc(item.videoId)+'</div></td><td>'+(item.lengthMs?formatVideoTime(item.lengthMs/1000):"—")+'</td></tr>';
 }).join("");
 host.className="";
-host.innerHTML='<div class="row"><b>'+esc(librarySourceTitle||sourceName)+' / '+sourceName+'</b><span>'+librarySourceEntries.length.toLocaleString("ja-JP")+' 件取得</span></div>'+limitNote+'<div class="actions"><button class="btn" type="button" data-library-source-all>すべて選択</button><button class="btn" type="button" data-library-source-none>選択解除</button><button class="btn primary" type="button" data-library-source-import '+(!selectedCount?"disabled":"")+'>選択した '+selectedCount+' 件を取り込む</button></div><div class="muted" id="library-source-selection-count">'+selectedCount+' 件を選択中</div><div style="overflow-x:auto;max-height:520px"><table class="table"><thead><tr><th>選択</th><th>#</th><th>動画</th><th>時間</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+host.innerHTML='<div class="row"><b>'+esc(librarySourceTitle||sourceName)+' / '+sourceName+'</b><span>'+visibleEntries.length.toLocaleString("ja-JP")+' / '+librarySourceEntries.length.toLocaleString("ja-JP")+' 件表示</span></div>'+limitNote+'<div class="field"><label>一覧内を検索（タイトル・動画ID）</label><input class="input" id="library-source-search" value="'+esc(librarySourceQuery)+'" placeholder="動画タイトル・IDで絞り込み"></div><div class="actions"><button class="btn" type="button" data-library-source-all>表示中をすべて選択</button><button class="btn" type="button" data-library-source-none>選択解除</button><button class="btn primary" type="button" data-library-source-import '+(!selectedCount?"disabled":"")+'>選択した '+selectedCount+' 件を取り込む</button></div><div class="muted" id="library-source-selection-count">'+selectedCount+' 件を選択中（一覧全体）</div>'+(rows?'<div style="overflow-x:auto;max-height:520px"><table class="table"><thead><tr><th>選択</th><th>#</th><th>動画</th><th>時間</th></tr></thead><tbody>'+rows+'</tbody></table></div>':'<div class="empty">検索条件に一致する動画はありません。</div>');
+if(activeSearch){
+const input=host.querySelector("#library-source-search");
+if(input){input.focus();if(Number.isInteger(caret))input.setSelectionRange(caret,caret);}
+}
 }
 async function recordVideoPlaybackHistory(item,queueType="library",playbackType="preview"){
 if(!item?.videoId||!window.kananeoApp?.videoLibrary)return;
@@ -942,7 +956,7 @@ const type=document.getElementById("library-import-type")?.value||"";
 const listId=document.getElementById("library-import-id")?.value.trim()||"";
 if(!["watch-later","mylist","series"].includes(type)){toast("一覧の選択取り込みでは、あとで見る・マイリスト・シリーズを選んでください。");return;}
 if(type!=="watch-later"&&!listId){toast("マイリストまたはシリーズのURL・IDを入力してください。");return;}
-librarySourceLoading=true;librarySourceEntries=[];librarySourceSelected=new Set();librarySourceTitle="";librarySourceType=type;librarySourceLimited=false;renderLibrarySourcePreview();b.disabled=true;
+librarySourceLoading=true;librarySourceEntries=[];librarySourceSelected=new Set();librarySourceTitle="";librarySourceQuery="";librarySourceType=type;librarySourceLimited=false;renderLibrarySourcePreview();b.disabled=true;
 try{
 const result=await window.kananeoApp.videoLibrary.list({type,listId});
 if(!result?.ok)throw new Error(result?.message||"動画一覧を取得できませんでした。");
@@ -956,7 +970,7 @@ else toast(result.count+" 件の動画を一覧表示しました。必要な動
 finally{librarySourceLoading=false;b.disabled=false;renderLibrarySourcePreview();}
 return;
 }
-if(b.hasAttribute("data-library-source-all")){librarySourceSelected=new Set(librarySourceEntries.map(item=>item.videoId));renderLibrarySourcePreview();return;}
+if(b.hasAttribute("data-library-source-all")){for(const item of getFilteredLibrarySourceEntries())librarySourceSelected.add(item.videoId);renderLibrarySourcePreview();return;}
 if(b.hasAttribute("data-library-source-none")){librarySourceSelected.clear();renderLibrarySourcePreview();return;}
 if(b.hasAttribute("data-library-source-import")){
 const entries=librarySourceEntries.filter(item=>librarySourceSelected.has(item.videoId));
@@ -1031,7 +1045,7 @@ if(b.hasAttribute("data-export")){const a=document.createElement("a");a.href=URL
 if(b.hasAttribute("data-clear-logs")){state.logs=[];save();render()}
 if(b.hasAttribute("data-placeholder"))toast("現在の段階ではこの操作は未実装です。");
 });
-document.addEventListener("input",e=>{if(e.target.id==="comments-search")renderComments();if(e.target.id==="library-search")renderVideoLibraryRows();});
+document.addEventListener("input",e=>{if(e.target.id==="comments-search")renderComments();if(e.target.id==="library-search")renderVideoLibraryRows();if(e.target.id==="library-source-search"){librarySourceQuery=e.target.value;renderLibrarySourcePreview();}});
 document.addEventListener("change",e=>{if(e.target.id==="library-sort"){librarySort=e.target.value;renderVideoLibraryRows();}if(e.target.id==="library-source"){librarySource=e.target.value;renderVideoLibraryRows();}});
 document.addEventListener("change",e=>{if(e.target.matches("[data-library-source-check]")){const id=e.target.dataset.librarySourceCheck;if(e.target.checked)librarySourceSelected.add(id);else librarySourceSelected.delete(id);const count=document.getElementById("library-source-selection-count");if(count)count.textContent=librarySourceSelected.size+" 件を選択中";const button=document.querySelector("[data-library-source-import]");if(button){button.disabled=librarySourceSelected.size===0;button.textContent="選択した "+librarySourceSelected.size+" 件を取り込む";}}});
 document.addEventListener("change",e=>{if(e.target.matches('[data-toggle="quote-auto-next"]')){if(state.playback.playStyle===0&&e.target.checked){e.target.checked=false;state.playback.quoteAutoNext=false;save();toast("手動モードでは自動次動画を使えません。自動順次または自動ランダムに変更してください。");return;}state.playback.quoteAutoNext=e.target.checked;save();if(e.target.checked&&quotePlayback.active){const active=currentQueueItem();const started=Number(state.player.quoteStartedAt);if(started>0)scheduleQuoteAutoNext(active||{videoId:quotePlayback.videoId,lengthMs:state.player.quoteDurationMs},started);else{quoteAutoMessage="引用再生の開始時刻が不明です。次の動画から自動予約します。";updateQuoteScheduleUi();}}else clearQuoteAutoTimer("引用再生の自動次動画はOFFです。");toast(e.target.checked?"引用再生の自動次動画をONにしました。":"引用再生の自動次動画をOFFにしました。");}if(e.target.id==="comments-filter")renderComments();if(e.target.id==="player-auto-next"){state.player.autoNext=e.target.checked;save();toast(e.target.checked?"自動で次の動画へ切り替えます。":"自動次動画切替をOFFにしました。");}if(e.target.id==="request-from-comments"){state.requestSettings.acceptComments=e.target.checked;save();toast(e.target.checked?"コメントからのリクエスト受付をONにしました。":"コメントからのリクエスト受付をOFFにしました。");}if(e.target.id==="request-max-per-user"){state.requestSettings.maxPerUser=Math.min(50,Math.max(1,Number(e.target.value)||5));save();toast("ユーザー別リクエスト上限を保存しました。");}if(e.target.id==="request-reply-enabled"){state.requestSettings.replyEnabled=e.target.checked;save();toast(e.target.checked?"受付結果の自動返信をONにしました。":"受付結果の自動返信をOFFにしました。");}if(e.target.id==="request-reply-accepted"){state.requestSettings.replyAccepted=Array.from(String(e.target.value||"")).slice(0,80).join("");save();}if(e.target.id==="request-reply-rejected"){state.requestSettings.replyRejected=Array.from(String(e.target.value||"")).slice(0,80).join("");save();}});
