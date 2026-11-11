@@ -1113,6 +1113,7 @@ async function fetchNiconicoLibraryVideos(input = {}) {
       Referer:type==="watch-later"?"https://www.nicovideo.jp/my/watch-later":type==="mylist"?"https://www.nicovideo.jp/mylist/"+firstRequest.listId:"https://www.nicovideo.jp/series/"+firstRequest.listId
     };
     const entries = [];
+    let sourceTitle = "";
     const maxPages = type==="watch-later"?10:1;
 
     for (let page=1; page<=maxPages; page+=1) {
@@ -1144,6 +1145,7 @@ async function fetchNiconicoLibraryVideos(input = {}) {
       if (responseText.length>8*1024*1024) return {ok:false,code:"LIST_RESPONSE_TOO_LARGE",message:"一覧データが大きすぎるため取り込みを中止しました。"};
       const parsed = parseNiconicoLibraryResponse(responseText,type);
       if (!parsed.ok) return parsed;
+      if (!sourceTitle && parsed.listTitle) sourceTitle = parsed.listTitle;
       entries.push(...parsed.entries);
       if (type!=="watch-later" || !parsed.hasMore || entries.length>=1000) break;
     }
@@ -1153,7 +1155,7 @@ async function fetchNiconicoLibraryVideos(input = {}) {
       if (!unique.has(item.videoId)) unique.set(item.videoId,item);
       if (unique.size>=1000) break;
     }
-    return {ok:true,entries:[...unique.values()],sourceTitle:firstRequest.listTitle||"",sourceType:type};
+    return {ok:true,entries:[...unique.values()],sourceTitle,sourceType:type,limited:type==="watch-later"?unique.size>=1000:unique.size>=500};
   } catch (error) {
     const timeout = error && (error.name==="TimeoutError"||error.name==="AbortError");
     return {ok:false,code:timeout?"LIST_IMPORT_TIMEOUT":"LIST_IMPORT_NETWORK_ERROR",message:timeout?"一覧の取り込みがタイムアウトしました。":"ニコニコの一覧を取得できませんでした。ログイン状態と通信を確認してください。"};
@@ -1298,6 +1300,38 @@ function registerIpcHandlers() {
       return {ok:false,code:"INVALID_INPUT",message:"動画の編集内容を確認してください。"};
     }
     return updateVideoLibrary(library=>updateVideoEntry(library,input.videoId,input));
+  });
+  ipcMain.handle("app:video-library-list",async(event,input)=>{
+    if(!isVideoLibrarySender(event)) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    if(!input||typeof input!=="object"||!["watch-later","mylist","series"].includes(input.type)||
+      (input.type!=="watch-later"&&(typeof input.listId!=="string"||input.listId.length>2048))) {
+      return {ok:false,code:"INVALID_LIST_ID",message:"取り込み元の種類と一覧URL・IDを確認してください。"};
+    }
+    const result=await fetchNiconicoLibraryVideos(input);
+    if(!result.ok) return result;
+    return {
+      ok:true,sourceType:result.sourceType,sourceTitle:result.sourceTitle||"",
+      entries:result.entries, count:result.entries.length, limited:result.limited===true,
+      message:result.entries.length+" 件の動画一覧を取得しました。"
+    };
+  });
+  ipcMain.handle("app:video-library-import-selected",async(event,input)=>{
+    if(!isVideoLibrarySender(event)) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    if(!input||typeof input!=="object"||!["watch-later","mylist","series"].includes(input.sourceType)||
+      !Array.isArray(input.entries)||input.entries.length===0||input.entries.length>1000||
+      JSON.stringify(input).length>4*1024*1024) {
+      return {ok:false,code:"INVALID_SELECTION",message:"選択した動画一覧を確認してください（最大1,000件）。"};
+    }
+    const entries=[];
+    let skipped=0;
+    for(const raw of input.entries) {
+      const entry=normalizeVideoEntry({...raw,source:input.sourceType});
+      if(entry) entries.push(entry); else skipped+=1;
+    }
+    if(!entries.length) return {ok:false,code:"NO_VALID_VIDEOS",message:"選択した動画に有効なIDがありません。"};
+    const saved=await updateVideoLibrary(library=>mergeVideoEntries(library,entries));
+    if(!saved.ok) return saved;
+    return {...saved,imported:entries.length,skipped:skipped+saved.skipped,sourceType:input.sourceType};
   });
   ipcMain.handle("app:video-library-import",async(event,input)=>{
     if(!isVideoLibrarySender(event)||!input||typeof input!=="object") return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
