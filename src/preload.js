@@ -4,9 +4,9 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
-  version:"0.1.0-beta.9",
+  version:"0.1.0-beta.10",
   platform:process.platform,
-  stage:"windows-installer-and-portable-build",
+  stage:"extension-availability-and-windows-package",
   niconico:Object.freeze({
     openLogin:()=>ipcRenderer.invoke("niconico:open-login"),
     validateVideo:input=>ipcRenderer.invoke("niconico:validate-video",input),
