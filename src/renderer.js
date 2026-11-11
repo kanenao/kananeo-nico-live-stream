@@ -680,7 +680,7 @@ if(Date.now()-lastRequestReplyErrorToastAt>30000){
 lastRequestReplyErrorToastAt=Date.now();
 toast(result?.message||"運営コメントを送信できませんでした。");
 }
-if(["AUTH_REQUIRED","BROADCASTER_PERMISSION_REQUIRED","PROGRAM_NOT_ON_AIR"].includes(result?.code))requestReplyQueue.length=0;
+if(["AUTH_REQUIRED","BROADCASTER_PERMISSION_REQUIRED","PROGRAM_NOT_ON_AIR","BROADCASTER_RATE_LIMITED"].includes(result?.code)){if(result?.code==="BROADCASTER_RATE_LIMITED")lastRequestReplySentAt=Date.now()+Math.max(25000,Number(result?.retryAfterMs)||0);requestReplyQueue.length=0;}
 }
 }
 }finally{
