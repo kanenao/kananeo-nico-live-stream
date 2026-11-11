@@ -8,6 +8,7 @@ let playerState={state:"closed",currentTime:0,duration:0,message:"プレイヤ�
 const MAX_DISPLAY_COMMENTS=1000;
 const MAX_QUEUE_ITEMS=1000;
 let nicoStatus={authenticated:false,label:"状態を確認中"};
+let dashboardStats={loading:false,watchCount:null,commentCount:null,updatedAt:"",error:""};
 let pollRuntime={active:false,status:"idle",message:"アンケートは停止中です。",result:[]};
 let pollRunToken=0;
 let pollCurrentProgramId="";
@@ -29,6 +30,10 @@ return loaded;
 }catch{return structuredClone(initial)}
 }
 function save(){localStorage.setItem(key,JSON.stringify(state))}
+function programStatusLabel(status){return ({onAir:"放送中",ON_AIR:"放送中",test:"テスト放送",reserved:"予約",ended:"終了",ENDED:"終了"}[status]||"状態未確認")}
+function formatRemainingTime(){const end=Number(state.lastProgramEndAt);if(!Number.isFinite(end)||end<=0)return "—";const left=Math.ceil(end-Date.now()/1000);if(left<=0)return "終了予定を超過";const h=Math.floor(left/3600),m=Math.floor((left%3600)/60),sec=left%60;return h?String(h)+"時間"+String(m)+"分":m?String(m)+"分"+String(sec)+"秒":String(sec)+"秒"}
+function updateDashboardStatsUi(){const viewers=document.getElementById("dashboard-viewers"),comments=document.getElementById("dashboard-comments"),requests=document.getElementById("dashboard-requests"),remaining=document.getElementById("dashboard-remaining"),updated=document.getElementById("dashboard-updated"),error=document.getElementById("dashboard-stats-error"),program=document.getElementById("dashboard-program-label"),refresh=document.querySelector("[data-dashboard-refresh]");if(viewers)viewers.textContent=dashboardStats.loading&&dashboardStats.watchCount==null?"取得中…":dashboardStats.watchCount==null?"—":Number(dashboardStats.watchCount).toLocaleString("ja-JP");if(comments)comments.textContent=dashboardStats.loading&&dashboardStats.commentCount==null?"取得中…":dashboardStats.commentCount==null?"—":Number(dashboardStats.commentCount).toLocaleString("ja-JP");if(requests)requests.textContent=String(state.requests.filter(x=>!["completed","skipped"].includes(x.status)).length);if(remaining)remaining.textContent=formatRemainingTime();if(updated)updated.textContent=dashboardStats.updatedAt?"更新："+new Date(dashboardStats.updatedAt).toLocaleTimeString("ja-JP"):dashboardStats.loading?"取得中…":"統計未取得";if(error)error.textContent=dashboardStats.error||"";if(program)program.textContent=state.lastProgramId?(state.lastProgramTitle||state.lastProgramId)+" / "+programStatusLabel(state.lastProgramStatus):"放送ID未設定";if(refresh)refresh.disabled=dashboardStats.loading}
+async function refreshDashboardStatistics(silent=false){const programId=state.lastProgramId||commentConnection.programId;if(!programId){dashboardStats.error="放送IDを確認すると来場者数・コメント数を表示できます。";updateDashboardStatsUi();if(!silent)toast(dashboardStats.error);return;}if(dashboardStats.loading)return;dashboardStats.loading=true;dashboardStats.error="";updateDashboardStatsUi();try{const result=await window.kananeoApp.niconico.getProgramStatistics({programId});if(!result?.ok)throw new Error(result?.message||"番組統計を取得できませんでした。");dashboardStats={loading:false,watchCount:result.watchCount,commentCount:result.commentCount,updatedAt:result.updatedAt||new Date().toISOString(),error:""};}catch(error){dashboardStats.loading=false;dashboardStats.error=error?.message||"番組統計を取得できませんでした。";}updateDashboardStatsUi()}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function toast(s){const t=document.getElementById("toast");t.textContent=s;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200)}
 function hero(k,t,d,b=""){return `<div class="hero"><div><div class="eyebrow">${k}</div><h1>${t}</h1><p class="desc">${d}</p></div>${b}</div>`}
@@ -42,11 +47,12 @@ let html="";
 if(page==="dashboard"){
 html=hero("STREAM CONTROL CENTER","配信コントロールセンター","配信に必要な操作を、ひとつの画面からまとめて管理します。",'<button class="btn primary" data-go="broadcast">放送管理を開く</button>')+
 '<div class="banner"><i class="led"></i><div><b>ニコニコ生放送に接続していません</b><small>公式ログインとNDGRコメント受信に対応しました。コメント送信・番組作成・延長操作は未実装です。</small></div><button data-go="broadcast">接続設定 →</button></div>'+
-'<div class="section"><div><h2>現在の配信状況</h2><p>放送接続後にリアルタイム情報を表示</p></div></div>'+
-`<div class="stats">${[["視聴者数","—"],["コメント数","—"],["リクエスト待ち",state.requests.filter(x=>!["completed","skipped"].includes(x.status)).length],["放送残り時間","—"]].map(x=>`<div class="card"><label>${x[0]}</label><strong>${x[1]}</strong><small>接続待ち</small></div>`).join("")}</div>`+
+'<div class="section"><div><h2>現在の配信状況</h2><p id="dashboard-program-label">'+(state.lastProgramId?(state.lastProgramTitle||state.lastProgramId)+" / "+programStatusLabel(state.lastProgramStatus):"放送ID未設定")+'</p></div><button class="btn" data-dashboard-refresh '+(dashboardStats.loading?"disabled":"")+'>統計を更新</button></div>'+
+'<div class="stats"><div class="card"><label>来場者数</label><strong id="dashboard-viewers">'+(dashboardStats.watchCount==null?"—":Number(dashboardStats.watchCount).toLocaleString("ja-JP"))+'</strong><small>累計来場者数</small></div><div class="card"><label>コメント数</label><strong id="dashboard-comments">'+(dashboardStats.commentCount==null?"—":Number(dashboardStats.commentCount).toLocaleString("ja-JP"))+'</strong><small>累計コメント数</small></div><div class="card"><label>リクエスト待ち</label><strong id="dashboard-requests">'+state.requests.filter(x=>!["completed","skipped"].includes(x.status)).length+'</strong><small>未再生キュー</small></div><div class="card"><label>放送残り時間</label><strong id="dashboard-remaining">'+formatRemainingTime()+'</strong><small id="dashboard-updated">'+(dashboardStats.updatedAt?"更新："+new Date(dashboardStats.updatedAt).toLocaleTimeString("ja-JP"):"統計未取得")+'</small></div></div>'+
+'<div class="muted" id="dashboard-stats-error">'+esc(dashboardStats.error||"")+'</div>'+
 '<div class="columns">'+panel("クイック操作","よく使う機能",'<div class="quick">'+[["♫","動画リクエスト","requests"],["◈","自動アンケート","poll"],["⟳","次枠・自動延長","automation"],["▣","OBS・外部ツール","external"]].map(x=>`<button data-go="${x[2]}"><span>${x[0]}</span><b>${x[1]}</b><small>機能を開く</small></button>`).join("")+'</div>')+
 panel("システムログ","ローカルに記録した直近の操作",state.logs.slice(0,5).map(x=>`<div class="row"><i></i><div><b>${esc(x)}</b><small>ローカル記録</small></div></div>`).join(""))+'</div>'+
-'<footer>kananeo nico live stream <span>0.1.0-beta.7 · Beta preview</span></footer>';
+'<footer>kananeo nico live stream <span>0.1.0-beta.8 · Beta preview</span></footer>';
 }else if(page==="requests"){
 const waiting=state.requests.filter(x=>!["completed","skipped"].includes(x.status)).length;
 html=hero("REQUEST QUEUE","動画リクエスト","ニコニコ動画のURL・動画IDを登録し、重複を防いで再生順を管理します。")+
@@ -437,11 +443,11 @@ const input=document.getElementById("live-id")?.value||"";
 const node=document.getElementById("program-result");if(!node)return;
 node.textContent="番組ページを確認しています…";
 const button=document.querySelector("[data-nico-check]");if(button)button.disabled=true;
-try{const r=await window.kananeoApp.niconico.checkProgram(input);node.replaceChildren();const title=document.createElement("b");title.textContent=r.ok?(r.title||r.programId):"確認できませんでした";const detail=document.createElement("div");detail.textContent=r.message||"";node.append(title,detail);if(r.ok){state.lastProgramId=r.programId;save();state.logs.unshift("番組ページを確認："+r.programId);save();}}
+try{const r=await window.kananeoApp.niconico.checkProgram(input);node.replaceChildren();const title=document.createElement("b");title.textContent=r.ok?(r.title||r.programId):"確認できませんでした";const detail=document.createElement("div");detail.textContent=r.message||"";node.append(title,detail);if(r.ok){state.lastProgramId=r.programId;state.lastProgramTitle=r.title||r.programId;state.lastProgramStatus=r.programStatus||"";state.lastProgramEndAt=Number(r.endTime)||0;save();state.logs.unshift("番組ページを確認："+r.programId);save();void refreshDashboardStatistics(true);}}
 catch{node.textContent="確認中にエラーが発生しました。";}
 finally{if(button)button.disabled=false;}
 }
-function go(p){page=p;render()}
+function go(p){page=p;render();if(p==="dashboard")void refreshDashboardStatistics(true)}
 document.getElementById("nav").addEventListener("click",e=>{const b=e.target.closest("[data-page]");if(b)go(b.dataset.page)});
 document.addEventListener("click",e=>{
 const goBtn=e.target.closest("[data-go]");if(goBtn){go(goBtn.dataset.go);return}
@@ -450,6 +456,7 @@ if(b.hasAttribute("data-nico-login")){window.kananeoApp.niconico.openLogin().the
 if(b.hasAttribute("data-nico-refresh")){window.kananeoApp.niconico.getSessionStatus().then(applyNicoStatus);return;}
 if(b.hasAttribute("data-nico-logout")){if(confirm("このアプリ専用のニコニコセッションを削除しますか？"))window.kananeoApp.niconico.logout().then(r=>{toast(r.message);return window.kananeoApp.niconico.getSessionStatus()}).then(applyNicoStatus);return;}
 if(b.hasAttribute("data-nico-check")){void checkProgram();return;}
+if(b.hasAttribute("data-dashboard-refresh")){void refreshDashboardStatistics(false);return;}
 if(b.hasAttribute("data-play")){const item=state.requests.find(x=>x.id===b.dataset.play);if(item)void playQueueItem(item);return;}
 if(b.hasAttribute("data-player-next")){void playNextQueueItem(true);return;}
 if(b.hasAttribute("data-player-focus")){window.kananeoApp.niconico.focusVideo().then(r=>toast(r?.message||"プレイヤーを開けませんでした。"));return;}
@@ -504,4 +511,6 @@ if(window.kananeoApp?.niconico){window.kananeoApp.niconico.getSessionStatus().th
     window.kananeoApp.niconico.onComment(receiveComment);
     window.kananeoApp.niconico.onCommentState(updateCommentConnection);window.kananeoApp.niconico.onVideoState(updateVideoPlayerState);}
 render();
+if(state.lastProgramId)void refreshDashboardStatistics(true);
+setInterval(()=>{if(page==="dashboard"){updateDashboardStatsUi();if(!dashboardStats.loading&&state.lastProgramId&&Date.now()-(Date.parse(dashboardStats.updatedAt)||0)>30000)void refreshDashboardStatistics(true);}},1000);
 })();
