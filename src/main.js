@@ -2,6 +2,14 @@
 
 const { app, BrowserWindow, shell, session, ipcMain, clipboard } = require("electron");
 const path = require("node:path");
+const fs = require("node:fs/promises");
+const {
+  createEmptyVideoLibrary, normalizeVideoLibrary, normalizeVideoEntry,
+  mergeVideoEntries, addPlaybackHistory, removeVideoEntry, clearVideoHistory,
+  parseVideoImportText
+} = require("./video-library");
+const { buildNiconicoLibraryRequest, parseNiconicoLibraryResponse } = require("./niconico-library-api");
+
 const {
   normalizeProgramId, inspectWatchPage, extractEmbeddedData, extractBroadcasterCommentToken, NiconicoPageError, isTrustedWebSocketEndpoint
 } = require("./niconico-program");
@@ -1017,6 +1025,141 @@ async function callEnqueteApi(action, input = {}) {
   };
 }
 
+
+const VIDEO_LIBRARY_FILE_NAME = "video-library.json";
+const VIDEO_LIBRARY_IMPORT_TIMEOUT_MS = 20000;
+let videoLibraryCache = null;
+let videoLibraryQueue = Promise.resolve();
+
+function getVideoLibraryFilePath() {
+  return path.join(app.getPath("userData"), VIDEO_LIBRARY_FILE_NAME);
+}
+
+async function readVideoLibraryUnlocked() {
+  if (videoLibraryCache) return {ok:true,library:videoLibraryCache};
+  const filePath = getVideoLibraryFilePath();
+  try {
+    const content = await fs.readFile(filePath, "utf8");
+    const parsed = JSON.parse(content);
+    videoLibraryCache = normalizeVideoLibrary(parsed);
+    return {ok:true,library:videoLibraryCache};
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      videoLibraryCache = createEmptyVideoLibrary();
+      return {ok:true,library:videoLibraryCache};
+    }
+    return {ok:false,code:"VIDEO_LIBRARY_READ_ERROR",message:"動画ライブラリの保存データを読み取れませんでした。元データを保護するため上書きしていません。"};
+  }
+}
+
+async function persistVideoLibraryUnlocked(libraryInput) {
+  const library = normalizeVideoLibrary(libraryInput);
+  const filePath = getVideoLibraryFilePath();
+  const directory = path.dirname(filePath);
+  const tempPath = filePath + ".tmp";
+  await fs.mkdir(directory,{recursive:true,mode:0o700});
+  try {
+    await fs.writeFile(tempPath,JSON.stringify(library,null,2),{encoding:"utf8",mode:0o600});
+    await fs.rename(tempPath,filePath);
+    videoLibraryCache = library;
+    return {ok:true,library};
+  } catch (error) {
+    try { await fs.rm(tempPath,{force:true}); } catch {}
+    return {ok:false,code:"VIDEO_LIBRARY_WRITE_ERROR",message:"動画ライブラリを保存できませんでした。ディスク容量とアクセス権を確認してください。"};
+  }
+}
+
+function withVideoLibraryLock(work) {
+  const task = videoLibraryQueue.then(work,work);
+  videoLibraryQueue = task.then(()=>undefined,()=>undefined);
+  return task;
+}
+
+async function updateVideoLibrary(work) {
+  return withVideoLibraryLock(async()=>{
+    const current = await readVideoLibraryUnlocked();
+    if (!current.ok) return current;
+    const result = work(current.library);
+    if (!result || result.ok === false) return result || {ok:false,code:"VIDEO_LIBRARY_UPDATE_FAILED",message:"動画ライブラリを更新できませんでした。"};
+    const saved = await persistVideoLibraryUnlocked(result.library || result);
+    if (!saved.ok) return saved;
+    const {library: _ignored, ...summary} = result;
+    return {...summary,ok:true,library:saved.library};
+  });
+}
+
+function isVideoLibrarySender(event) {
+  return event.sender === mainWindow?.webContents;
+}
+
+async function fetchNiconicoLibraryVideos(input = {}) {
+  const type = input.type;
+  const firstRequest = buildNiconicoLibraryRequest(type,{listId:input.listId,url:input.url,page:1});
+  if (!firstRequest.ok) return firstRequest;
+  if (!niconicoSession) return {ok:false,code:"AUTH_REQUIRED",message:"先にニコニコ公式ログインを行ってください。"};
+
+  try {
+    const cookies = await niconicoSession.cookies.get({url:"https://www.nicovideo.jp/"});
+    const sessionCookie = cookies.some(cookie=>cookie.name==="user_session"&&(!cookie.expirationDate||cookie.expirationDate>Date.now()/1000));
+    if (!sessionCookie) return {ok:false,code:"AUTH_REQUIRED",message:"先にニコニコ公式ログインを行ってください。"};
+
+    const headers = {
+      Accept:"application/json",
+      "X-Frontend-Id":"6",
+      "X-Frontend-Version":"0",
+      "X-Niconico-Language":"ja-jp",
+      "X-Request-With":"https://www.nicovideo.jp",
+      Origin:"https://www.nicovideo.jp",
+      Referer:type==="watch-later"?"https://www.nicovideo.jp/my/watch-later":type==="mylist"?"https://www.nicovideo.jp/mylist/"+firstRequest.listId:"https://www.nicovideo.jp/series/"+firstRequest.listId
+    };
+    const entries = [];
+    const maxPages = type==="watch-later"?10:1;
+
+    for (let page=1; page<=maxPages; page+=1) {
+      const request = buildNiconicoLibraryRequest(type,{listId:input.listId,url:input.url,page});
+      let response = await niconicoSession.fetch(request.url,{
+        method:"GET",credentials:"include",redirect:"error",headers,
+        signal:AbortSignal.timeout(VIDEO_LIBRARY_IMPORT_TIMEOUT_MS)
+      });
+
+      if (type==="mylist" && response.status===404 && request.fallbackUrl) {
+        response = await niconicoSession.fetch(request.fallbackUrl,{
+          method:"GET",credentials:"include",redirect:"error",headers,
+          signal:AbortSignal.timeout(VIDEO_LIBRARY_IMPORT_TIMEOUT_MS)
+        });
+      }
+      if (response.url && new URL(response.url).origin!=="https://nvapi.nicovideo.jp") {
+        return {ok:false,code:"UNTRUSTED_API_REDIRECT",message:"安全確認できないAPI転送先のため取り込みを中止しました。"};
+      }
+      if (response.status===401 || response.status===403) {
+        return {ok:false,code:"AUTH_REQUIRED",message:"一覧を取得できません。ログイン状態またはマイリストの閲覧権限を確認してください。"};
+      }
+      if (response.status===404) {
+        return {ok:false,code:"LIST_NOT_FOUND",message:"指定したマイリストまたはシリーズが見つかりませんでした。"};
+      }
+      if (!response.ok) {
+        return {ok:false,code:"LIST_API_ERROR",message:"ニコニコの一覧APIがエラーを返しました（HTTP "+response.status+"）。"};
+      }
+      const responseText = await response.text();
+      if (responseText.length>8*1024*1024) return {ok:false,code:"LIST_RESPONSE_TOO_LARGE",message:"一覧データが大きすぎるため取り込みを中止しました。"};
+      const parsed = parseNiconicoLibraryResponse(responseText,type);
+      if (!parsed.ok) return parsed;
+      entries.push(...parsed.entries);
+      if (type!=="watch-later" || !parsed.hasMore || entries.length>=1000) break;
+    }
+
+    const unique = new Map();
+    for (const item of entries) {
+      if (!unique.has(item.videoId)) unique.set(item.videoId,item);
+      if (unique.size>=1000) break;
+    }
+    return {ok:true,entries:[...unique.values()],sourceTitle:firstRequest.listTitle||"",sourceType:type};
+  } catch (error) {
+    const timeout = error && (error.name==="TimeoutError"||error.name==="AbortError");
+    return {ok:false,code:timeout?"LIST_IMPORT_TIMEOUT":"LIST_IMPORT_NETWORK_ERROR",message:timeout?"一覧の取り込みがタイムアウトしました。":"ニコニコの一覧を取得できませんでした。ログイン状態と通信を確認してください。"};
+  }
+}
+
 function registerIpcHandlers() {
   ipcMain.handle("niconico:open-login",()=>openNiconicoLoginWindow());
   ipcMain.handle("niconico:get-extension-options",(event,input)=>{
@@ -1132,6 +1275,54 @@ function registerIpcHandlers() {
     } catch {
       return {ok:false,message:"保存先フォルダを開けませんでした。"};
     }
+  });
+
+  ipcMain.handle("app:video-library-get",async event=>{
+    if(!isVideoLibrarySender(event)) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    return withVideoLibraryLock(()=>readVideoLibraryUnlocked());
+  });
+  ipcMain.handle("app:video-library-add",async(event,input)=>{
+    if(!isVideoLibrarySender(event)||!input||typeof input!=="object") return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    const entry=normalizeVideoEntry({...input,source:"manual"});
+    if(!entry) return {ok:false,code:"INVALID_VIDEO",message:"ニコニコ動画のIDまたはURLを確認してください。"};
+    return updateVideoLibrary(library=>mergeVideoEntries(library,[entry]));
+  });
+  ipcMain.handle("app:video-library-remove",async(event,input)=>{
+    if(!isVideoLibrarySender(event)||typeof input?.videoId!=="string"||input.videoId.length>64) return {ok:false,code:"INVALID_INPUT",message:"動画IDを確認してください。"};
+    return updateVideoLibrary(library=>removeVideoEntry(library,input.videoId));
+  });
+  ipcMain.handle("app:video-library-import",async(event,input)=>{
+    if(!isVideoLibrarySender(event)||!input||typeof input!=="object") return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    let entries=[];
+    let sourceType=typeof input.type==="string"?input.type:"text";
+    let skipped=0;
+    if(sourceType==="text"||sourceType==="json"){
+      if(typeof input.text!=="string"||input.text.length>2*1024*1024) return {ok:false,code:"INVALID_IMPORT_TEXT",message:"取り込みテキストは2MB以内にしてください。"};
+      const parsed=parseVideoImportText(input.text,{source:sourceType==="json"?"json-import":"text-import"});
+      if(!parsed.ok) return parsed;
+      entries=parsed.entries;
+      skipped=parsed.skipped;
+    }else{
+      if(typeof input.listId!=="string"&&typeof input.url!=="string") return {ok:false,code:"INVALID_LIST_ID",message:"マイリストまたはシリーズのURL・IDを入力してください。"};
+      const imported=await fetchNiconicoLibraryVideos(input);
+      if(!imported.ok) return imported;
+      entries=imported.entries;
+      sourceType=imported.sourceType;
+      skipped=imported.skippedCount||0;
+    }
+    if(!entries.length) return {ok:false,code:"NO_VALID_VIDEOS",message:"取り込める動画がありませんでした。"};
+    const tagged=entries.map(entry=>({...entry,source:sourceType}));
+    const saved=await updateVideoLibrary(library=>mergeVideoEntries(library,tagged));
+    if(!saved.ok) return saved;
+    return {...saved,imported:entries.length,skipped:skipped+saved.skipped,sourceType};
+  });
+  ipcMain.handle("app:video-library-record-playback",async(event,input)=>{
+    if(!isVideoLibrarySender(event)||!input||typeof input!=="object") return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    return updateVideoLibrary(library=>addPlaybackHistory(library,input));
+  });
+  ipcMain.handle("app:video-library-clear-history",async event=>{
+    if(!isVideoLibrarySender(event)) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    return updateVideoLibrary(library=>({ok:true,library:clearVideoHistory(library)}));
   });
   ipcMain.handle("app:copy-text",(event,value)=>{
     if(event.sender!==mainWindow?.webContents||typeof value!=="string"||value.length>500000) return {ok:false};
