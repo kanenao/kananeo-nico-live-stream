@@ -164,7 +164,13 @@ const programId=state.lastProgramId;
 if(!programId){toast("先に「放送・枠管理」で番組IDを確認してください。");return;}
 const result=await window.kananeoApp.niconico.getCurrentQuotation({programId});
 if(!result?.ok){quotePlayback={...quotePlayback,message:result?.message||"引用再生状態を取得できませんでした。"};toast(quotePlayback.message);if(page==="player")render();return;}
-quotePlayback={active:!!result.exists,verified:true,programId,videoId:result.currentVideoId||"",queueType:quotePlayback.queueType,itemId:quotePlayback.itemId,message:result.exists?"ニコ生の引用再生状態を確認しました。":"現在、引用再生は行われていません。"};
+const matched=[...state.requests,...state.stocks].find(item=>item.videoId===result.currentVideoId);
+if(matched){
+for(const list of [state.requests,state.stocks])list.forEach(item=>{if(item.status==="playing"&&item.id!==matched.id)item.status="queued";});
+matched.status="playing";
+}
+quotePlayback={active:!!result.exists,verified:true,programId,videoId:result.currentVideoId||"",queueType:matched?(state.stocks.includes(matched)?"stock":"request"):"",itemId:matched?.id||"",message:result.exists?"ニコ生の引用再生状態を確認しました。":"現在、引用再生は行われていません。"};
+if(matched){state.player.currentId=matched.id;state.player.currentQueueType=quotePlayback.queueType;save();}
 if(page==="player")render();
 }
 async function playQuotedQueueItem(item,queueType="request"){
@@ -206,14 +212,14 @@ if(!current.exists){
 const stoppedItemId=quotePlayback.itemId;
 quotePlayback={active:false,verified:true,programId,videoId:"",queueType:"",itemId:"",message:"ニコ生側では引用再生が既に停止しています。"};
 for(const list of [state.requests,state.stocks])list.forEach(x=>{if(x.id===stoppedItemId&&x.status==="playing")x.status="queued";});
-state.player.currentId="";save();if(page==="player")render();toast(quotePlayback.message);return;
+if(state.player.currentId===stoppedItemId){state.player.currentId="";}save();if(page==="player")render();toast(quotePlayback.message);return;
 }
 const result=await window.kananeoApp.niconico.stopQuotedVideo({programId,confirmed:true});
 if(!result?.ok){toast(result?.message||"引用再生を停止できませんでした。");return;}
 const stoppedItemId=quotePlayback.itemId;
 quotePlayback={active:false,verified:true,programId,videoId:"",queueType:"",itemId:"",message:result.message};
 for(const list of [state.requests,state.stocks])list.forEach(x=>{if(x.id===stoppedItemId&&x.status==="playing")x.status="queued";});
-state.player.currentId="";save();if(page==="player"||page==="requests"||page==="stocks")render();toast(result.message);
+if(state.player.currentId===stoppedItemId){state.player.currentId="";}save();if(page==="player"||page==="requests"||page==="stocks")render();toast(result.message);
 }
 async function playNextQuoteItem(){
 const endAt=Number(state.lastProgramEndAt);
