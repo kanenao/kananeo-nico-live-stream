@@ -74,13 +74,15 @@ test("removes library items without deleting playback history",()=>{
 });
 
 test("updates a saved video's title, tags, memo, and timestamp",()=>{
-  const library={...createEmptyVideoLibrary(),items:[normalizeVideoEntry({videoId:"sm88",title:"Before",tags:["old"],memo:"old memo",createdAt:"2026-01-01T00:00:00.000Z"})]};
+  const library={...createEmptyVideoLibrary(),items:[normalizeVideoEntry({videoId:"sm88",title:"Before",tags:["old"],memo:"old memo",source:"watch-later",playCount:8,createdAt:"2026-01-01T00:00:00.000Z"})]};
   const result=updateVideoEntry(library,"sm88",{title:"After",tags:"music, live, music",memo:"updated note"},{now:"2026-11-12T00:00:00.000Z"});
   assert.equal(result.ok,true);
   assert.equal(result.item.title,"After");
   assert.deepEqual(result.item.tags,["music","live"]);
   assert.equal(result.item.memo,"updated note");
   assert.equal(result.item.createdAt,"2026-01-01T00:00:00.000Z");
+  assert.equal(result.item.source,"watch-later");
+  assert.equal(result.item.playCount,8);
   assert.equal(result.item.updatedAt,"2026-11-12T00:00:00.000Z");
 });
 
