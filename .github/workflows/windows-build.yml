@@ -8,6 +8,7 @@ on:
     paths:
       - "package.json"
       - "src/**"
+      - "test/**"
       - ".github/workflows/windows-build.yml"
 
 permissions:
