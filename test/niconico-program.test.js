@@ -20,11 +20,11 @@ test("rejects lookalike domains and unrelated paths", () => {
 });
 
 test("parses escaped embedded data", () => {
-  const payload = { program: { title: "テスト配信" }, site: { relive: { webSocketUrl: "wss://a.live.nicovideo.jp/wsapi/v2/watch/lv123" } } };
+  const payload = { program: { title: "テスト配信", status:"ON_AIR", endTime:1794326400 }, site: { relive: { webSocketUrl: "wss://a.live.nicovideo.jp/wsapi/v2/watch/lv123" } } };
   const html = '<script id="embedded-data" data-props="' + JSON.stringify(payload).replace(/"/g, "&quot;") + '"></script>';
   assert.deepEqual(extractEmbeddedData(html), payload);
   assert.deepEqual(inspectWatchPage(html, "lv123"), {
-    programId: "lv123", title: "テスト配信", watchingApiAvailable: true, pageDataFound: true
+    programId: "lv123", title: "テスト配信", programStatus:"ON_AIR", endTime:1794326400, watchingApiAvailable: true, pageDataFound: true
   });
 });
 
