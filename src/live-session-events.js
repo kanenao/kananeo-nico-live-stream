@@ -28,8 +28,13 @@ function parseWatchControlMessage(input) {
     case "messageServer":
       return {type};
     case "statistics": {
-      const viewers=boundedInteger(data.viewers,0,1000000000);
-      const comments=boundedInteger(data.comments ?? data.commentCount,0,1000000000);
+      const count=value=>{
+        const number=Number(value);
+        if (!Number.isFinite(number) || number<0) return null;
+        return boundedInteger(number,0,1000000000);
+      };
+      const viewers=count(data.viewers);
+      const comments=count(data.comments ?? data.commentCount);
       if (viewers===null && comments===null) return null;
       return {type,viewers,comments};
     }
