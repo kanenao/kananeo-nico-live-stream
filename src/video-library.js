@@ -160,6 +160,27 @@ function addPlaybackHistory(libraryInput, playbackInput, options = {}) {
   };
 }
 
+function mergeVideoHistory(libraryInput, historyInput, options = {}) {
+  const library = normalizeVideoLibrary(libraryInput);
+  const incoming = Array.isArray(historyInput) ? historyInput : [];
+  const seen = new Set(library.history.map(item => item.id));
+  const added = [];
+  for (const raw of incoming) {
+    const item = normalizeHistoryEntry(raw, options);
+    if (!item || seen.has(item.id)) continue;
+    seen.add(item.id);
+    added.push(item);
+    if (added.length >= MAX_HISTORY_ENTRIES) break;
+  }
+  const history = [...library.history, ...added]
+    .sort((a,b) => Date.parse(b.playedAt) - Date.parse(a.playedAt))
+    .slice(0,MAX_HISTORY_ENTRIES);
+  return {
+    library:{...library,history,updatedAt:safeDate(options.now || new Date().toISOString())},
+    addedHistory:added.length
+  };
+}
+
 function removeVideoEntry(libraryInput, videoIdInput) {
   const library = normalizeVideoLibrary(libraryInput);
   const validation = normalizeNiconicoVideoUrl(String(videoIdInput || ""));
@@ -211,7 +232,9 @@ function parseVideoImportText(textInput, options = {}) {
         const entry = normalizeVideoEntry(record, options);
         if (entry) entries.push(entry); else skipped += 1;
       }
-      return { ok: true, entries, skipped, message: "JSONから動画を読み取りました。" };
+      const rawHistory = !Array.isArray(parsed) && Array.isArray(parsed.history) ? parsed.history : [];
+      const history = rawHistory.map(item => normalizeHistoryEntry(item, options)).filter(Boolean).slice(0,MAX_HISTORY_ENTRIES);
+      return { ok: true, entries, history, skipped, message: "JSONから動画と再生履歴を読み取りました。" };
     } catch {
       return { ok: false, code: "INVALID_LIBRARY_JSON", entries: [], skipped: 0, message: "JSONを解析できませんでした。" };
     }
@@ -245,6 +268,8 @@ module.exports = {
   normalizeVideoLibrary,
   mergeVideoEntries,
   addPlaybackHistory,
+  mergeVideoHistory,
+  normalizeHistoryEntry,
   removeVideoEntry,
   clearVideoHistory,
   filterVideoEntries,
