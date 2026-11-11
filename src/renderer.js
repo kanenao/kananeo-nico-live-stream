@@ -184,8 +184,10 @@ message=remaining>0?"自動次動画まで残り "+formatVideoTime(Math.ceil(rem
 node.textContent=message;
 }
 function storedQuoteDurationMs(item){
-const value=Number(item?.lengthMs??item?.durationMs??state.player.quoteDurationMs??0);
-return Number.isFinite(value)&&value>0?value:0;
+const itemValue=Number(item?.lengthMs??item?.durationMs??0);
+if(Number.isFinite(itemValue)&&itemValue>0)return itemValue;
+const storedValue=Number(state.player.quoteDurationMs||0);
+return Number.isFinite(storedValue)&&storedValue>0?storedValue:0;
 }
 function scheduleQuoteAutoNext(item,startedAt=Date.now(),options={}){
 if(options.clearExisting!==false)clearQuoteAutoTimer();
