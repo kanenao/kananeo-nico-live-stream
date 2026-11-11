@@ -197,6 +197,7 @@ state.player.quoteStartedAt=start;
 state.player.quoteDurationMs=durationMs;
 state.player.quoteVideoId=String(item?.videoId||item?.video_id||quotePlayback.videoId||"");
 state.player.quoteProgramId=String(quotePlayback.programId||state.lastProgramId||"");
+state.player.quoteExpectedEndAt=0;
 if(!state.playback.quoteAutoNext){
 quoteAutoMessage="引用再生の自動次動画はOFFです。";
 save();updateQuoteScheduleUi();return false;
@@ -219,7 +220,11 @@ updateQuoteScheduleUi();
 return true;
 }
 async function handleQuoteAutoNext(token){
-if(token!==quoteAutoToken||quoteAutoBusy)return;
+if(token!==quoteAutoToken)return;
+if(quoteAutoBusy){
+quoteAutoTimer=setTimeout(()=>{void handleQuoteAutoNext(token);},1000);
+return;
+}
 quoteAutoTimer=null;
 if(!state.playback.quoteAutoNext||!quoteAutoSchedule)return;
 quoteAutoBusy=true;
@@ -230,6 +235,7 @@ const programId=quotePlayback.programId||state.lastProgramId;
 const expectedVideoId=quotePlayback.videoId||state.player.quoteVideoId;
 if(!programId||!expectedVideoId)throw new Error("対象放送または動画IDを確認できません。");
 const current=await window.kananeoApp.niconico.getCurrentQuotation({programId});
+if(token!==quoteAutoToken||!state.playback.quoteAutoNext)return;
 if(!current?.ok)throw new Error(current?.message||"引用再生状態を確認できませんでした。");
 if(!current.exists){
 const finishedId=quotePlayback.itemId||state.player.currentId;
@@ -260,12 +266,15 @@ save();
 quoteAutoSchedule=null;
 quoteAutoMessage="動画時間に到達しました。次の候補を選んでいます。";
 updateQuoteScheduleUi();
+if(token!==quoteAutoToken||!state.playback.quoteAutoNext)return;
 const advanced=await playNextQuoteItem({skipConfirmation:true,triggeredByAuto:true});
+if(token!==quoteAutoToken)return;
 if(!advanced){
 quoteAutoMessage="次に再生できる動画がありません。必要に応じてキューへ追加してください。";
 updateQuoteScheduleUi();
 }
 }catch(error){
+if(token!==quoteAutoToken)return;
 quoteAutoMessage=error?.message||"自動次動画の処理に失敗しました。";
 updateQuoteScheduleUi();
 toast(quoteAutoMessage);
