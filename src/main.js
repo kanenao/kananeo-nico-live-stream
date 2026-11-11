@@ -5,7 +5,7 @@ const path = require("node:path");
 const fs = require("node:fs/promises");
 const {
   createEmptyVideoLibrary, normalizeVideoLibrary, normalizeVideoEntry,
-  mergeVideoEntries, mergeVideoHistory, addPlaybackHistory, removeVideoEntry, clearVideoHistory,
+  mergeVideoEntries, mergeVideoHistory, addPlaybackHistory, removeVideoEntry, updateVideoEntry, clearVideoHistory,
   parseVideoImportText
 } = require("./video-library");
 const { buildNiconicoLibraryRequest, parseNiconicoLibraryResponse } = require("./niconico-library-api");
@@ -1291,6 +1291,14 @@ function registerIpcHandlers() {
     if(!isVideoLibrarySender(event)||typeof input?.videoId!=="string"||input.videoId.length>64) return {ok:false,code:"INVALID_INPUT",message:"動画IDを確認してください。"};
     return updateVideoLibrary(library=>removeVideoEntry(library,input.videoId));
   });
+  ipcMain.handle("app:video-library-update",async(event,input)=>{
+    if(!isVideoLibrarySender(event)||!input||typeof input!=="object"||
+      typeof input.videoId!=="string"||input.videoId.length>64||
+      JSON.stringify(input).length>10000) {
+      return {ok:false,code:"INVALID_INPUT",message:"動画の編集内容を確認してください。"};
+    }
+    return updateVideoLibrary(library=>updateVideoEntry(library,input.videoId,input));
+  });
   ipcMain.handle("app:video-library-import",async(event,input)=>{
     if(!isVideoLibrarySender(event)||!input||typeof input!=="object") return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     let entries=[];
@@ -1298,7 +1306,7 @@ function registerIpcHandlers() {
     let sourceType=typeof input.type==="string"?input.type:"text";
     let skipped=0;
     if(sourceType==="text"||sourceType==="json"){
-      if(typeof input.text!=="string"||input.text.length>16*1024*1024) return {ok:false,code:"INVALID_IMPORT_TEXT",message:"取り込みテキストは2MB以内にしてください。"};
+      if(typeof input.text!=="string"||input.text.length>16*1024*1024) return {ok:false,code:"INVALID_IMPORT_TEXT",message:"取り込みテキストは16MB以内にしてください。"};
       const parsed=parseVideoImportText(input.text,{source:sourceType==="json"?"json-import":"text-import"});
       if(!parsed.ok) return parsed;
       entries=parsed.entries;
