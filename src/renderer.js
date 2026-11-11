@@ -93,7 +93,7 @@ panel("ストックキュー",waiting+" 件が未再生",state.stocks.length?'<t
 }else if(page==="poll"){
 const pollActive=pollRuntime.active;
 const pollResults=(pollRuntime.result||[]).map(item=>esc(item.name)+"："+Number(item.rate).toFixed(1)+"%").join(" / ");
-html=hero("AUTOMATIC POLL","自動アンケート","投票を作成し、設定時間後に結果を取得。継続票が最多なら再投票、次動画票が最多ならキューを進めます。")+
+html=hero("AUTOMATIC POLL","自動アンケート","投票を作成し、設定時間後に結果を取得。継続票が最多なら再投票、次動画票が最多ならリクエスト優先でニコ生へ引用再生します。")+
 '<div class="grid2">'+panel("アンケート内容","選択肢は2つです。表示名は投票結果と完全一致させます。",field("質問","poll-question",state.poll.question)+field("継続の選択肢","poll-continue",state.poll.continue)+field("次動画の選択肢","poll-next",state.poll.next))+
 panel("投票時間・判定ルール","投票時間は3〜300秒、結果表示は0〜120秒",field("投票待ち時間（秒）","poll-wait",state.poll.wait)+field("結果表示時間（秒）","poll-result",state.poll.result)+toggle("poll-tie","同票なら再投票","同率の場合は現在の動画を維持",state.poll.tie)+toggle("poll-zero","無投票なら再投票","0票の場合は現在の動画を維持",state.poll.zero)+'<button class="btn" data-save-poll>設定を保存</button>')+'</div>'+
 panel("自動アンケート実行","放送主権限のあるログインで、配信中の放送IDを指定してください。",'<div class="banner"><i class="led"></i><div><b id="poll-status-label">'+esc(pollRuntime.status==="idle"?"停止中":pollRuntime.status==="voting"?"投票中":pollRuntime.status==="results"?"結果表示中":pollRuntime.status==="repeating"?"再投票準備中":pollRuntime.status==="next"?"次動画へ進みました":pollRuntime.status==="error"?"エラー":"処理中")+'</b><small id="poll-status-message">'+esc(pollRuntime.message)+'</small></div></div><div id="poll-results" class="empty">'+(pollResults||"投票結果はまだありません。")+'</div><div class="actions"><button class="btn primary" data-poll-start '+(pollActive?"disabled":"")+'>自動アンケート開始</button><button class="btn" data-poll-stop '+(!pollActive?"disabled":"")+'>停止</button></div><div class="muted">最大100回まで連続再投票します。配信主権限がない場合はニコ生API側で拒否されます。</div>');
@@ -179,7 +179,7 @@ else if(!result.exists&&state.player.currentId===previousItemId){state.player.cu
 save();
 if(page==="player")render();
 }
-async function playQuotedQueueItem(item,queueType="request"){
+async function playQuotedQueueItem(item,queueType="request",skipConfirmation=false){
 if(!item)return;
 const programId=state.lastProgramId||commentConnection.programId;
 if(!programId){toast("先に「放送・枠管理」で配信中の放送IDを確認してください。");return;}
@@ -227,7 +227,7 @@ quotePlayback={active:false,verified:true,programId,videoId:"",queueType:"",item
 for(const list of [state.requests,state.stocks])list.forEach(x=>{if(x.id===stoppedItemId&&x.status==="playing")x.status="queued";});
 if(state.player.currentId===stoppedItemId){state.player.currentId="";}save();if(page==="player"||page==="requests"||page==="stocks")render();toast(result.message);
 }
-async function playNextQuoteItem(){
+async function playNextQuoteItem(options={}){
 const endAt=Number(state.lastProgramEndAt);
 const remainingMs=endAt>0?endAt*1000-Date.now():null;
 const selected=await window.kananeoApp.niconico.selectPlaybackCandidate({
@@ -240,7 +240,7 @@ remainingMs
 if(!selected){toast("再生可能なリクエスト・ストックがありません。放送残り時間や引用可否も確認してください。");return;}
 const list=selected.queue==="stock"?state.stocks:state.requests;
 const item=list[selected.index];
-await playQuotedQueueItem(item,selected.queue);
+await playQuotedQueueItem(item,selected.queue,options.skipConfirmation===true);
 }
 async function playQueueItem(item,queueType="request"){
 if(!item)return;
@@ -410,8 +410,8 @@ if(token!==pollRunToken)break;
 if(decision.decision==="next"){
 const current=currentQueueItem();if(current&&current.status==="playing")current.status="completed";save();
 pollRuntime.active=false;pollCurrentProgramId="";
-setPollRuntime("next","「"+input.choices[1]+"」が最多でした。次の動画へ進みます。",fetched.items);
-await playNextQueueItem(false);
+setPollRuntime("next","「"+input.choices[1]+"」が最多でした。次の候補をニコ生へ引用再生します。",fetched.items);
+await playNextQuoteItem({skipConfirmation:true});
 return;
 }
 setPollRuntime("repeating",round+"回目のアンケートを終了しました。再投票を準備しています。",fetched.items);
