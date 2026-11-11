@@ -1,16 +1,18 @@
 {
   "name": "kananeo-nico-live-stream",
-  "version": "0.1.0-beta.8",
+  "version": "0.1.0-beta.9",
   "private": true,
   "description": "総合ニコ生管理デスクトップアプリ",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "test": "node --test"
+    "test": "node --test",
+    "dist:win": "electron-builder --win nsis portable --x64"
   },
   "devDependencies": {
-    "electron": "45.2.3"
+    "electron": "45.2.3",
+    "electron-builder": "26.18.1"
   },
   "dependencies": {
     "nicomget": "https://codeload.github.com/Segu-g/nicomget/tar.gz/05899c0d350bf5b873c9b083ea620f42c3d1fa4f"
@@ -18,6 +20,44 @@
   "overrides": {
     "nicomget": {
       "@n-air-app/nicolive-comment-protobuf": "https://codeload.github.com/Segu-g/nicolive-comment-protobuf/tar.gz/ad9fa2a1acce100f62aa0b5f2e4634b51fcf1d87"
+    }
+  },
+  "build": {
+    "appId": "jp.kanenao.nicolivestream",
+    "productName": "kananeo nico live stream",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "kananeo nico live stream",
+      "deleteAppDataOnUninstall": false
     }
   }
 }
