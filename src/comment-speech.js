@@ -30,6 +30,19 @@ function normalizeCommentSpeechSettings(input = {}) {
   };
 }
 
+function selectSpeechVoice(voicesInput, preferredURI = "") {
+  const voices = Array.isArray(voicesInput) ? voicesInput.filter(voice => voice && typeof voice === "object") : [];
+  if (!voices.length) return null;
+  const preferred = String(preferredURI || "");
+  if (preferred) {
+    const exact = voices.find(voice => voice.voiceURI === preferred);
+    if (exact) return exact;
+  }
+  return voices.find(voice => /^ja(?:[-_]|$)/i.test(String(voice.lang || "")))
+    || voices.find(voice => voice.default === true)
+    || voices[0];
+}
+
 function createCommentSpeechText(comment, profile, settingsInput = {}, ngWordsInput = []) {
   const settings = normalizeCommentSpeechSettings(settingsInput);
   if (!settings.enabled) return {ok:false,code:"DISABLED"};
@@ -70,6 +83,7 @@ function appendSpeechQueue(queueInput, speechItem, maxQueue = 100) {
 const api = Object.freeze({
   DEFAULT_COMMENT_SPEECH_SETTINGS,
   normalizeCommentSpeechSettings,
+  selectSpeechVoice,
   createCommentSpeechText,
   appendSpeechQueue
 });
