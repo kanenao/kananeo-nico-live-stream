@@ -1,0 +1,65 @@
+# NicoLive Helper Standalone を参考にした設計方針
+
+## 参考プロジェクトのシステム
+
+参考先の [kanenao/nicolivehelper-standalone](https://github.com/kanenao/nicolivehelper-standalone) は、現在の kananeo nico live stream とは異なる「拡張機能移植型」のElectronアプリです。
+
+- Electronのメイン画面で、New NicoLive Helper由来のHTML / JavaScriptを読み込みます。
+- preloadでWebExtensions互換の `browser.*` APIと、アプリ専用の `stsen.*` APIを提供します。
+- メインロジックは `NicoLiveHelper`、リクエストは `NicoLiveRequest`、ストックは `NicoLiveStock` として分離されています。
+- リクエスト一覧とストック一覧は別のキューで、リクエスト優先、その後にストックを再生する仕組みです。
+- 再生モードは手動・自動順次・自動ランダム。放送残り時間より長い動画を候補から外す運用もあります。
+- 動画DB、マイリスト、あとで見る、再生履歴、ユーザー管理などを独立モジュールとして持ちます。
+- リモートホストとリモートコントローラーを備え、Linuxヘッドレス運用も想定しています。
+
+## 重要：再生方式が違う
+
+参考先は、ニコニコ動画の視聴ページをアプリ内に開くのではなく、放送中の番組に対して引用再生APIを呼び出す方式です。
+
+- 現在の引用再生状態：`GET /v1/tools/live/contents/{lv}/quotation`
+- 最初の引用再生：`POST /v1/tools/live/contents/{lv}/quotation`
+- 再生中の動画差し替え：`PATCH /v1/tools/live/contents/{lv}/quotation/contents`
+- 引用再生停止：`DELETE /v1/tools/live/contents/{lv}/quotation`
+
+この方式では、アプリの別ウィンドウで動画ページを再生するのではなく、ニコ生側の動画紹介・引用再生機能に動画を渡します。今回 `src/quotation-api.js` にリクエスト生成と応答判定を独立させ、`test/quotation-api.test.js` で検証しました。まだ実アカウントへ再生要求を送る統合は行っていません。
+
+## コメント通信についての注意
+
+ユーザーが指定したStandaloneの `app/src/main/main.js` / `comm.js` には、旧JSON WebSocket（`msg.nicovideo.jp#json`）方式が残っています。一方、New NicoLive Helper本家の現在の公開版はバージョン0.27で、2026年9月20日の更新履歴に「通信まわりをがっつりと変更」とあります。本家0.27のコードはNDGRのProtobufチャンクストリーム処理を含みます。
+
+そのため、Standaloneの旧コメント通信部分をそのままコピーすることはしません。こちらのアプリで採用済みのNDGRコメント受信（nicomget）を維持し、コメント受信イベントを共通の配信セッション・リクエスト処理へ接続していきます。
+
+## こちらのアプリで取り込む設計
+
+画面デザインや拡張機能互換レイヤーをそのまま移植するのではなく、機能の分割と配信運用モデルを参考にします。
+
+1. **配信セッションを中心にする**：放送ID、放送状態、放送主権限、コメント接続、引用再生状態、放送残り時間を一つのセッションとして扱う。
+2. **リクエストとストックを分離する**：視聴者から来たリクエストと、運営が事前に用意したストックを別キューに保存する。
+3. **再生スケジューラーを独立させる**：リクエスト優先、順次・ランダム、引用不可・再生済み除外、残り時間による候補選定をUIから分離する。
+4. **引用再生をメインの再生手段にする**：実配信に動画を流す操作はメインプロセスから行い、公式動画ページを開く機能はプレビュー・確認用の補助にする。
+5. **コメント処理を段階化する**：受信 → 正規化 → コマンド解析 → NG / 重複 / ユーザー別上限の検査 → リクエスト登録 → 結果応答。
+6. **動画ライブラリを追加する**：動画情報、マイリスト、あとで見る、タグ検索、再生履歴をローカルDBで管理する。
+7. **リモート運用は後段で追加する**：認証・TLS・権限・ネットワーク公開範囲を設計してから、ホスト／クライアント機能を追加する。
+
+## 認証で引き継がない部分
+
+参考Standaloneは外部Chrome / EdgeをCDPで起動し、Cookieを取得してElectronのデフォルトセッションへインポート・ファイル保存する構成です。こちらのアプリでは既存の専用Electron永続セッションを維持します。普段使いブラウザのCookieを抽出・転送しない設計を優先します。
+
+## 実装進捗
+
+- [x] 引用再生APIのURL・HTTPメソッド・ボディ生成を独立モジュール化
+- [x] 引用再生APIの応答判定テストを追加
+- [x] リクエスト優先・ストック代替の再生スケジューラーを独立モジュール化
+- [x] 順次 / ランダム / 放送残り時間の候補選定テストを追加
+- [ ] 引用再生APIをElectronメインプロセスとUIへ接続
+- [ ] リクエスト／ストックの独立UI・永続化
+- [ ] 実配信で引用再生を確認
+- [ ] コメントコマンドからのリクエスト登録・返信
+- [ ] 動画DB・マイリスト・あとで見る連携
+- [ ] セキュアなリモートホスト／コントローラー
+
+## 参考リンク
+
+- [kanenao/nicolivehelper-standalone](https://github.com/kanenao/nicolivehelper-standalone)
+- [amanorox/nicolivehelperxx（本家New NicoLive Helper）](https://github.com/amanorox/nicolivehelperxx)
+- [New NicoLive Helper 0.27 更新履歴](https://addons.mozilla.org/ja/firefox/addon/new-nicolive-helper/versions/)
