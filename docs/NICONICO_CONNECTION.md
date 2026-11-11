@@ -25,6 +25,15 @@
 - Cookie、WebSocket URL、view URI、raw ProtobufはRenderer・ログ・CSVに渡さない
 - 切断時はライブラリの上限付き自動再接続を利用
 
+## β8：番組統計（読み取り専用）
+
+- 統計取得：GET https://live2.nicovideo.jp/watch/{lv}/statistics
+- data.watchCount / data.commentCount を検証して表示
+- 番組タイトル・status・endTime は watch page の embedded-data から取り出す
+- 統計はダッシュボードを開いている間、約30秒ごとに更新可能
+- 更新APIは読み取り専用で、配信設定・コメント・番組状態を変更しません
+- APIの元資料は2024年更新のコミュニティクライアントであり、実配信での継続動作は未検証
+
 ## β7：自動アンケート
 
 - アンケート開始：`POST https://live2.nicovideo.jp/unama/watch/{lv}/enquete`。JSONの `question` と `items` を送信
