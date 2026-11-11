@@ -9,6 +9,7 @@ const { normalizeComment, normalizeOperatorComment, normalizeNotification } = re
 const { isTrustedNdgrUri } = require("./ndgr-security");
 const { CommentRecorder } = require("./comment-recorder");
 const { normalizeNiconicoVideoUrl, extractRequestCandidate, findNextQueueItem } = require("./video-queue");
+const { evaluateCommentRequest } = require("./request-policy");
 const { decideEnqueteResult } = require("./poll-engine");
 const { buildEnqueteRequest, mapEnqueteHttpError, parseEnqueteResultResponse } = require("./enquete-api");
 const { buildStatisticsRequest, parseStatisticsResponse } = require("./program-api");
@@ -987,6 +988,11 @@ function registerIpcHandlers() {
     if(event.sender!==mainWindow?.webContents||!Array.isArray(items)||items.length>1000||typeof currentId!=="string"||currentId.length>128) return null;
     const safeItems=items.map(item=>({id:typeof item?.id==="string"?item.id:"",status:typeof item?.status==="string"?item.status:"queued"}));
     return findNextQueueItem(safeItems,currentId);
+  });
+  ipcMain.handle("niconico:evaluate-comment-request",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents||!input||typeof input!=="object") return {accepted:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    if(JSON.stringify(input).length>300000) return {accepted:false,code:"INVALID_INPUT",message:"リクエスト判定データが大きすぎます。"};
+    return evaluateCommentRequest(input);
   });
   ipcMain.handle("niconico:extract-request",(event,input)=>{
     if(event.sender!==mainWindow?.webContents||typeof input!=="string"||input.length>4000) return "";
