@@ -1033,7 +1033,7 @@ utterance.onerror=finish;
 window.speechSynthesis.speak(utterance);
 }
 function queueCommentSpeech(comment){
-if(!state.voice?.enabled)return;
+if(!state.voice?.enabled||!isSpeechEngineAvailable())return;
 const profile=findUserProfile(comment?.userId);
 const result=window.KananeoCommentSpeech.createCommentSpeechText(comment,profile,state.voice,state.ngWords);
 if(!result.ok)return;
@@ -1175,7 +1175,7 @@ if(b.hasAttribute("data-stock-remove")){state.stocks=state.stocks.filter(x=>x.id
 if(b.hasAttribute("data-stock-clear")){if(quotePlayback.queueType==="stock"&&quotePlayback.active){toast("引用再生を停止してからストックを消去してください。");return;}state.stocks=[];save();render();}
 if(b.hasAttribute("data-remove")){const removed=state.requests.find(x=>x.id===b.dataset.remove);state.requests=state.requests.filter(x=>x.id!==b.dataset.remove);if(removed&&removed.id===state.player.currentId){state.player.currentId="";state.player.status="closed";void window.kananeoApp.niconico.closeVideo();}save();render()}
 if(b.hasAttribute("data-clear")){if(state.player.currentId)void window.kananeoApp.niconico.closeVideo();state.requests=[];state.player.currentId="";state.player.status="closed";save();render()}
-if(b.hasAttribute("data-voice-test")){if(!isSpeechEngineAvailable())toast("この環境では音声合成を利用できません。");else speakDirect("コメント読み上げのテストです。日本語の音声を確認してください。");return;}
+if(b.hasAttribute("data-voice-test")){if(!isSpeechEngineAvailable())toast("この環境では音声合成を利用できません。");else{saveVoiceSettings();speakDirect("コメント読み上げのテストです。日本語の音声を確認してください。");}return;}
 if(b.hasAttribute("data-voice-pause")){if(isSpeechEngineAvailable())window.speechSynthesis.pause();return;}
 if(b.hasAttribute("data-voice-resume")){if(isSpeechEngineAvailable())window.speechSynthesis.resume();return;}
 if(b.hasAttribute("data-voice-clear")){speechDroppedCount=0;stopSpeechQueue(true);toast("読み上げ待ち行列をクリアしました。");return;}
