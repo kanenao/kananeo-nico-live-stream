@@ -41,6 +41,16 @@ test("filters videos that exceed remaining broadcast time",()=>{
  assert.equal(isEligible({lengthMs:60000},"request",30000),false);
 });
 
+test("does not select any video after the broadcast has ended",()=>{
+ const result=selectNextPlaybackCandidate({requests:[{id:"a",lengthMs:1000}],stocks:[{id:"b",lengthMs:1000}],remainingMs:-1});
+ assert.equal(result,null);
+});
+
+test("supports the current boolean no-live-play marker",()=>{
+ const result=selectNextPlaybackCandidate({requests:[{id:"not-quotable",no_live_play:true}],stocks:[]});
+ assert.equal(result,null);
+});
+
 test("supports random request ordering deterministically",()=>{
  const result=selectNextPlaybackCandidate({
   requests:[{id:"a"},{id:"b"}],
