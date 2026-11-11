@@ -60,6 +60,15 @@ function extractEmbeddedData(html) {
   }
 }
 
+function extractBroadcasterCommentToken(html) {
+  const embedded = extractEmbeddedData(html);
+  const props = embedded.props && typeof embedded.props === "object" ? embedded.props : embedded;
+  const token = props.site?.relive?.csrfToken;
+  return typeof token === "string" && token.length > 0 && token.length <= 4096 && !/[\\r\\n]/.test(token)
+    ? token
+    : "";
+}
+
 function isTrustedWebSocketEndpoint(value) {
   if (typeof value !== "string") return false;
   try {
@@ -92,6 +101,7 @@ module.exports = {
   NiconicoPageError,
   normalizeProgramId,
   extractEmbeddedData,
+  extractBroadcasterCommentToken,
   inspectWatchPage,
   isTrustedWebSocketEndpoint
 };
