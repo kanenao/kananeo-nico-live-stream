@@ -4,6 +4,11 @@ const key="kananeo-beta2";
 let commentConnection={state:"disconnected",message:"コメントサーバー未接続",programId:"",recordingEnabled:false};
 let receivedComments=[];
 const pendingCommentRequestIds=new Set();
+const requestReplyQueue=[];
+const repliedRequestComments=new Set();
+let requestReplyBusy=false;
+let lastRequestReplySentAt=0;
+let lastRequestReplyErrorToastAt=0;
 let playerState={state:"closed",currentTime:0,duration:0,message:"プレイヤー未起動"};
 const MAX_DISPLAY_COMMENTS=1000;
 const MAX_QUEUE_ITEMS=1000;
@@ -23,7 +28,7 @@ let pollEnqueteOpen=false;
 let pollWaitTimer=null;
 let pollWaitResolve=null;
 let pollFinishPromise=null;
-const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,mainVolume:1,subVolume:0,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5},external:{obs:"",nair:"",xsplit:""},logs:["β2 UIプロトタイプを起動しました"]};
+const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,mainVolume:1,subVolume:0,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},logs:["β2 UIプロトタイプを起動しました"]};
 let state=load(),page="dashboard";
 function load(){
 try{
@@ -87,7 +92,7 @@ panel("システムログ","ローカルに記録した直近の操作",state.lo
 const waiting=state.requests.filter(x=>!["completed","skipped","rejected"].includes(x.status)).length;
 const requestRows=state.requests.map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+(x.status==="playing"?"再生中":x.status==="completed"?"再生済み":x.status==="skipped"?"スキップ":x.status==="rejected"?"引用不可":"待機中")+'</td><td>'+esc(x.title)+'</td><td>'+esc(x.videoId||x.url)+'</td><td><button class="btn" data-play="'+esc(x.id)+'">プレビュー</button> <button class="btn primary" data-quote-request="'+esc(x.id)+'">ニコ生へ送る</button> <button class="btn" data-up="'+i+'" '+(i===0?"disabled":"")+'>&uarr;</button> <button class="btn" data-down="'+i+'" '+(i===state.requests.length-1?"disabled":"")+'>&darr;</button> <button class="btn" data-remove="'+esc(x.id)+'">削除</button></td></tr>').join("");
 html=hero("VIEWER REQUESTS","動画リクエスト","視聴者から受け付けた動画を管理します。プレビューとニコ生への引用再生は別操作です。")+
-panel("動画リクエストを追加","動画ID・watch URLと、分かる場合は動画時間も登録します。",'<form id="request-form" class="grid3">'+field("動画タイトル（任意）","req-title","","未入力なら動画IDを表示")+field("動画URL / ID","req-url","","sm12345678 または動画URL")+field("動画時間（秒・任意）","req-duration","","例：240")+'<button class="btn primary">キューに追加</button></form><label class="switchrow"><span><b>コメントからリクエスト自動受付</b><small>明示コマンドのみ受付。NGユーザー・NGワード・重複・上限を順に確認します。</small></span><input type="checkbox" id="request-from-comments" '+(state.requestSettings.acceptComments?"checked":"")+'></label><div class="field"><label>1ユーザーあたりの未再生リクエスト上限（1〜50）</label><input class="input" id="request-max-per-user" type="number" min="1" max="50" value="'+(state.requestSettings.maxPerUser||5)+'"></div><div class="muted">「プレビュー」は動画ページを開くだけです。「ニコ生へ送る」は放送中の番組に引用再生を要求します。</div>')+
+panel("動画リクエストを追加","動画ID・watch URLと、分かる場合は動画時間も登録します。",'<form id="request-form" class="grid3">'+field("動画タイトル（任意）","req-title","","未入力なら動画IDを表示")+field("動画URL / ID","req-url","","sm12345678 または動画URL")+field("動画時間（秒・任意）","req-duration","","例：240")+'<button class="btn primary">キューに追加</button></form><label class="switchrow"><span><b>コメントからリクエスト自動受付</b><small>明示コマンドのみ受付。NGユーザー・NGワード・重複・上限を順に確認します。</small></span><input type="checkbox" id="request-from-comments" '+(state.requestSettings.acceptComments?"checked":"")+'></label><div class="field"><label>1ユーザーあたりの未再生リクエスト上限（1〜50）</label><input class="input" id="request-max-per-user" type="number" min="1" max="50" value="'+(state.requestSettings.maxPerUser||5)+'"></div><label class="switchrow"><span><b>受付結果を運営コメントで自動返信</b><small>初期設定OFF。配信主権限が必要で、送信間隔は最低5秒に制限します。</small></span><input type="checkbox" id="request-reply-enabled" '+(state.requestSettings.replyEnabled?"checked":"")+'></label><div class="field"><label>受付時の返信（80文字以内）</label><textarea class="input" id="request-reply-accepted" rows="2" maxlength="80">'+esc(state.requestSettings.replyAccepted||initial.requestSettings.replyAccepted)+'</textarea></div><div class="field"><label>却下時の返信（80文字以内）</label><textarea class="input" id="request-reply-rejected" rows="2" maxlength="80">'+esc(state.requestSettings.replyRejected||initial.requestSettings.replyRejected)+'</textarea></div><div class="muted">使用できる置換：{video_id}、{comment_no}、{reason}。受付返信はキュー登録後、却下返信はNG・重複・上限などの判定後に送信します。一般コメントとしてではなく、ニコ生の運営コメントとして投稿されます。</div><div class="muted">「プレビュー」は動画ページを開くだけです。「ニコ生へ送る」は放送中の番組に引用再生を要求します。</div>')+
 panel("リクエストキュー",waiting+" 件が未再生",state.requests.length?'<table class="table"><thead><tr><th>#</th><th>状態</th><th>タイトル</th><th>動画ID</th><th>操作</th></tr></thead><tbody>'+requestRows+'</tbody></table><div class="actions"><button class="btn" data-player-next>次の動画をプレビュー</button><button class="btn primary" data-quote-next>次の動画をニコ生へ引用再生</button><button class="btn" data-clear>リクエストを全消去</button><button class="btn" data-go="stocks">ストックを管理</button></div>':'<div class="empty">リクエストキューは空です。</div>');
 }else if(page==="stocks"){
 const waiting=state.stocks.filter(x=>!["completed","skipped","rejected"].includes(x.status)).length;
@@ -631,6 +636,58 @@ return '<div class="comment-entry"><div class="comment-meta"><b>'+esc(c.userName
 }).join("");
 list.scrollTop=list.scrollHeight;
 }
+function requestReplyReason(code){
+return ({NG_USER:"受付対象外",NG_WORD:"受付対象外",DUPLICATE:"既に登録済み",DUPLICATE_PENDING:"受付処理中",QUEUE_FULL:"キュー上限",USER_LIMIT:"ユーザー別上限"})[code]||"受付条件に一致しません";
+}
+function queueCommentRequestReply(comment,template,videoId,reason){
+if(!state.requestSettings?.replyEnabled||comment?.isHistory)return;
+const programId=commentConnection.programId||state.lastProgramId||"";
+if(commentConnection.state!=="connected"||!programId)return;
+const commentNo=/^\d+$/.test(String(comment.commentNo||""))?String(comment.commentNo):"";
+const dedupeId=commentNo||String(comment.id||"");
+const dedupeKey=dedupeId+"|"+videoId+"|"+String(reason||"accepted");
+if(repliedRequestComments.has(dedupeKey))return;
+if(requestReplyQueue.length>=20)return;
+const replacements={video_id:String(videoId||""),comment_no:commentNo,reason:String(reason||"")};
+let text=String(template||"").trim().replace(/\{(video_id|comment_no|reason)\}/g,(_match,key)=>replacements[key]||"");
+text=text.replace(/[\r\n]+/g," ").trim();
+text=Array.from(text).slice(0,80).join("");
+if(!text)return;
+repliedRequestComments.add(dedupeKey);
+if(repliedRequestComments.size>500)repliedRequestComments.delete(repliedRequestComments.values().next().value);
+requestReplyQueue.push({programId,text,videoId,code:reason||"ACCEPTED"});
+void processRequestReplyQueue();
+}
+async function processRequestReplyQueue(){
+if(requestReplyBusy)return;
+requestReplyBusy=true;
+try{
+while(requestReplyQueue.length){
+const item=requestReplyQueue.shift();
+if(!state.requestSettings?.replyEnabled||commentConnection.state!=="connected"||commentConnection.programId!==item.programId)continue;
+const waitMs=Math.max(0,5000-(Date.now()-lastRequestReplySentAt));
+if(waitMs)await new Promise(resolve=>setTimeout(resolve,waitMs));
+if(!state.requestSettings?.replyEnabled||commentConnection.state!=="connected"||commentConnection.programId!==item.programId)continue;
+let result;
+try{result=await window.kananeoApp.niconico.postBroadcasterComment({programId:item.programId,text:item.text});}
+catch{result={ok:false,code:"SEND_FAILED",message:"運営コメントの自動返信に失敗しました。"};}
+lastRequestReplySentAt=Date.now();
+if(result?.ok){
+state.logs.unshift("リクエスト受付結果を運営コメントで返信："+item.videoId);save();
+}else{
+state.logs.unshift("運営コメント自動返信失敗："+String(result?.code||"SEND_FAILED"));save();
+if(Date.now()-lastRequestReplyErrorToastAt>30000){
+lastRequestReplyErrorToastAt=Date.now();
+toast(result?.message||"運営コメントを送信できませんでした。");
+}
+if(["AUTH_REQUIRED","BROADCASTER_PERMISSION_REQUIRED","PROGRAM_NOT_ON_AIR"].includes(result?.code))requestReplyQueue.length=0;
+}
+}
+}finally{
+requestReplyBusy=false;
+if(requestReplyQueue.length)void processRequestReplyQueue();
+}
+}
 async function maybeAddCommentRequest(comment){
 if(!state.requestSettings?.acceptComments||comment?.type!=="comment"||comment.isHistory)return;
 const content=String(comment.content||"");
@@ -657,6 +714,8 @@ pendingVideoIds:[],
 settings:state.requestSettings
 });
 if(!policy?.accepted){
+const reason=requestReplyReason(policy?.code);
+queueCommentRequestReply(comment,state.requestSettings.replyRejected,validation.videoId,reason);
 if(policy?.code==="QUEUE_FULL")toast(policy.message);
 return;
 }
@@ -664,6 +723,7 @@ const item={id:"req-"+Date.now().toString(36)+"-"+Math.random().toString(36).sli
 state.requests.push(item);state.logs.unshift("コメントから動画リクエスト："+item.videoId);save();
 if(page==="requests")render();
 toast("コメントからリクエストを受け付けました："+item.videoId);
+queueCommentRequestReply(comment,state.requestSettings.replyAccepted,validation.videoId,"");
 }catch(error){
 state.logs.unshift("コメントリクエスト判定エラー："+String(error?.message||"不明なエラー").slice(0,120));save();
 }finally{pendingCommentRequestIds.delete(pendingId);}
@@ -805,7 +865,7 @@ if(b.hasAttribute("data-clear-logs")){state.logs=[];save();render()}
 if(b.hasAttribute("data-placeholder"))toast("現在の段階ではこの操作は未実装です。");
 });
 document.addEventListener("input",e=>{if(e.target.id==="comments-search")renderComments();});
-document.addEventListener("change",e=>{if(e.target.matches('[data-toggle="quote-auto-next"]')){if(state.playback.playStyle===0&&e.target.checked){e.target.checked=false;state.playback.quoteAutoNext=false;save();toast("手動モードでは自動次動画を使えません。自動順次または自動ランダムに変更してください。");return;}state.playback.quoteAutoNext=e.target.checked;save();if(e.target.checked&&quotePlayback.active){const active=currentQueueItem();const started=Number(state.player.quoteStartedAt);if(started>0)scheduleQuoteAutoNext(active||{videoId:quotePlayback.videoId,lengthMs:state.player.quoteDurationMs},started);else{quoteAutoMessage="引用再生の開始時刻が不明です。次の動画から自動予約します。";updateQuoteScheduleUi();}}else clearQuoteAutoTimer("引用再生の自動次動画はOFFです。");toast(e.target.checked?"引用再生の自動次動画をONにしました。":"引用再生の自動次動画をOFFにしました。");}if(e.target.id==="comments-filter")renderComments();if(e.target.id==="player-auto-next"){state.player.autoNext=e.target.checked;save();toast(e.target.checked?"自動で次の動画へ切り替えます。":"自動次動画切替をOFFにしました。");}if(e.target.id==="request-from-comments"){state.requestSettings.acceptComments=e.target.checked;save();toast(e.target.checked?"コメントからのリクエスト受付をONにしました。":"コメントからのリクエスト受付をOFFにしました。");}if(e.target.id==="request-max-per-user"){state.requestSettings.maxPerUser=Math.min(50,Math.max(1,Number(e.target.value)||5));save();toast("ユーザー別リクエスト上限を保存しました。");}});
+document.addEventListener("change",e=>{if(e.target.matches('[data-toggle="quote-auto-next"]')){if(state.playback.playStyle===0&&e.target.checked){e.target.checked=false;state.playback.quoteAutoNext=false;save();toast("手動モードでは自動次動画を使えません。自動順次または自動ランダムに変更してください。");return;}state.playback.quoteAutoNext=e.target.checked;save();if(e.target.checked&&quotePlayback.active){const active=currentQueueItem();const started=Number(state.player.quoteStartedAt);if(started>0)scheduleQuoteAutoNext(active||{videoId:quotePlayback.videoId,lengthMs:state.player.quoteDurationMs},started);else{quoteAutoMessage="引用再生の開始時刻が不明です。次の動画から自動予約します。";updateQuoteScheduleUi();}}else clearQuoteAutoTimer("引用再生の自動次動画はOFFです。");toast(e.target.checked?"引用再生の自動次動画をONにしました。":"引用再生の自動次動画をOFFにしました。");}if(e.target.id==="comments-filter")renderComments();if(e.target.id==="player-auto-next"){state.player.autoNext=e.target.checked;save();toast(e.target.checked?"自動で次の動画へ切り替えます。":"自動次動画切替をOFFにしました。");}if(e.target.id==="request-from-comments"){state.requestSettings.acceptComments=e.target.checked;save();toast(e.target.checked?"コメントからのリクエスト受付をONにしました。":"コメントからのリクエスト受付をOFFにしました。");}if(e.target.id==="request-max-per-user"){state.requestSettings.maxPerUser=Math.min(50,Math.max(1,Number(e.target.value)||5));save();toast("ユーザー別リクエスト上限を保存しました。");}if(e.target.id==="request-reply-enabled"){state.requestSettings.replyEnabled=e.target.checked;save();toast(e.target.checked?"受付結果の自動返信をONにしました。":"受付結果の自動返信をOFFにしました。");}if(e.target.id==="request-reply-accepted"){state.requestSettings.replyAccepted=String(e.target.value||"").slice(0,80);save();}if(e.target.id==="request-reply-rejected"){state.requestSettings.replyRejected=String(e.target.value||"").slice(0,80);save();}});
 document.addEventListener("submit",async e=>{
 e.preventDefault();
 if(e.target.id==="request-form"){
