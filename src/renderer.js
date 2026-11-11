@@ -246,7 +246,6 @@ const token=++pollRunToken;
 pollRuntime={active:true,status:"starting",message:"アンケートを準備しています。",result:[]};
 pollCurrentProgramId=programId;
 setPollRuntime("starting","アンケートを準備しています。",[]);
-let opened=false;
 try{
 for(let round=1;round<=100;round++){
 if(token!==pollRunToken)break;
@@ -257,7 +256,7 @@ if(started?.ok){pollEnqueteOpen=true;await finishActiveEnquete(programId);}
 break;
 }
 if(!started?.ok)throw new Error(started?.message||"アンケートを開始できませんでした。");
-pollEnqueteOpen=true;opened=true;
+pollEnqueteOpen=true;
 setPollRuntime("voting",round+"回目の投票中です。残り"+input.waitSeconds+"秒。",pollRuntime.result);
 const waited=await waitForPoll(input.waitSeconds*1000,token);
 if(!waited){await finishActiveEnquete(programId);break;}
@@ -279,9 +278,9 @@ if(!resultWait){await finishActiveEnquete(programId);break;}
 }
 const finishResult=await finishActiveEnquete(programId);
 if(!finishResult?.ok)throw new Error(finishResult?.message||"アンケートを終了できませんでした。");
-opened=false;
 if(token!==pollRunToken)break;
 if(decision.decision==="next"){
+const current=currentQueueItem();if(current&&current.status==="playing")current.status="completed";save();
 pollRuntime.active=false;pollCurrentProgramId="";
 setPollRuntime("next","「"+input.choices[1]+"」が最多でした。次の動画へ進みます。",fetched.items);
 await playNextQueueItem(false);
@@ -294,9 +293,10 @@ pollRuntime.active=false;pollCurrentProgramId="";
 setPollRuntime("idle","再投票の上限100回に到達したため停止しました。",pollRuntime.result);
 toast("安全上の上限100回に到達しました。");
 }else if(!pollRuntime.active){
-await finishActiveEnquete(programId);
+const cleanup=await finishActiveEnquete(programId);
 pollCurrentProgramId="";
-setPollRuntime("idle","自動アンケートを停止しました。",pollRuntime.result);
+if(!cleanup?.ok)setPollRuntime("error",cleanup?.message||"アンケートを終了できませんでした。",pollRuntime.result);
+else setPollRuntime("idle","自動アンケートを停止しました。",pollRuntime.result);
 }
 }catch(error){
 await finishActiveEnquete(programId);
