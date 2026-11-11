@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
     decideEnqueteResult:input=>ipcRenderer.invoke("niconico:decide-enquete",input),
     extractRequestCandidate:input=>ipcRenderer.invoke("niconico:extract-request",input),
     evaluateCommentRequest:input=>ipcRenderer.invoke("niconico:evaluate-comment-request",input),
+    postBroadcasterComment:input=>ipcRenderer.invoke("niconico:post-broadcaster-comment",input),
     findNextQueueItem:(items,currentId)=>ipcRenderer.invoke("niconico:find-next-queue-item",items,currentId),
     selectPlaybackCandidate:input=>ipcRenderer.invoke("niconico:select-playback-candidate",input),
     getCurrentQuotation:input=>ipcRenderer.invoke("niconico:get-current-quotation",input),
