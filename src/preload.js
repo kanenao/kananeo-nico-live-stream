@@ -4,9 +4,17 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
-  version:"0.1.0-beta.15",
+  version:"0.1.0-beta.16",
   platform:process.platform,
-  stage:"broadcaster-request-replies",
+  stage:"video-library-and-playback-history",
+  videoLibrary:Object.freeze({
+    get:()=>ipcRenderer.invoke("app:video-library-get"),
+    add:input=>ipcRenderer.invoke("app:video-library-add",input),
+    remove:input=>ipcRenderer.invoke("app:video-library-remove",input),
+    import:input=>ipcRenderer.invoke("app:video-library-import",input),
+    recordPlayback:input=>ipcRenderer.invoke("app:video-library-record-playback",input),
+    clearHistory:()=>ipcRenderer.invoke("app:video-library-clear-history")
+  }),
   niconico:Object.freeze({
     openLogin:()=>ipcRenderer.invoke("niconico:open-login"),
     validateVideo:input=>ipcRenderer.invoke("niconico:validate-video",input),
