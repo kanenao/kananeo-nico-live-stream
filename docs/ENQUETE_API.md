@@ -12,6 +12,8 @@
 
 開始リクエストのJSONは question と items（選択肢配列）です。結果は data.title と data.items[] の name / rate を読み取ります。
 
+実装は src/enquete-api.js にAPIリクエスト生成、HTTPエラー分類、結果JSON解析を分離し、test/enquete-api.test.js でテストしています。
+
 ## 安全策
 
 - APIはメインプロセスからのみ実行します。RendererにCookie値は渡しません。
