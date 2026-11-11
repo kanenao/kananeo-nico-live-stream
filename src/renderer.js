@@ -194,7 +194,7 @@ videoId:item.videoId,url:item.url,title:item.title,lengthMs:item.lengthMs||0,
 queueType:["request","stock","library"].includes(queueType)?queueType:"library",
 playbackType:playbackType==="quotation"?"quotation":"preview"
 });
-if(result?.ok)videoLibraryData=result.library;
+if(result?.ok){videoLibraryData=result.library;if(page==="library"){render();renderVideoLibraryRows();}}
 }catch{}
 }
 function renderVideoLibraryRows(){
@@ -887,7 +887,7 @@ finally{if(button)button.disabled=false;}
 }
 function go(p){page=p;render();if(p==="dashboard")void refreshDashboardStatistics(true);if(p==="player")void refreshQuotePlayback();if(p==="library"){void refreshVideoLibrary();renderVideoLibraryRows();}}
 document.getElementById("nav").addEventListener("click",e=>{const b=e.target.closest("[data-page]");if(b)go(b.dataset.page)});
-document.addEventListener("click",e=>{
+document.addEventListener("click",async e=>{
 const goBtn=e.target.closest("[data-go]");if(goBtn){go(goBtn.dataset.go);return}
 const b=e.target.closest("button");if(!b)return;
 if(b.hasAttribute("data-nico-login")){window.kananeoApp.niconico.openLogin().then(()=>toast("ニコニコ公式ログイン画面を開きました"));return;}
@@ -1006,7 +1006,7 @@ try{
 const result=await window.kananeoApp.videoLibrary.import(type==="text"||type==="json"?{type,text:textValue}:{type,listId});
 if(!result?.ok){toast(result?.message||"動画を取り込めませんでした。");return;}
 videoLibraryData=result.library;
-state.logs.unshift("動画ライブラリ取り込み："+type+" / 追加 "+result.added+" 件");save();render();
+state.logs.unshift("動画ライブラリ取り込み："+type+" / 追加 "+result.added+" 件");save();render();renderVideoLibraryRows();
 toast("取り込み完了：新規 "+(result.added||0)+" 件、重複統合 "+(result.updated||0)+" 件、除外 "+(result.skipped||0)+" 件");
 }catch{toast("動画一覧の取り込みに失敗しました。通信とログイン状態を確認してください。");}
 finally{if(submitButton)submitButton.disabled=false;}
