@@ -7,6 +7,7 @@ on:
     tags: ["v*"]
     paths:
       - "package.json"
+      - "src/**"
       - ".github/workflows/windows-build.yml"
 
 permissions:
