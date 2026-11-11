@@ -11,6 +11,11 @@ let nicoStatus={authenticated:false,label:"状態を確認中"};
 let dashboardStats={loading:false,watchCount:null,commentCount:null,updatedAt:"",error:""};
 let extensionOptionsState={loading:false,methods:[],updatedAt:"",error:""};
 let quotePlayback={active:false,verified:false,programId:"",videoId:"",queueType:"",itemId:"",message:"ニコ生への引用再生は停止中です。"};
+let quoteAutoTimer=null;
+let quoteAutoToken=0;
+let quoteAutoSchedule=null;
+let quoteAutoBusy=false;
+let quoteAutoMessage="引用再生の自動次動画はOFFです。";
 let pollRuntime={active:false,status:"idle",message:"アンケートは停止中です。",result:[]};
 let pollRunToken=0;
 let pollCurrentProgramId="";
@@ -18,7 +23,7 @@ let pollEnqueteOpen=false;
 let pollWaitTimer=null;
 let pollWaitResolve=null;
 let pollFinishPromise=null;
-const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,mainVolume:1,subVolume:0},ngWords:[],ngUsers:[],playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5},external:{obs:"",nair:"",xsplit:""},logs:["β2 UIプロトタイプを起動しました"]};
+const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,mainVolume:1,subVolume:0,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5},external:{obs:"",nair:"",xsplit:""},logs:["β2 UIプロトタイプを起動しました"]};
 let state=load(),page="dashboard";
 function load(){
 try{
@@ -119,7 +124,9 @@ panel("ニコ生への引用再生",quotePlayback.videoId?"現在の動画ID："
 panel("再生スケジューラー","リクエストを優先し、リクエストが無い場合はストックから選びます。",'<div class="grid2">'+
 '<div class="field"><label>リクエスト再生順</label><select class="input" id="play-style"><option value="1" '+(state.playback.playStyle===1?"selected":"")+'>登録順</option><option value="2" '+(state.playback.playStyle===2?"selected":"")+'>ランダム</option></select></div>'+
 '<label class="switchrow"><span><b>ストックをランダム再生</b><small>リクエストを優先した後、ストックをランダムに選びます。</small></span><input type="checkbox" id="random-stock" '+(state.playback.randomStock?"checked":"")+'></label>'+
-field("メイン動画音量（0〜1）","quote-main-volume",state.playback.mainVolume)+field("マイク音量（0〜1）","quote-sub-volume",state.playback.subVolume)+'</div><button class="btn" data-save-playback>再生設定を保存</button><div class="muted">放送残り時間が分かる場合、動画時間を登録済みの候補から枠内に収まるものを選びます。動画時間未登録の候補は長さを判定できません。</div>')+
+toggle("quote-auto-next","引用再生の終了後に自動で次動画へ","登録した動画時間＋待ち時間で次の動画へ差し替えます。初期状態はOFFです。",state.playback.quoteAutoNext)+
+field("次動画へ移る待ち時間（秒）","quote-gap",state.playback.nextIntervalSeconds)+
+field("メイン動画音量（0〜1）","quote-main-volume",state.playback.mainVolume)+field("マイク音量（0〜1）","quote-sub-volume",state.playback.subVolume)+'</div><div class="muted" id="quote-schedule-state">'+esc(quoteAutoMessage)+'</div><button class="btn" data-save-playback>再生設定を保存</button><div class="muted">動画時間が未登録の場合や、アプリ外で開始され開始時刻が不明な引用再生は、自動切替を行いません。放送残り時間が分かる場合は、枠内に収まる候補を選びます。</div>')+
 panel("BGMプレイリスト","曲名の登録・削除（音源再生は未実装）",'<form id="track-form" class="actions"><input id="track" class="input" placeholder="曲名・音源ファイル名" required><button class="btn primary">追加</button></form>'+ (playlistRows||'<div class="empty">プレイリストは空です。</div>'))+
 '<div class="banner"><i class="led"></i><div><b>2種類の再生方法</b><small>プレビューは別ウィンドウで動画ページを開きます。引用再生はニコ生の番組へ動画を送る方式で、参考アプリの再生方法に近い構成です。</small></div></div>';
 }else if(page==="comments"){
@@ -158,16 +165,118 @@ return h?String(h)+":"+String(m).padStart(2,"0")+":"+String(sec).padStart(2,"0")
 }
 function currentQueueList(){return state.player.currentQueueType==="stock"?state.stocks:state.requests;}
 function currentQueueItem(){return currentQueueList().find(x=>x.id===state.player.currentId)||state.requests.find(x=>x.id===state.player.currentId)||state.stocks.find(x=>x.id===state.player.currentId)||null;}
+function clearQuoteAutoTimer(message){
+if(quoteAutoTimer)clearTimeout(quoteAutoTimer);
+quoteAutoTimer=null;
+quoteAutoToken++;
+quoteAutoSchedule=null;
+if(message)quoteAutoMessage=message;
+updateQuoteScheduleUi();
+}
+function updateQuoteScheduleUi(){
+const node=document.getElementById("quote-schedule-state");
+if(!node)return;
+let message=quoteAutoMessage;
+if(quoteAutoSchedule){
+const remaining=window.KananeoQuoteScheduler.getRemainingMs(quoteAutoSchedule);
+message=remaining>0?"自動次動画まで残り "+formatVideoTime(Math.ceil(remaining/1000)):"次動画へ切替中…";
+}
+node.textContent=message;
+}
+function storedQuoteDurationMs(item){
+const value=Number(item?.lengthMs??item?.durationMs??state.player.quoteDurationMs??0);
+return Number.isFinite(value)&&value>0?value:0;
+}
+function scheduleQuoteAutoNext(item,startedAt=Date.now(),options={}){
+if(options.clearExisting!==false)clearQuoteAutoTimer();
+const durationMs=storedQuoteDurationMs(item);
+const start=Number(startedAt)||Date.now();
+state.player.quoteStartedAt=start;
+state.player.quoteDurationMs=durationMs;
+state.player.quoteVideoId=String(item?.videoId||item?.video_id||quotePlayback.videoId||"");
+if(!state.playback.quoteAutoNext){
+quoteAutoMessage="引用再生の自動次動画はOFFです。";
+save();updateQuoteScheduleUi();return false;
+}
+const schedule=window.KananeoQuoteScheduler.createQuoteSchedule({
+startedAt:start,durationMs,gapSeconds:Number(state.playback.nextIntervalSeconds)
+});
+if(!schedule.ok){
+quoteAutoMessage=schedule.message;
+save();updateQuoteScheduleUi();return false;
+}
+state.player.quoteExpectedEndAt=schedule.dueAt;
+quoteAutoSchedule=schedule;
+quoteAutoMessage="動画時間を基準に次動画を予約しました。";
+const token=++quoteAutoToken;
+save();
+const delay=Math.max(0,window.KananeoQuoteScheduler.getRemainingMs(schedule));
+quoteAutoTimer=setTimeout(()=>{void handleQuoteAutoNext(token);},delay);
+updateQuoteScheduleUi();
+return true;
+}
+async function handleQuoteAutoNext(token){
+if(token!==quoteAutoToken||quoteAutoBusy)return;
+quoteAutoTimer=null;
+if(!state.playback.quoteAutoNext||!quoteAutoSchedule)return;
+quoteAutoBusy=true;
+quoteAutoMessage="引用再生の状態を確認しています。";
+updateQuoteScheduleUi();
+try{
+const programId=quotePlayback.programId||state.lastProgramId;
+const expectedVideoId=quotePlayback.videoId||state.player.quoteVideoId;
+if(!programId||!expectedVideoId)throw new Error("対象放送または動画IDを確認できません。");
+const current=await window.kananeoApp.niconico.getCurrentQuotation({programId});
+if(!current?.ok)throw new Error(current?.message||"引用再生状態を確認できませんでした。");
+if(current.exists&&current.currentVideoId!==expectedVideoId){
+await refreshQuotePlayback({silent:true});
+quoteAutoMessage="ニコ生側で別の動画に変更されたため、自動次動画を中止しました。";
+updateQuoteScheduleUi();
+return;
+}
+const finishedId=quotePlayback.itemId||state.player.currentId;
+const finished=[...state.requests,...state.stocks].find(item=>item.id===finishedId);
+if(finished&&finished.status==="playing"){
+finished.status="completed";
+state.logs.unshift("引用再生の予定時間に到達："+finished.title);
+}
+state.player.endedFor=finishedId||"";
+save();
+quoteAutoSchedule=null;
+quoteAutoMessage="動画時間に到達しました。次の候補を選んでいます。";
+updateQuoteScheduleUi();
+const advanced=await playNextQuoteItem({skipConfirmation:true,triggeredByAuto:true});
+if(!advanced){
+quoteAutoMessage="次に再生できる動画がありません。必要に応じてキューへ追加してください。";
+updateQuoteScheduleUi();
+}
+}catch(error){
+quoteAutoMessage=error?.message||"自動次動画の処理に失敗しました。";
+updateQuoteScheduleUi();
+toast(quoteAutoMessage);
+}finally{
+quoteAutoBusy=false;
+}
+}
 async function getNextQueueItem(){const selected=await window.kananeoApp.niconico.findNextQueueItem(state.requests.map(x=>({id:x.id,status:x.status})),state.player.currentId);return selected?state.requests.find(x=>x.id===selected.id)||null:null;}
-async function refreshQuotePlayback(){
-const programId=state.lastProgramId;
-if(!programId){toast("先に「放送・枠管理」で番組IDを確認してください。");return;}
+async function refreshQuotePlayback(options={}){
+const silent=options.silent===true;
+const programId=state.lastProgramId||quotePlayback.programId;
+if(!programId){if(!silent)toast("先に「放送・枠管理」で番組IDを確認してください。");return {ok:false};}
 const result=await window.kananeoApp.niconico.getCurrentQuotation({programId});
-if(!result?.ok){quotePlayback={...quotePlayback,message:result?.message||"引用再生状態を取得できませんでした。"};toast(quotePlayback.message);if(page==="player")render();return;}
+if(!result?.ok){
+quotePlayback={...quotePlayback,message:result?.message||"引用再生状態を取得できませんでした。"};
+if(!silent)toast(quotePlayback.message);
+if(page==="player")render();
+return result;
+}
 const previousItemId=quotePlayback.itemId;
 const matched=result.exists?[...state.requests,...state.stocks].find(item=>item.videoId===result.currentVideoId):null;
-if(previousItemId&&previousItemId!==matched?.id){
+if(previousItemId!==matched?.id){
+clearQuoteAutoTimer(result.exists?"引用再生の対象が変わりました。":"引用再生は停止しています。");
+if(previousItemId){
 for(const list of [state.requests,state.stocks])list.forEach(item=>{if(item.id===previousItemId&&item.status==="playing")item.status="queued";});
+}
 }
 if(matched){
 for(const list of [state.requests,state.stocks])list.forEach(item=>{if(item.status==="playing"&&item.id!==matched.id)item.status="queued";});
@@ -175,25 +284,47 @@ matched.status="playing";
 }
 quotePlayback={active:!!result.exists,verified:true,programId,videoId:result.currentVideoId||"",queueType:matched?(state.stocks.includes(matched)?"stock":"request"):"",itemId:matched?.id||"",message:result.exists?"ニコ生の引用再生状態を確認しました。":"現在、引用再生は行われていません。"};
 if(matched){state.player.currentId=matched.id;state.player.currentQueueType=quotePlayback.queueType;}
-else if(!result.exists&&state.player.currentId===previousItemId){state.player.currentId="";}
+else if(!result.exists){
+if(state.player.currentId===previousItemId)state.player.currentId="";
+clearQuoteAutoTimer("ニコ生の引用再生は停止しています。");
+state.player.quoteStartedAt=0;
+state.player.quoteDurationMs=0;
+state.player.quoteVideoId="";
+state.player.quoteExpectedEndAt=0;
+}else if(result.exists){
+const storedMatches=state.player.quoteVideoId===result.currentVideoId&&Number(state.player.quoteStartedAt)>0&&Number(state.player.quoteDurationMs)>0;
+if(storedMatches){
+const scheduleItem={videoId:result.currentVideoId,lengthMs:Number(state.player.quoteDurationMs)};
+scheduleQuoteAutoNext(scheduleItem,Number(state.player.quoteStartedAt));
+}else{
+clearQuoteAutoTimer("現在の引用再生は開始時刻が分からないため、自動次動画は予約できません。");
+}
+}
 save();
 if(page==="player")render();
+updateQuoteScheduleUi();
+return result;
 }
 async function playQuotedQueueItem(item,queueType="request",skipConfirmation=false){
-if(!item)return;
+if(!item)return false;
 const programId=state.lastProgramId||commentConnection.programId;
-if(!programId){toast("先に「放送・枠管理」で配信中の放送IDを確認してください。");return;}
+if(!programId){toast("先に「放送・枠管理」で配信中の放送IDを確認してください。");return false;}
 const ok=skipConfirmation||confirm("ニコ生の放送へ「"+item.title+"」を引用再生します。\\n\\n視聴者に動画が流れます。放送主権限が必要です。実行しますか？");
-if(!ok)return;
+if(!ok)return false;
 try{
 const validation=await window.kananeoApp.niconico.validateVideo(item.videoId||item.url);
-if(!validation?.ok){toast(validation?.message||"引用再生できる動画IDではありません。");return;}
+if(!validation?.ok){toast(validation?.message||"引用再生できる動画IDではありません。");return false;}
 const result=await window.kananeoApp.niconico.playQuotedVideo({
 programId,videoId:validation.videoId,confirmed:true,
 mainVolume:state.playback.mainVolume,subVolume:state.playback.subVolume
 });
-if(!result?.ok){toast(result?.message||"引用再生に失敗しました。");return;}
-for(const list of [state.requests,state.stocks])list.forEach(x=>{if(x.status==="playing")x.status="queued";});
+if(!result?.ok){toast(result?.message||"引用再生に失敗しました。");return false;}
+const previousId=quotePlayback.itemId;
+if(previousId&&previousId!==item.id){
+const previous=[...state.requests,...state.stocks].find(x=>x.id===previousId);
+if(previous&&previous.status==="playing")previous.status="completed";
+}
+for(const list of [state.requests,state.stocks])list.forEach(x=>{if(x.status==="playing"&&x.id!==item.id)x.status="completed";});
 item.status="playing";
 state.player.currentId=item.id;
 state.player.currentQueueType=queueType;
@@ -201,22 +332,31 @@ state.player.status="playing";
 state.player.currentTime=0;
 state.player.duration=Math.max(0,Number(item.lengthMs)||0)/1000;
 state.player.endedFor="";
+const startedAt=Date.now();
+state.player.quoteStartedAt=startedAt;
+state.player.quoteDurationMs=storedQuoteDurationMs(item);
+state.player.quoteVideoId=validation.videoId;
+state.player.quoteExpectedEndAt=state.player.quoteDurationMs>0?startedAt+state.player.quoteDurationMs+Number(state.playback.nextIntervalSeconds||0)*1000:0;
 quotePlayback={active:true,verified:!!result.verified,programId,videoId:result.videoId,queueType,itemId:item.id,message:result.message};
 state.logs.unshift("ニコ生へ引用再生："+item.title);
+scheduleQuoteAutoNext(item,startedAt);
 save();
 if(page==="requests"||page==="stocks"||page==="player")render();
 toast(result.message||"引用再生の要求を送信しました。");
-}catch{toast("引用再生APIに接続できませんでした。");}
+return true;
+}catch{toast("引用再生APIに接続できませんでした。");return false;}
 }
 async function stopQuotedPlayback(){
 const programId=quotePlayback.programId||state.lastProgramId;
 if(!programId){toast("放送IDを確認してください。");return;}
 if(!confirm("現在ニコ生へ送っている引用再生を停止しますか？"))return;
+clearQuoteAutoTimer("引用再生を停止しました。");
 const current=await window.kananeoApp.niconico.getCurrentQuotation({programId});
 if(!current?.ok){toast(current?.message||"引用再生状態を確認できませんでした。");return;}
 if(!current.exists){
 const stoppedItemId=quotePlayback.itemId;
 quotePlayback={active:false,verified:true,programId,videoId:"",queueType:"",itemId:"",message:"ニコ生側では引用再生が既に停止しています。"};
+state.player.quoteStartedAt=0;state.player.quoteDurationMs=0;state.player.quoteVideoId="";state.player.quoteExpectedEndAt=0;
 for(const list of [state.requests,state.stocks])list.forEach(x=>{if(x.id===stoppedItemId&&x.status==="playing")x.status="queued";});
 if(state.player.currentId===stoppedItemId){state.player.currentId="";}save();if(page==="player")render();toast(quotePlayback.message);return;
 }
@@ -224,6 +364,7 @@ const result=await window.kananeoApp.niconico.stopQuotedVideo({programId,confirm
 if(!result?.ok){toast(result?.message||"引用再生を停止できませんでした。");return;}
 const stoppedItemId=quotePlayback.itemId;
 quotePlayback={active:false,verified:true,programId,videoId:"",queueType:"",itemId:"",message:result.message};
+state.player.quoteStartedAt=0;state.player.quoteDurationMs=0;state.player.quoteVideoId="";state.player.quoteExpectedEndAt=0;
 for(const list of [state.requests,state.stocks])list.forEach(x=>{if(x.id===stoppedItemId&&x.status==="playing")x.status="queued";});
 if(state.player.currentId===stoppedItemId){state.player.currentId="";}save();if(page==="player"||page==="requests"||page==="stocks")render();toast(result.message);
 }
@@ -237,10 +378,10 @@ playStyle:state.playback.playStyle,
 randomStock:state.playback.randomStock,
 remainingMs
 });
-if(!selected){toast("再生可能なリクエスト・ストックがありません。放送残り時間や引用可否も確認してください。");return;}
+if(!selected){if(!options.triggeredByAuto)toast("再生可能なリクエスト・ストックがありません。放送残り時間や引用可否も確認してください。");return false;}
 const list=selected.queue==="stock"?state.stocks:state.requests;
 const item=list[selected.index];
-await playQuotedQueueItem(item,selected.queue,options.skipConfirmation===true);
+return await playQuotedQueueItem(item,selected.queue,options.skipConfirmation===true);
 }
 async function playQueueItem(item,queueType="request"){
 if(!item)return;
@@ -593,7 +734,7 @@ if(b.hasAttribute("data-quote-stock")){const item=state.stocks.find(x=>x.id===b.
 if(b.hasAttribute("data-quote-next")){void playNextQuoteItem();return;}
 if(b.hasAttribute("data-quote-refresh")){void refreshQuotePlayback();return;}
 if(b.hasAttribute("data-quote-stop")){void stopQuotedPlayback();return;}
-if(b.hasAttribute("data-save-playback")){state.playback.playStyle=Number(document.getElementById("play-style").value)===2?2:1;state.playback.randomStock=document.getElementById("random-stock").checked;const mainVolume=Number(document.getElementById("quote-main-volume").value);const subVolume=Number(document.getElementById("quote-sub-volume").value);state.playback.mainVolume=Number.isFinite(mainVolume)?Math.max(0,Math.min(1,mainVolume)):1;state.playback.subVolume=Number.isFinite(subVolume)?Math.max(0,Math.min(1,subVolume)):0;save();toast("引用再生・スケジューラー設定を保存しました。");}
+if(b.hasAttribute("data-save-playback")){state.playback.playStyle=Number(document.getElementById("play-style").value)===2?2:1;state.playback.randomStock=document.getElementById("random-stock").checked;state.playback.quoteAutoNext=document.querySelector('[data-toggle="quote-auto-next"]').checked;const gap=Number(document.getElementById("quote-gap").value);state.playback.nextIntervalSeconds=Number.isInteger(gap)?Math.max(0,Math.min(300,gap)):10;const mainVolume=Number(document.getElementById("quote-main-volume").value);const subVolume=Number(document.getElementById("quote-sub-volume").value);state.playback.mainVolume=Number.isFinite(mainVolume)?Math.max(0,Math.min(1,mainVolume)):1;state.playback.subVolume=Number.isFinite(subVolume)?Math.max(0,Math.min(1,subVolume)):0;save();if(quotePlayback.active){if(state.playback.quoteAutoNext){const active=currentQueueItem();const started=Number(state.player.quoteStartedAt);if(started>0)scheduleQuoteAutoNext(active||{videoId:quotePlayback.videoId,lengthMs:state.player.quoteDurationMs},started);else quoteAutoMessage="引用再生の開始時刻が分からないため、次の動画から自動予約します。";}else clearQuoteAutoTimer("引用再生の自動次動画はOFFです。");}else updateQuoteScheduleUi();toast("引用再生・スケジューラー設定を保存しました。");}
 if(b.hasAttribute("data-player-next")){void playNextQueueItem(true);return;}
 if(b.hasAttribute("data-player-focus")){window.kananeoApp.niconico.focusVideo().then(r=>toast(r?.message||"プレイヤーを開けませんでした。"));return;}
 if(b.hasAttribute("data-player-close")){window.kananeoApp.niconico.closeVideo().then(r=>{playerState={state:"closed",message:r?.message||"プレイヤーを閉じました。"};updateVideoPlayerState(playerState);toast(r?.message||"プレイヤーを閉じました。");});return;}
@@ -624,7 +765,7 @@ if(b.hasAttribute("data-clear-logs")){state.logs=[];save();render()}
 if(b.hasAttribute("data-placeholder"))toast("現在の段階ではこの操作は未実装です。");
 });
 document.addEventListener("input",e=>{if(e.target.id==="comments-search")renderComments();});
-document.addEventListener("change",e=>{if(e.target.id==="comments-filter")renderComments();if(e.target.id==="player-auto-next"){state.player.autoNext=e.target.checked;save();toast(e.target.checked?"自動で次の動画へ切り替えます。":"自動次動画切替をOFFにしました。");}if(e.target.id==="request-from-comments"){state.requestSettings.acceptComments=e.target.checked;save();toast(e.target.checked?"コメントからのリクエスト受付をONにしました。":"コメントからのリクエスト受付をOFFにしました。");}if(e.target.id==="request-max-per-user"){state.requestSettings.maxPerUser=Math.min(50,Math.max(1,Number(e.target.value)||5));save();toast("ユーザー別リクエスト上限を保存しました。");}});
+document.addEventListener("change",e=>{if(e.target.matches('[data-toggle="quote-auto-next"]')){state.playback.quoteAutoNext=e.target.checked;save();if(e.target.checked&&quotePlayback.active){const active=currentQueueItem();const started=Number(state.player.quoteStartedAt);if(started>0)scheduleQuoteAutoNext(active||{videoId:quotePlayback.videoId,lengthMs:state.player.quoteDurationMs},started);else{quoteAutoMessage="引用再生の開始時刻が不明です。次の動画から自動予約します。";updateQuoteScheduleUi();}}else clearQuoteAutoTimer("引用再生の自動次動画はOFFです。");toast(e.target.checked?"引用再生の自動次動画をONにしました。":"引用再生の自動次動画をOFFにしました。");}if(e.target.id==="comments-filter")renderComments();if(e.target.id==="player-auto-next"){state.player.autoNext=e.target.checked;save();toast(e.target.checked?"自動で次の動画へ切り替えます。":"自動次動画切替をOFFにしました。");}if(e.target.id==="request-from-comments"){state.requestSettings.acceptComments=e.target.checked;save();toast(e.target.checked?"コメントからのリクエスト受付をONにしました。":"コメントからのリクエスト受付をOFFにしました。");}if(e.target.id==="request-max-per-user"){state.requestSettings.maxPerUser=Math.min(50,Math.max(1,Number(e.target.value)||5));save();toast("ユーザー別リクエスト上限を保存しました。");}});
 document.addEventListener("submit",async e=>{
 e.preventDefault();
 if(e.target.id==="request-form"){
@@ -663,6 +804,6 @@ if(window.kananeoApp?.niconico){window.kananeoApp.niconico.getSessionStatus().th
     window.kananeoApp.niconico.onComment(receiveComment);
     window.kananeoApp.niconico.onCommentState(updateCommentConnection);window.kananeoApp.niconico.onVideoState(updateVideoPlayerState);}
 render();
-if(state.lastProgramId)void refreshDashboardStatistics(true);
-setInterval(()=>{if(page==="dashboard"){updateDashboardStatsUi();if(!dashboardStats.loading&&state.lastProgramId&&Date.now()-(Date.parse(dashboardStats.updatedAt)||0)>30000)void refreshDashboardStatistics(true);}},1000);
+if(state.lastProgramId){void refreshDashboardStatistics(true);void refreshQuotePlayback({silent:true});}
+setInterval(()=>{updateQuoteScheduleUi();if(page==="dashboard"){updateDashboardStatsUi();if(!dashboardStats.loading&&state.lastProgramId&&Date.now()-(Date.parse(dashboardStats.updatedAt)||0)>30000)void refreshDashboardStatistics(true);}},1000);
 })();
