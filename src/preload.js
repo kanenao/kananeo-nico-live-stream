@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
     openVideo:input=>ipcRenderer.invoke("niconico:open-video",input),
     focusVideo:()=>ipcRenderer.invoke("niconico:focus-video"),
     closeVideo:()=>ipcRenderer.invoke("niconico:close-video"),
+    getProgramStatistics:input=>ipcRenderer.invoke("niconico:get-program-statistics",input),
     getSessionStatus:()=>ipcRenderer.invoke("niconico:get-session-status"),
     logout:()=>ipcRenderer.invoke("niconico:logout"),
     checkProgram:input=>ipcRenderer.invoke("niconico:check-program",input),
