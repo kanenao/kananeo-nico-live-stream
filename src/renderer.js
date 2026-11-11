@@ -195,7 +195,7 @@ videoLibraryData=result.library||{version:1,items:[],history:[],updatedAt:""};
 finally{videoLibraryLoading=false;if(page==="library"){render();renderVideoLibraryRows();}}
 }
 function librarySourceLabel(source){
-return ({manual:"手動登録","watch-later":"あとで見る",mylist:"マイリスト",series:"シリーズ","text-import":"テキスト取り込み","json-import":"JSON取り込み"}[source]||source||"不明");
+return ({manual:"手動登録","watch-later":"あとで見る",mylist:"マイリスト",series:"シリーズ",text:"テキスト取り込み",json:"JSON取り込み"}[source]||source||"不明");
 }
 async function recordVideoPlaybackHistory(item,queueType="library",playbackType="preview"){
 if(!item?.videoId||!window.kananeoApp?.videoLibrary)return;
