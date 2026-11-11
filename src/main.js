@@ -1172,7 +1172,7 @@ async function fetchNiconicoLibraryVideos(input = {}) {
       if (!unique.has(item.videoId)) unique.set(item.videoId,item);
       if (unique.size>=1000) break;
     }
-    const limited=unique.size>=1000&&(responseHasMore||totalCount===null||totalCount>unique.size);
+    const limited=totalCount!==null?totalCount>unique.size:responseHasMore;
     return {ok:true,entries:[...unique.values()],sourceTitle,sourceType:type,limited,totalCount};
   } catch (error) {
     const timeout = error && (error.name==="TimeoutError"||error.name==="AbortError");
