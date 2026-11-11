@@ -1,6 +1,6 @@
 "use strict";
 
-const TERMINAL_STATUSES = new Set(["completed","skipped","rejected"]);
+const TERMINAL_STATUSES = new Set(["completed","skipped","rejected","playing"]);
 
 function isEligible(item, queueType, remainingMs) {
   if (!item || item.noLivePlay === true || item.no_live_play === true || item.no_live_play === 1 || item.playable === false) return false;
@@ -29,7 +29,7 @@ function selectNextPlaybackCandidate(options = {}) {
   const stocks=Array.isArray(options.stocks) ? options.stocks : [];
   const playStyle=Number(options.playStyle) || 0;
   const randomStock=options.randomStock === true;
-  const remainingMs=Number(options.remainingMs);
+  const remainingMs=options.remainingMs==null?NaN:Number(options.remainingMs);
   const random=typeof options.random === "function" ? options.random : Math.random;
 
   let requestCandidates=requests
