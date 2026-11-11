@@ -67,7 +67,8 @@ function parseBroadcasterCommentResponse(responseText, httpStatus = 200) {
     if (errorCode === "AUTHENTICATION_FAILED" || errorCode === "FORBIDDEN") {
       return { ok:false, code:"BROADCASTER_PERMISSION_REQUIRED", message:"運営コメントの送信権限がありません。配信主アカウントでログインしてください。" };
     }
-    if (errorCode === "RATE_LIMITED" || errorCode === "TOO_MANY_REQUESTS") {
+    const errorMessage = typeof meta.errorMessage === "string" ? meta.errorMessage.slice(0, 200) : "";
+    if (errorCode === "RATE_LIMITED" || errorCode === "TOO_MANY_REQUESTS" || /投稿間隔が短|リクエスト間隔が短|連投/.test(errorMessage)) {
       return { ok:false, code:"BROADCASTER_RATE_LIMITED", message:"コメントの投稿間隔が短すぎます。少し時間を空けてください。" };
     }
     return { ok:false, code:"BROADCASTER_API_ERROR", message:"運営コメントAPIが送信を受け付けませんでした。" };
