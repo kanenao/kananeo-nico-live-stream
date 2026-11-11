@@ -80,3 +80,21 @@ test("supports random stock ordering without changing request priority",()=>{
  });
  assert.equal(result.queue,"request");
 });
+
+test("manual mode keeps the first queued request for an explicit next-button action",()=>{
+ const result=selectNextPlaybackCandidate({
+  requests:[{id:"first"},{id:"second"}],
+  stocks:[{id:"stock"}],
+  playStyle:0
+ });
+ assert.equal(result.queue,"request");
+ assert.equal(result.item.id,"first");
+});
+
+test("sequential mode keeps insertion order",()=>{
+ const result=selectNextPlaybackCandidate({
+  requests:[{id:"first"},{id:"second"}],
+  playStyle:1
+ });
+ assert.equal(result.item.id,"first");
+});
