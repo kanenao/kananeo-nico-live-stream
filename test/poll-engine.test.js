@@ -41,6 +41,10 @@ test("handles ties and zero votes according to configured rules", () => {
   assert.equal(decideEnqueteResult([{name:choices[0],rate:0},{name:choices[1],rate:0}],choices,{zero:false}).decision,"next");
 });
 
+test("refuses invalid percentages above 100", () => {
+  assert.equal(decideEnqueteResult([{name:choices[0],rate:101},{name:choices[1],rate:0}],choices).decision,"invalid");
+});
+
 test("refuses to automate if the result labels do not match", () => {
   assert.equal(decideEnqueteResult([{name:"はい",rate:100},{name:"いいえ",rate:0}],choices).decision,"invalid");
 });
