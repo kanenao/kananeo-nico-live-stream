@@ -4,9 +4,9 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
-  version:"0.1.0-beta.19",
+  version:"0.1.0-beta.20",
   platform:process.platform,
-  stage:"local-user-aliases-and-memos",
+  stage:"local-comment-speech-and-user-aliases",
   videoLibrary:Object.freeze({
     get:()=>ipcRenderer.invoke("app:video-library-get"),
     add:input=>ipcRenderer.invoke("app:video-library-add",input),
