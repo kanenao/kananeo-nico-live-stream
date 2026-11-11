@@ -3,6 +3,7 @@
 const API_ORIGIN = "https://nvapi.nicovideo.jp";
 const PAGE_SIZE_WATCH_LATER = 100;
 const PAGE_SIZE_LIST = 500;
+const MAX_PAGE_SIZE_LIST = 1000;
 const MAX_LIST_ID = 20;
 
 function extractNiconicoListId(input, type) {
@@ -45,13 +46,18 @@ function buildNiconicoLibraryRequest(type, input = {}) {
     return { ok:false, code:"INVALID_LIST_ID", message:type === "mylist" ? "マイリストURLまたはIDを確認してください。" : "シリーズURLまたはIDを確認してください。" };
   }
   const encodedId = encodeURIComponent(listId);
+  const page = Number.isInteger(Number(input.page)) ? Math.max(1, Math.min(100, Number(input.page))) : 1;
+  const requestedPageSize = Number(input.pageSize);
+  const pageSize = Number.isInteger(requestedPageSize)
+    ? Math.max(1, Math.min(MAX_PAGE_SIZE_LIST, requestedPageSize))
+    : PAGE_SIZE_LIST;
   const url = type === "mylist"
-    ? API_ORIGIN + "/v2/mylists/" + encodedId + "?pageSize=" + PAGE_SIZE_LIST
-    : API_ORIGIN + "/v2/series/" + encodedId + "?pageSize=" + PAGE_SIZE_LIST;
+    ? API_ORIGIN + "/v2/mylists/" + encodedId + "?pageSize=" + pageSize + "&page=" + page
+    : API_ORIGIN + "/v2/series/" + encodedId + "?pageSize=" + pageSize;
   const fallbackUrl = type === "mylist"
-    ? API_ORIGIN + "/v1/users/me/mylists/" + encodedId + "?pageSize=" + PAGE_SIZE_LIST
+    ? API_ORIGIN + "/v1/users/me/mylists/" + encodedId + "?pageSize=" + pageSize + "&page=" + page
     : "";
-  return { ok:true, type, listId, url, fallbackUrl, page:1, pageSize:PAGE_SIZE_LIST };
+  return { ok:true, type, listId, url, fallbackUrl, page, pageSize };
 }
 
 function findVideoId(item, video) {
@@ -106,7 +112,7 @@ function parseNiconicoLibraryResponse(responseText, type) {
   let rawItems = Array.isArray(list?.items) ? list.items
     : Array.isArray(list?.videos) ? list.videos
     : Array.isArray(data.items) ? data.items : [];
-  rawItems = rawItems.slice(0, PAGE_SIZE_LIST);
+  rawItems = rawItems.slice(0, MAX_PAGE_SIZE_LIST);
   const entries = [];
   const seen = new Set();
   for (const raw of rawItems) {
@@ -115,6 +121,16 @@ function parseNiconicoLibraryResponse(responseText, type) {
     seen.add(item.videoId);
     entries.push(item);
   }
+  const totalCountValue = type === "mylist"
+    ? Number(list?.totalItemCount ?? data.totalCount)
+    : type === "series" ? Number(data.totalCount ?? list?.totalCount) : NaN;
+  const totalCount = Number.isFinite(totalCountValue) && totalCountValue >= 0
+    ? Math.floor(totalCountValue) : null;
+  const hasMore = type === "watch-later"
+    ? rawItems.length >= PAGE_SIZE_WATCH_LATER
+    : type === "mylist"
+      ? list?.hasNext === true || (totalCount !== null && totalCount > entries.length)
+      : totalCount !== null && totalCount > entries.length;
   return {
     ok:true,
     code:"OK",
@@ -123,7 +139,8 @@ function parseNiconicoLibraryResponse(responseText, type) {
     rawCount:rawItems.length,
     importedCount:entries.length,
     skippedCount:rawItems.length - entries.length,
-    hasMore:type === "watch-later" && rawItems.length >= PAGE_SIZE_WATCH_LATER
+    totalCount,
+    hasMore
   };
 }
 
@@ -131,6 +148,7 @@ module.exports = {
   API_ORIGIN,
   PAGE_SIZE_WATCH_LATER,
   PAGE_SIZE_LIST,
+  MAX_PAGE_SIZE_LIST,
   extractNiconicoListId,
   buildNiconicoLibraryRequest,
   parseNiconicoLibraryResponse
