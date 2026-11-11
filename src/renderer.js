@@ -28,6 +28,7 @@ let playerState={state:"closed",currentTime:0,duration:0,message:"プレイヤ�
 let speechQueue=[];
 let speechBusy=false;
 let speechDroppedCount=0;
+let speechGeneration=0;
 const MAX_DISPLAY_COMMENTS=1000;
 const MAX_QUEUE_ITEMS=1000;
 let nicoStatus={authenticated:false,label:"状態を確認中"};
@@ -210,7 +211,7 @@ panel("この段階で確認すること","番組ページ確認とコメント�
 }else if(page==="voice"){
 const speechAvailable=!!(window.speechSynthesis&&typeof window.SpeechSynthesisUtterance==="function");
 html=hero("VOICE & AUTO RESPONSE","音声・自動応答","コメント読み上げをローカル音声合成で行います。読み上げは初期状態OFFで、NGワード・過去コメントは対象外です。")+
-panel("コメント読み上げ","Windows／Chromiumにインストールされた日本語音声を使用します。",'<form id="voice-settings-form"><label class="switchrow"><span><b>コメント読み上げを有効にする</b><small>通常コメントを受信した順に読み上げます。初期状態はOFFです。</small></span><input type="checkbox" id="voice-enabled" '+(state.voice.enabled?"checked":"")+'></label><label class="switchrow"><span><b>読み上げにコテハンを含める</b><small>登録済みコテハン、未登録ならニコニコ表示名を読み上げます。</small></span><input type="checkbox" id="voice-include-name" '+(state.voice.includeName?"checked":"")+'></label><label class="switchrow"><span><b>放送者コメントも読み上げる</b><small>通常コメントとは別に、放送者コメントを読み上げ対象にします。</small></span><input type="checkbox" id="voice-speak-operator" '+(state.voice.speakOperator?"checked":"")+'></label><div class="field"><label>音声</label><select class="input" id="voice-uri"><option value="">システム標準の日本語音声</option></select><small class="muted" id="voice-engine-status">'+(speechAvailable?"利用可能な音声を確認しています…":"この環境では音声合成APIを利用できません。")+'</small></div><div class="grid3"><div class="field"><label>読み上げ速度（0.5〜2）</label><input class="input" id="voice-rate" type="number" min="0.5" max="2" step="0.1" value="'+Number(state.voice.rate||1)+'"></div><div class="field"><label>声の高さ（0〜2）</label><input class="input" id="voice-pitch" type="number" min="0" max="2" step="0.1" value="'+Number(state.voice.pitch||1)+'"></div><div class="field"><label>音量（0〜1）</label><input class="input" id="voice-volume" type="number" min="0" max="1" step="0.1" value="'+Number(state.voice.volume??1)+'"></div></div><div class="actions"><button class="btn primary" type="submit">読み上げ設定を保存</button><button class="btn" type="button" data-voice-test '+(!speechAvailable?"disabled":"")+'>テスト読み上げ</button><button class="btn" type="button" data-voice-pause '+(!speechAvailable?"disabled":"")+'>一時停止</button><button class="btn" type="button" data-voice-resume '+(!speechAvailable?"disabled":"")+'>再開</button><button class="btn" type="button" data-voice-clear>待ち行列をクリア</button></div><div class="muted" id="voice-queue-status">待ち行列：'+speechQueue.length+' 件 / 読み上げ待ちで破棄：'+speechDroppedCount+' 件</div></form>')+
+panel("コメント読み上げ","Windows／Chromiumにインストールされた日本語音声を使用します。",'<form id="voice-settings-form"><label class="switchrow"><span><b>コメント読み上げを有効にする</b><small>通常コメントを受信した順に読み上げます。初期状態はOFFです。</small></span><input type="checkbox" id="voice-enabled" '+(state.voice.enabled?"checked":"")+'></label><label class="switchrow"><span><b>読み上げにコテハンを含める</b><small>登録済みコテハン、未登録ならニコニコ表示名を読み上げます。</small></span><input type="checkbox" id="voice-include-name" '+(state.voice.includeName?"checked":"")+'></label><label class="switchrow"><span><b>放送者コメントも読み上げる</b><small>通常コメントとは別に、放送者コメントを読み上げ対象にします。</small></span><input type="checkbox" id="voice-speak-operator" '+(state.voice.speakOperator?"checked":"")+'></label><div class="field"><label>音声</label><select class="input" id="voice-uri"><option value="">システム標準の日本語音声</option></select><small class="muted" id="voice-engine-status">'+(speechAvailable?"利用可能な音声を確認しています…":"この環境では音声合成APIを利用できません。")+'</small></div><div class="grid3"><div class="field"><label>読み上げ速度（0.5〜2）</label><input class="input" id="voice-rate" type="number" min="0.5" max="2" step="0.1" value="'+Number(state.voice.rate||1)+'"></div><div class="field"><label>声の高さ（0〜2）</label><input class="input" id="voice-pitch" type="number" min="0" max="2" step="0.1" value="'+Number(state.voice.pitch??1)+'"></div><div class="field"><label>音量（0〜1）</label><input class="input" id="voice-volume" type="number" min="0" max="1" step="0.1" value="'+Number(state.voice.volume??1)+'"></div></div><div class="actions"><button class="btn primary" type="submit">読み上げ設定を保存</button><button class="btn" type="button" data-voice-test '+(!speechAvailable?"disabled":"")+'>テスト読み上げ</button><button class="btn" type="button" data-voice-pause '+(!speechAvailable?"disabled":"")+'>一時停止</button><button class="btn" type="button" data-voice-resume '+(!speechAvailable?"disabled":"")+'>再開</button><button class="btn" type="button" data-voice-clear>待ち行列をクリア</button></div><div class="muted" id="voice-queue-status">待ち行列：'+speechQueue.length+' 件 / 読み上げ待ちで破棄：'+speechDroppedCount+' 件</div></form>')+
 panel("読み上げ対象・安全設定","過去コメント、NGワードを含むコメント、空コメントは読み上げません。",'<div class="row"><b>対象</b><span>通常コメント'+(state.voice.speakOperator?" ＋ 放送者コメント":"")+'</span></div><div class="row"><b>キュー上限</b><span>100件（古い未読から破棄）</span></div><div class="muted">音声はこのPC上で再生されます。ニコ生のコメントとして投稿されることはありません。音声出力先や利用できる声はWindowsの音声設定に依存します。</div>');
 }else if(page==="logs"){
 html=hero("ACTIVITY & BACKUP","履歴・バックアップ","設定データのJSON書き出し・読み込み。")+
@@ -987,6 +988,7 @@ const node=document.getElementById("voice-queue-status");
 if(node)node.textContent="待ち行列："+speechQueue.length+" 件 / 読み上げ中："+(speechBusy?"はい":"いいえ")+" / 待ち行列で破棄："+speechDroppedCount+" 件";
 }
 function stopSpeechQueue(clear=true){
+speechGeneration++;
 if(clear)speechQueue=[];
 if(isSpeechEngineAvailable())window.speechSynthesis.cancel();
 speechBusy=false;
@@ -997,7 +999,7 @@ if(!isSpeechEngineAvailable()){toast("この環境では音声合成を利用で
 const utterance=new window.SpeechSynthesisUtterance(String(text||"").slice(0,320));
 utterance.lang="ja-JP";
 utterance.rate=Number(state.voice.rate)||1;
-utterance.pitch=Number(state.voice.pitch)||1;
+utterance.pitch=Number(state.voice.pitch??1);
 utterance.volume=Number(state.voice.volume??1);
 const voice=(window.speechSynthesis.getVoices()||[]).find(item=>item.voiceURI===state.voice.voiceURI);
 if(voice)utterance.voice=voice;
@@ -1007,16 +1009,21 @@ return true;
 function speakNextComment(){
 if(speechBusy||!speechQueue.length||!state.voice.enabled||!isSpeechEngineAvailable())return;
 const next=speechQueue.shift();
+const generation=speechGeneration;
 speechBusy=true;
 updateSpeechQueueUi();
 const utterance=new window.SpeechSynthesisUtterance(next);
 utterance.lang="ja-JP";
 utterance.rate=Number(state.voice.rate)||1;
-utterance.pitch=Number(state.voice.pitch)||1;
+utterance.pitch=Number(state.voice.pitch??1);
 utterance.volume=Number(state.voice.volume??1);
 const voice=(window.speechSynthesis.getVoices()||[]).find(item=>item.voiceURI===state.voice.voiceURI);
 if(voice)utterance.voice=voice;
+let finished=false;
 const finish=()=>{
+if(finished)return;
+finished=true;
+if(generation!==speechGeneration)return;
 speechBusy=false;
 updateSpeechQueueUi();
 if(state.voice.enabled)speakNextComment();
