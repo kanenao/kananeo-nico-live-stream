@@ -27,5 +27,7 @@ jobs:
           node --check src/enquete-api.js
           node --check src/program-api.js
           node --check src/extension-api.js
+          node --check src/quotation-api.js
+          node --check src/playback-scheduler.js
       - name: Run unit tests
         run: npm test
