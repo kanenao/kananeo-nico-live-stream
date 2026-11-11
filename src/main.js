@@ -1292,9 +1292,9 @@ function registerIpcHandlers() {
     return updateVideoLibrary(library=>removeVideoEntry(library,input.videoId));
   });
   ipcMain.handle("app:video-library-update",async(event,input)=>{
-    if(!isVideoLibrarySender(event)||!input||typeof input!=="object"||
-      typeof input.videoId!=="string"||input.videoId.length>64||
-      JSON.stringify(input).length>10000) {
+    if(!isVideoLibrarySender(event)) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    if(!input||typeof input!=="object"||typeof input.videoId!=="string"||
+      input.videoId.length>64||JSON.stringify(input).length>10000) {
       return {ok:false,code:"INVALID_INPUT",message:"動画の編集内容を確認してください。"};
     }
     return updateVideoLibrary(library=>updateVideoEntry(library,input.videoId,input));
