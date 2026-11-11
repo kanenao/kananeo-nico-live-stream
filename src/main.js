@@ -13,6 +13,11 @@ const { decideEnqueteResult } = require("./poll-engine");
 const { buildEnqueteRequest, mapEnqueteHttpError, parseEnqueteResultResponse } = require("./enquete-api");
 const { buildStatisticsRequest, parseStatisticsResponse } = require("./program-api");
 const { buildExtensionOptionsRequest, parseExtensionOptionsResponse } = require("./extension-api");
+const {
+  buildGetCurrentQuotationRequest, buildPlayQuotationRequest, buildStopQuotationRequest,
+  parseCurrentQuotationResponse, parseQuotationMutationResponse
+} = require("./quotation-api");
+const { selectNextPlaybackCandidate } = require("./playback-scheduler");
 
 const NICONICO_HOME = "https://live.nicovideo.jp/";
 const NICONICO_WATCH_BASE = "https://live2.nicovideo.jp/watch/";
@@ -629,6 +634,140 @@ function closeVideoPlayer() {
   return { ok:true, message:"プレイヤーウィンドウを閉じました。" };
 }
 
+async function fetchQuotationRequest(request) {
+  let response;
+  try {
+    response=await niconicoSession.fetch(request.url,{
+      method:request.method,
+      credentials:"include",
+      redirect:"error",
+      headers:{
+        Accept:"application/json",
+        ...(request.body!==undefined?{"Content-Type":"application/json"}:{})
+      },
+      ...(request.body!==undefined?{body:JSON.stringify(request.body)}:{}),
+      signal:AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+    });
+  } catch(error) {
+    const timeout=error&&(error.name==="TimeoutError"||error.name==="AbortError");
+    return {ok:false,code:timeout?"QUOTATION_TIMEOUT":"QUOTATION_NETWORK_ERROR",
+      message:timeout?"引用再生APIがタイムアウトしました。":"引用再生APIへ接続できませんでした。"};
+  }
+  if(!isTrustedNiconicoUrl(response.url||request.url)) {
+    return {ok:false,code:"UNTRUSTED_REDIRECT",message:"安全確認できない接続先へ転送されたため引用再生を中止しました。"};
+  }
+  return {ok:true,response};
+}
+
+async function requireNiconicoLogin() {
+  let cookies;
+  try { cookies=await niconicoSession.cookies.get({url:NICONICO_HOME}); }
+  catch { return {ok:false,code:"COOKIE_READ_FAILED",message:"ログインセッションを確認できませんでした。"}; }
+  const valid=cookies.some(cookie=>
+    (cookie.name==="user_session"||cookie.name==="user_session_secure") &&
+    cookie.value &&
+    (!cookie.expirationDate||cookie.expirationDate>Date.now()/1000)
+  );
+  return valid?{ok:true}:{ok:false,code:"AUTH_REQUIRED",message:"ニコニコ公式ログインが必要です。"};
+}
+
+async function getCurrentQuotation(input={}) {
+  let programId;
+  try { programId=normalizeProgramId(input.programId); }
+  catch { return {ok:false,code:"INVALID_PROGRAM_ID",message:"放送IDを確認してください。"}; }
+  const login=await requireNiconicoLogin();
+  if(!login.ok)return login;
+  const request=buildGetCurrentQuotationRequest(programId);
+  if(!request.ok)return request;
+  const fetched=await fetchQuotationRequest(request);
+  if(!fetched.ok)return fetched;
+  let responseText="";
+  if(fetched.response.status!==404) {
+    try { responseText=await fetched.response.text(); }
+    catch { return {ok:false,code:"QUOTATION_RESPONSE_INVALID",message:"引用再生状態を読み取れませんでした。"}; }
+  }
+  const parsed=parseCurrentQuotationResponse(fetched.response.status,responseText);
+  if(!parsed.ok)return parsed;
+  return {ok:true,programId,...parsed,updatedAt:new Date().toISOString()};
+}
+
+async function playQuotedVideo(input={}) {
+  let programId;
+  try { programId=normalizeProgramId(input.programId); }
+  catch { return {ok:false,code:"INVALID_PROGRAM_ID",message:"配信中の放送IDを確認してください。"}; }
+  if(input.confirmed!==true) {
+    return {ok:false,code:"CONFIRMATION_REQUIRED",message:"実配信への引用再生は明示確認が必要です。"};
+  }
+  const login=await requireNiconicoLogin();
+  if(!login.ok)return login;
+
+  const current=await getCurrentQuotation({programId});
+  if(!current.ok)return current;
+  const request=buildPlayQuotationRequest({
+    programId,
+    videoId:input.videoId,
+    hasActiveQuotation:current.exists,
+    mainVolume:input.mainVolume,
+    subVolume:input.subVolume
+  });
+  if(!request.ok)return request;
+
+  const fetched=await fetchQuotationRequest(request);
+  if(!fetched.ok)return fetched;
+  let responseText="";
+  try { responseText=await fetched.response.text(); }
+  catch { return {ok:false,code:"QUOTATION_RESPONSE_INVALID",message:"引用再生APIの応答を読み取れませんでした。"}; }
+  const mutation=parseQuotationMutationResponse(fetched.response.status,responseText);
+  if(!mutation.ok)return mutation;
+
+  const verified=await getCurrentQuotation({programId});
+  return {
+    ok:true,
+    programId,
+    videoId:request.body.contents[0].id,
+    method:request.method,
+    verified:!!verified.ok&&verified.currentVideoId===request.body.contents[0].id,
+    currentVideoId:verified.ok?verified.currentVideoId:"",
+    message:verified.ok&&verified.currentVideoId===request.body.contents[0].id
+      ?"ニコ生の引用再生状態を確認しました。"
+      :"引用再生APIは受け付けました。現在の再生状態はまだ確認できていません。"
+  };
+}
+
+async function stopQuotedVideo(input={}) {
+  let programId;
+  try { programId=normalizeProgramId(input.programId); }
+  catch { return {ok:false,code:"INVALID_PROGRAM_ID",message:"放送IDを確認してください。"}; }
+  if(input.confirmed!==true) {
+    return {ok:false,code:"CONFIRMATION_REQUIRED",message:"ニコ生の引用再生停止には明示確認が必要です。"};
+  }
+  const login=await requireNiconicoLogin();
+  if(!login.ok)return login;
+  const request=buildStopQuotationRequest(programId);
+  if(!request.ok)return request;
+  const fetched=await fetchQuotationRequest(request);
+  if(!fetched.ok)return fetched;
+  let responseText="";
+  try { responseText=await fetched.response.text(); }
+  catch { return {ok:false,code:"QUOTATION_RESPONSE_INVALID",message:"停止APIの応答を読み取れませんでした。"}; }
+  const result=parseQuotationMutationResponse(fetched.response.status,responseText);
+  if(!result.ok)return result;
+  return {ok:true,programId,message:"引用再生の停止要求を送信しました。"};
+}
+
+function selectPlaybackCandidate(input={}) {
+  if(!input||typeof input!=="object")return null;
+  const requests=Array.isArray(input.requests)?input.requests.slice(0,1000):[];
+  const stocks=Array.isArray(input.stocks)?input.stocks.slice(0,1000):[];
+  return selectNextPlaybackCandidate({
+    requests,
+    stocks,
+    playStyle:input.playStyle,
+    randomStock:input.randomStock===true,
+    remainingMs:Number(input.remainingMs)
+  });
+}
+
 async function getProgramExtensionOptions(input = {}) {
   let programId;
   try {
@@ -849,6 +988,23 @@ function registerIpcHandlers() {
   ipcMain.handle("niconico:extract-request",(event,input)=>{
     if(event.sender!==mainWindow?.webContents||typeof input!=="string"||input.length>4000) return "";
     return extractRequestCandidate(input);
+  });
+  ipcMain.handle("niconico:get-current-quotation",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    return getCurrentQuotation(input||{});
+  });
+  ipcMain.handle("niconico:play-quoted-video",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    if(!input||typeof input!=="object"||typeof input.videoId!=="string"||input.videoId.length>32)return {ok:false,code:"INVALID_INPUT",message:"動画IDを確認してください。"};
+    return playQuotedVideo(input);
+  });
+  ipcMain.handle("niconico:stop-quoted-video",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    return stopQuotedVideo(input||{});
+  });
+  ipcMain.handle("niconico:select-playback-candidate",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents)return null;
+    return selectPlaybackCandidate(input||{});
   });
   ipcMain.handle("niconico:validate-video",(event,input)=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
