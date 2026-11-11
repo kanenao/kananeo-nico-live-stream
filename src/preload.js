@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
     startEnquete:input=>ipcRenderer.invoke("niconico:start-enquete",input),
     showEnqueteResult:input=>ipcRenderer.invoke("niconico:show-enquete-result",input),
     finishEnquete:input=>ipcRenderer.invoke("niconico:finish-enquete",input),
+    decideEnqueteResult:input=>ipcRenderer.invoke("niconico:decide-enquete",input),
     extractRequestCandidate:input=>ipcRenderer.invoke("niconico:extract-request",input),
     findNextQueueItem:(items,currentId)=>ipcRenderer.invoke("niconico:find-next-queue-item",items,currentId),
     openVideo:input=>ipcRenderer.invoke("niconico:open-video",input),
