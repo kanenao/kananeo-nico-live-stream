@@ -54,7 +54,7 @@ function decideEnqueteResult(items, choices, rules = {}) {
 
   if (!continueItem || !nextItem ||
       !Number.isFinite(continueItem.rate) || !Number.isFinite(nextItem.rate) ||
-      continueItem.rate < 0 || nextItem.rate < 0) {
+      continueItem.rate < 0 || nextItem.rate < 0 || continueItem.rate > 100 || nextItem.rate > 100) {
     return { decision:"invalid", reason:"設定した選択肢と投票結果が一致しません。自動進行を停止してください。" };
   }
 
