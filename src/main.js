@@ -743,6 +743,9 @@ async function stopQuotedVideo(input={}) {
   }
   const login=await requireNiconicoLogin();
   if(!login.ok)return login;
+  const current=await getCurrentQuotation({programId});
+  if(!current.ok)return current;
+  if(!current.exists)return {ok:true,programId,message:"引用再生は既に停止しています。"};
   const request=buildStopQuotationRequest(programId);
   if(!request.ok)return request;
   const fetched=await fetchQuotationRequest(request);
