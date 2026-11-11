@@ -1114,10 +1114,16 @@ async function fetchNiconicoLibraryVideos(input = {}) {
     };
     const entries = [];
     let sourceTitle = "";
-    const maxPages = type==="watch-later"?10:1;
+    let totalCount = null;
+    let responseHasMore = false;
+    let seriesPageSize = 0;
+    const maxPages = type==="watch-later" ? 10 : type==="mylist" ? 2 : 1;
 
     for (let page=1; page<=maxPages; page+=1) {
-      const request = buildNiconicoLibraryRequest(type,{listId:input.listId,url:input.url,page});
+      const request = buildNiconicoLibraryRequest(type,{
+        listId:input.listId,url:input.url,page,
+        ...(type==="series"&&seriesPageSize?{pageSize:seriesPageSize}:{})
+      });
       let response = await niconicoSession.fetch(request.url,{
         method:"GET",credentials:"include",redirect:"error",headers,
         signal:AbortSignal.timeout(VIDEO_LIBRARY_IMPORT_TIMEOUT_MS)
@@ -1146,8 +1152,19 @@ async function fetchNiconicoLibraryVideos(input = {}) {
       const parsed = parseNiconicoLibraryResponse(responseText,type);
       if (!parsed.ok) return parsed;
       if (!sourceTitle && parsed.listTitle) sourceTitle = parsed.listTitle;
+      if (parsed.totalCount !== null) totalCount = parsed.totalCount;
+      responseHasMore = parsed.hasMore === true;
+
+      if (type==="series" && page===1 && seriesPageSize===0 &&
+        parsed.totalCount !== null && parsed.totalCount>parsed.entries.length) {
+        seriesPageSize=Math.min(1000,parsed.totalCount);
+        entries.length=0;
+        page=0;
+        continue;
+      }
+
       entries.push(...parsed.entries);
-      if (type!=="watch-later" || !parsed.hasMore || entries.length>=1000) break;
+      if (!parsed.hasMore || entries.length>=1000) break;
     }
 
     const unique = new Map();
@@ -1155,7 +1172,8 @@ async function fetchNiconicoLibraryVideos(input = {}) {
       if (!unique.has(item.videoId)) unique.set(item.videoId,item);
       if (unique.size>=1000) break;
     }
-    return {ok:true,entries:[...unique.values()],sourceTitle,sourceType:type,limited:type==="watch-later"?unique.size>=1000:unique.size>=500};
+    const limited=unique.size>=1000&&(responseHasMore||totalCount===null||totalCount>unique.size);
+    return {ok:true,entries:[...unique.values()],sourceTitle,sourceType:type,limited,totalCount};
   } catch (error) {
     const timeout = error && (error.name==="TimeoutError"||error.name==="AbortError");
     return {ok:false,code:timeout?"LIST_IMPORT_TIMEOUT":"LIST_IMPORT_NETWORK_ERROR",message:timeout?"一覧の取り込みがタイムアウトしました。":"ニコニコの一覧を取得できませんでした。ログイン状態と通信を確認してください。"};
