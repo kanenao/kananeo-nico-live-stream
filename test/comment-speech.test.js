@@ -4,6 +4,7 @@ const test=require("node:test");
 const assert=require("node:assert/strict");
 const {
   normalizeCommentSpeechSettings,
+  selectSpeechVoice,
   createCommentSpeechText,
   appendSpeechQueue
 }=require("../src/comment-speech");
@@ -17,6 +18,16 @@ test("normalizes speech settings and clamps values",()=>{
   assert.equal(settings.volume,1);
   assert.equal(settings.maxQueue,200);
   assert.equal(settings.voiceURI.length,512);
+});
+
+test("prefers a Japanese voice unless a saved voice is explicitly selected",()=>{
+  const voices=[
+    {voiceURI:"english",lang:"en-US",default:true},
+    {voiceURI:"japanese",lang:"ja-JP",default:false}
+  ];
+  assert.equal(selectSpeechVoice(voices).voiceURI,"japanese");
+  assert.equal(selectSpeechVoice(voices,"english").voiceURI,"english");
+  assert.equal(selectSpeechVoice([]),null);
 });
 
 test("builds a Japanese speech line using a registered nickname",()=>{
