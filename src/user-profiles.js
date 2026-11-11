@@ -1,6 +1,6 @@
 "use strict";
 
-(() => {
+const api = (() => {
   const MAX_USER_PROFILES = 5000;
 
   function cleanText(value, limit) {
@@ -81,7 +81,7 @@
     return normalizeUserProfiles(inputProfiles).find(item => item.userId === userId) || null;
   }
 
-  window.KananeoUserProfiles = Object.freeze({
+  return Object.freeze({
     MAX_USER_PROFILES,
     normalizeUserId,
     normalizeUserProfile,
@@ -91,3 +91,6 @@
     findUserProfile
   });
 })();
+
+if (typeof module !== "undefined" && module.exports) module.exports = api;
+if (typeof window !== "undefined") window.KananeoUserProfiles = api;
