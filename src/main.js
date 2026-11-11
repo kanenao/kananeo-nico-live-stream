@@ -1298,7 +1298,7 @@ function registerIpcHandlers() {
     let sourceType=typeof input.type==="string"?input.type:"text";
     let skipped=0;
     if(sourceType==="text"||sourceType==="json"){
-      if(typeof input.text!=="string"||input.text.length>2*1024*1024) return {ok:false,code:"INVALID_IMPORT_TEXT",message:"取り込みテキストは2MB以内にしてください。"};
+      if(typeof input.text!=="string"||input.text.length>16*1024*1024) return {ok:false,code:"INVALID_IMPORT_TEXT",message:"取り込みテキストは2MB以内にしてください。"};
       const parsed=parseVideoImportText(input.text,{source:sourceType==="json"?"json-import":"text-import"});
       if(!parsed.ok) return parsed;
       entries=parsed.entries;
