@@ -97,6 +97,22 @@ test("imports standalone IDs, NicoNico URLs, optional titles, and JSON exports",
   assert.equal(json.entries[0].videoId,"sm42");
 });
 
+test("imports deduplicated playback history from a full library JSON backup",()=>{
+  const backup={
+    items:[{videoId:"sm77",title:"Backup video"}],
+    history:[
+      {id:"h-1",videoId:"sm77",title:"Backup video",playedAt:"2026-11-10T12:00:00.000Z",playbackType:"quotation"},
+      {id:"h-1",videoId:"sm77",title:"Duplicate history",playedAt:"2026-11-10T12:00:00.000Z"}
+    ]
+  };
+  const parsed=parseVideoImportText(JSON.stringify(backup));
+  assert.equal(parsed.entries.length,1);
+  assert.equal(parsed.history.length,2);
+  const merged=mergeVideoHistory(createEmptyVideoLibrary(),parsed.history);
+  assert.equal(merged.addedHistory,1);
+  assert.equal(merged.library.history[0].id,"h-1");
+});
+
 test("rejects invalid import data and skips malformed lines",()=>{
   const invalid=parseVideoImportText("not a video\nhttps://example.com/watch/sm123");
   assert.equal(invalid.ok,false);
