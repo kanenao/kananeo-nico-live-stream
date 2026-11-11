@@ -183,7 +183,7 @@ async function playQuotedQueueItem(item,queueType="request",skipConfirmation=fal
 if(!item)return;
 const programId=state.lastProgramId||commentConnection.programId;
 if(!programId){toast("先に「放送・枠管理」で配信中の放送IDを確認してください。");return;}
-const ok=confirm("ニコ生の放送へ「"+item.title+"」を引用再生します。\n\n視聴者に動画が流れます。放送主権限が必要です。実行しますか？");
+const ok=skipConfirmation||confirm("ニコ生の放送へ「"+item.title+"」を引用再生します。\\n\\n視聴者に動画が流れます。放送主権限が必要です。実行しますか？");
 if(!ok)return;
 try{
 const validation=await window.kananeoApp.niconico.validateVideo(item.videoId||item.url);
