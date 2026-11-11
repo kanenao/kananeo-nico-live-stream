@@ -5,7 +5,7 @@ const path = require("node:path");
 const fs = require("node:fs/promises");
 const {
   createEmptyVideoLibrary, normalizeVideoLibrary, normalizeVideoEntry,
-  mergeVideoEntries, mergeVideoHistory, addPlaybackHistory, removeVideoEntry, updateVideoEntry, clearVideoHistory,
+  mergeVideoEntries, mergeVideoHistory, prepareSelectedVideoEntries, addPlaybackHistory, removeVideoEntry, updateVideoEntry, clearVideoHistory,
   parseVideoImportText
 } = require("./video-library");
 const { buildNiconicoLibraryRequest, parseNiconicoLibraryResponse } = require("./niconico-library-api");
@@ -1317,21 +1317,17 @@ function registerIpcHandlers() {
   });
   ipcMain.handle("app:video-library-import-selected",async(event,input)=>{
     if(!isVideoLibrarySender(event)) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
-    if(!input||typeof input!=="object"||!["watch-later","mylist","series"].includes(input.sourceType)||
-      !Array.isArray(input.entries)||input.entries.length===0||input.entries.length>1000||
-      JSON.stringify(input).length>4*1024*1024) {
-      return {ok:false,code:"INVALID_SELECTION",message:"選択した動画一覧を確認してください（最大1,000件）。"};
+    if(!input||typeof input!=="object"||JSON.stringify(input).length>4*1024*1024) {
+      return {ok:false,code:"INVALID_SELECTION",message:"選択した動画一覧を確認してください。"};
     }
-    const entries=[];
-    let skipped=0;
-    for(const raw of input.entries) {
-      const entry=normalizeVideoEntry({...raw,source:input.sourceType});
-      if(entry) entries.push(entry); else skipped+=1;
-    }
-    if(!entries.length) return {ok:false,code:"NO_VALID_VIDEOS",message:"選択した動画に有効なIDがありません。"};
-    const saved=await updateVideoLibrary(library=>mergeVideoEntries(library,entries));
+    const prepared=prepareSelectedVideoEntries(input.entries,input.sourceType);
+    if(!prepared.ok) return {
+      ...prepared,
+      message:prepared.code==="NO_VALID_VIDEOS"?"選択した動画に有効なIDがありません。":"選択した動画一覧を確認してください（最大1,000件）。"
+    };
+    const saved=await updateVideoLibrary(library=>mergeVideoEntries(library,prepared.entries));
     if(!saved.ok) return saved;
-    return {...saved,imported:entries.length,skipped:skipped+saved.skipped,sourceType:input.sourceType};
+    return {...saved,imported:prepared.entries.length,skipped:prepared.skipped+saved.skipped,sourceType:prepared.sourceType};
   });
   ipcMain.handle("app:video-library-import",async(event,input)=>{
     if(!isVideoLibrarySender(event)||!input||typeof input!=="object") return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
