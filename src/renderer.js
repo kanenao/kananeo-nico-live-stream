@@ -9,6 +9,7 @@ const MAX_DISPLAY_COMMENTS=1000;
 const MAX_QUEUE_ITEMS=1000;
 let nicoStatus={authenticated:false,label:"状態を確認中"};
 let dashboardStats={loading:false,watchCount:null,commentCount:null,updatedAt:"",error:""};
+let extensionOptionsState={loading:false,methods:[],updatedAt:"",error:""};
 let pollRuntime={active:false,status:"idle",message:"アンケートは停止中です。",result:[]};
 let pollRunToken=0;
 let pollCurrentProgramId="";
@@ -30,6 +31,27 @@ return loaded;
 }catch{return structuredClone(initial)}
 }
 function save(){localStorage.setItem(key,JSON.stringify(state))}
+function renderExtensionOptions(){
+const node=document.getElementById("extension-options");
+const updated=document.getElementById("extension-updated");
+const button=document.querySelector("[data-extension-check]");
+if(node)node.textContent=extensionOptionsState.loading?"延長方法を確認しています…":extensionOptionsState.error|| (extensionOptionsState.methods.length?extensionOptionsState.methods.map(x=>x.type+"："+x.minutes+"分").join(" / "):"利用可能な延長方法はありません。");
+if(updated)updated.textContent=extensionOptionsState.updatedAt?"更新："+new Date(extensionOptionsState.updatedAt).toLocaleTimeString("ja-JP"):"未確認";
+if(button)button.disabled=extensionOptionsState.loading;
+}
+async function refreshExtensionOptions(){
+const programId=state.lastProgramId||commentConnection.programId;
+if(!programId){extensionOptionsState.error="先に「放送・枠管理」で放送IDを確認してください。";renderExtensionOptions();toast(extensionOptionsState.error);return;}
+if(extensionOptionsState.loading)return;
+extensionOptionsState.loading=true;extensionOptionsState.error="";renderExtensionOptions();
+try{
+const result=await window.kananeoApp.niconico.getExtensionOptions({programId});
+if(!result?.ok)throw new Error(result?.message||"延長方法を取得できませんでした。");
+extensionOptionsState={loading:false,methods:result.methods||[],updatedAt:result.updatedAt||new Date().toISOString(),error:""};
+}catch(error){extensionOptionsState.loading=false;extensionOptionsState.error=error?.message||"延長方法を取得できませんでした。";}
+renderExtensionOptions();
+if(extensionOptionsState.error)toast(extensionOptionsState.error);
+}
 function programStatusLabel(status){return ({onAir:"放送中",ON_AIR:"放送中",test:"テスト放送",reserved:"予約",ended:"終了",ENDED:"終了"}[status]||"状態未確認")}
 function formatRemainingTime(){const end=Number(state.lastProgramEndAt);if(!Number.isFinite(end)||end<=0)return "—";const left=Math.ceil(end-Date.now()/1000);if(left<=0)return "終了予定を超過";const h=Math.floor(left/3600),m=Math.floor((left%3600)/60),sec=left%60;return h?String(h)+"時間"+String(m)+"分":m?String(m)+"分"+String(sec)+"秒":String(sec)+"秒"}
 function updateDashboardStatsUi(){const viewers=document.getElementById("dashboard-viewers"),comments=document.getElementById("dashboard-comments"),requests=document.getElementById("dashboard-requests"),remaining=document.getElementById("dashboard-remaining"),updated=document.getElementById("dashboard-updated"),error=document.getElementById("dashboard-stats-error"),program=document.getElementById("dashboard-program-label"),refresh=document.querySelector("[data-dashboard-refresh]");if(viewers)viewers.textContent=dashboardStats.loading&&dashboardStats.watchCount==null?"取得中…":dashboardStats.watchCount==null?"—":Number(dashboardStats.watchCount).toLocaleString("ja-JP");if(comments)comments.textContent=dashboardStats.loading&&dashboardStats.commentCount==null?"取得中…":dashboardStats.commentCount==null?"—":Number(dashboardStats.commentCount).toLocaleString("ja-JP");if(requests)requests.textContent=String(state.requests.filter(x=>!["completed","skipped"].includes(x.status)).length);if(remaining)remaining.textContent=formatRemainingTime();if(updated)updated.textContent=dashboardStats.updatedAt?"更新："+new Date(dashboardStats.updatedAt).toLocaleTimeString("ja-JP"):dashboardStats.loading?"取得中…":"統計未取得";if(error)error.textContent=dashboardStats.error||"";if(program)program.textContent=state.lastProgramId?(state.lastProgramTitle||state.lastProgramId)+" / "+programStatusLabel(state.lastProgramStatus):"放送ID未設定";if(refresh)refresh.disabled=dashboardStats.loading}
@@ -68,7 +90,7 @@ panel("自動アンケート実行","放送主権限のあるログインで、�
 }else if(page==="automation"){
 html=hero("AUTOMATION","自動枠取り・延長","次枠取得・無料延長と、動画の再生時間に合わせた配信運用を管理します。")+
 '<div class="grid2">'+panel("次枠管理","番組情報と再生状態を引き継ぐ",toggle("auto-next","放送終了時に次枠を自動取得","次枠を準備して再開",state.automation.autoNext)+toggle("keep-position","再生位置を引き継ぐ","次枠でも現在位置を維持",state.automation.keepPosition))+
-panel("自動延長","動画の残り時間と枠の残り時間を同期",toggle("auto-extend","自動延長を有効にする","延長可能条件を確認後に実行",state.automation.autoExtend)+toggle("adjust-video","動画の長さに合わせて延長時間を調整","動画終了後の黒画面・ロスタイムを抑える",state.automation.adjustVideo)+field("基本追加時間（秒）","extend",state.automation.extend)+'<button class="btn primary" data-save-auto>設定を保存</button>')+'</div>';
+panel("自動延長","動画の残り時間と枠の残り時間を同期",toggle("auto-extend","自動延長を有効にする","延長APIの仕様・条件を実機確認後に有効化します",state.automation.autoExtend)+toggle("adjust-video","動画の長さに合わせて延長時間を調整","動画終了後の黒画面・ロスタイムを抑える",state.automation.adjustVideo)+field("基本追加時間（秒）","extend",state.automation.extend)+'<button class="btn primary" data-save-auto>設定を保存</button>')+'</div>'+panel("延長可能な方法を確認","現在の放送で利用できる延長方法・分数を読み取ります。ここでは延長操作を実行しません。",'<div class="actions"><button class="btn primary" data-extension-check '+(extensionOptionsState.loading?"disabled":"")+ '>延長方法を確認</button><span class="muted" id="extension-updated">'+(extensionOptionsState.updatedAt?"更新："+new Date(extensionOptionsState.updatedAt).toLocaleTimeString("ja-JP"):"未確認")+'</span></div><div id="extension-options" class="empty">'+esc(extensionOptionsState.error||(extensionOptionsState.methods.length?extensionOptionsState.methods.map(x=>x.type+"："+x.minutes+"分").join(" / "):"放送IDを確認してから延長方法を取得してください。"))+'</div>');
 }else if(page==="external"){
 html=hero("EXTERNAL TOOLS","OBS・外部配信ツール","OBS Studio / N Air / XSplitの起動パスを登録します。外部操作は未実装です。")+
 '<div class="grid3">'+panel("OBS Studio","実行ファイルのパス",field("OBS実行ファイル","obs",state.external.obs,"obs64.exe"))+panel("N Air","実行ファイルのパス",field("N Air実行ファイル","nair",state.external.nair,"N Air.exe"))+panel("XSplit","実行ファイルのパス",field("XSplit実行ファイル","xsplit",state.external.xsplit,"XSplit.exe"))+'</div><button class="btn primary" data-save-paths>パスを保存</button>';
@@ -457,6 +479,7 @@ if(b.hasAttribute("data-nico-refresh")){window.kananeoApp.niconico.getSessionSta
 if(b.hasAttribute("data-nico-logout")){if(confirm("このアプリ専用のニコニコセッションを削除しますか？"))window.kananeoApp.niconico.logout().then(r=>{toast(r.message);return window.kananeoApp.niconico.getSessionStatus()}).then(applyNicoStatus);return;}
 if(b.hasAttribute("data-nico-check")){void checkProgram();return;}
 if(b.hasAttribute("data-dashboard-refresh")){void refreshDashboardStatistics(false);return;}
+if(b.hasAttribute("data-extension-check")){void refreshExtensionOptions();return;}
 if(b.hasAttribute("data-play")){const item=state.requests.find(x=>x.id===b.dataset.play);if(item)void playQueueItem(item);return;}
 if(b.hasAttribute("data-player-next")){void playNextQueueItem(true);return;}
 if(b.hasAttribute("data-player-focus")){window.kananeoApp.niconico.focusVideo().then(r=>toast(r?.message||"プレイヤーを開けませんでした。"));return;}
