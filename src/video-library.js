@@ -181,6 +181,25 @@ function mergeVideoHistory(libraryInput, historyInput, options = {}) {
   };
 }
 
+function prepareSelectedVideoEntries(entriesInput, sourceInput) {
+  const allowedSources = new Set(["watch-later", "mylist", "series"]);
+  if (!allowedSources.has(sourceInput)) {
+    return { ok:false, code:"INVALID_SOURCE", entries:[], skipped:0 };
+  }
+  if (!Array.isArray(entriesInput) || entriesInput.length === 0 || entriesInput.length > 1000) {
+    return { ok:false, code:"INVALID_SELECTION", entries:[], skipped:0 };
+  }
+  const entries = [];
+  let skipped = 0;
+  for (const raw of entriesInput) {
+    const entry = normalizeVideoEntry({ ...(raw && typeof raw === "object" ? raw : {}), source:sourceInput });
+    if (entry) entries.push(entry);
+    else skipped += 1;
+  }
+  if (!entries.length) return { ok:false, code:"NO_VALID_VIDEOS", entries:[], skipped };
+  return { ok:true, entries, skipped, sourceType:sourceInput };
+}
+
 function updateVideoEntry(libraryInput, videoIdInput, changes = {}, options = {}) {
   const library = normalizeVideoLibrary(libraryInput);
   const validation = normalizeNiconicoVideoUrl(String(videoIdInput || ""));
@@ -297,6 +316,7 @@ module.exports = {
   mergeVideoEntries,
   addPlaybackHistory,
   mergeVideoHistory,
+  prepareSelectedVideoEntries,
   normalizeHistoryEntry,
   removeVideoEntry,
   updateVideoEntry,
