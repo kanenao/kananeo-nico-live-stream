@@ -863,6 +863,7 @@ function createMainWindow() {
 }
 
 app.whenReady().then(()=>{
+  app.setAppUserModelId("jp.kanenao.nicolivestream");
   niconicoSession=session.fromPartition(NICONICO_PARTITION);
   niconicoSession.setPermissionRequestHandler((_webContents,_permission,callback)=>callback(false));
   niconicoSession.cookies.on("changed",()=>{void notifySessionStatus();});
