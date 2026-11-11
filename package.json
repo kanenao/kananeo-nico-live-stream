@@ -30,7 +30,9 @@
     },
     "files": [
       "src/**/*",
-      "package.json"
+      "package.json",
+      "THIRD_PARTY_NOTICES.md",
+      "README.md"
     ],
     "artifactName": "${productName}-${version}-${arch}.${ext}",
     "asar": true,
