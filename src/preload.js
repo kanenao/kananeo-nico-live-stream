@@ -4,14 +4,16 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
-  version:"0.1.0-beta.17",
+  version:"0.1.0-beta.18",
   platform:process.platform,
-  stage:"video-library-metadata-editor",
+  stage:"video-library-selective-import",
   videoLibrary:Object.freeze({
     get:()=>ipcRenderer.invoke("app:video-library-get"),
     add:input=>ipcRenderer.invoke("app:video-library-add",input),
     remove:input=>ipcRenderer.invoke("app:video-library-remove",input),
     update:input=>ipcRenderer.invoke("app:video-library-update",input),
+    list:input=>ipcRenderer.invoke("app:video-library-list",input),
+    importSelected:input=>ipcRenderer.invoke("app:video-library-import-selected",input),
     import:input=>ipcRenderer.invoke("app:video-library-import",input),
     recordPlayback:input=>ipcRenderer.invoke("app:video-library-record-playback",input),
     clearHistory:()=>ipcRenderer.invoke("app:video-library-clear-history")
