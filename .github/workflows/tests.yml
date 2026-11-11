@@ -23,5 +23,6 @@ jobs:
           node --check src/ndgr-security.js
           node --check src/comment-recorder.js
           node --check src/video-queue.js
+          node --check src/poll-engine.js
       - name: Run unit tests
         run: npm test
