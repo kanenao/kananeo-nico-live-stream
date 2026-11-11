@@ -767,7 +767,7 @@ function selectPlaybackCandidate(input={}) {
     stocks,
     playStyle:input.playStyle,
     randomStock:input.randomStock===true,
-    remainingMs:Number(input.remainingMs)
+    remainingMs:input.remainingMs==null?NaN:Number(input.remainingMs)
   });
 }
 
