@@ -181,6 +181,34 @@ function mergeVideoHistory(libraryInput, historyInput, options = {}) {
   };
 }
 
+function updateVideoEntry(libraryInput, videoIdInput, changes = {}, options = {}) {
+  const library = normalizeVideoLibrary(libraryInput);
+  const validation = normalizeNiconicoVideoUrl(String(videoIdInput || ""));
+  if (!validation.ok) return { ok:false, code:"INVALID_VIDEO_ID", library };
+  const index = library.items.findIndex(item => item.videoId === validation.videoId);
+  if (index < 0) return { ok:false, code:"VIDEO_NOT_FOUND", library };
+
+  const previous = library.items[index];
+  const tagsInput = Array.isArray(changes.tags)
+    ? changes.tags
+    : typeof changes.tags === "string" ? changes.tags.split(/[;,]/) : previous.tags;
+  const tags = [...new Set(tagsInput.map(value => safeText(value, 40)).filter(Boolean))].slice(0, 30);
+  const item = {
+    ...previous,
+    title: safeText(changes.title, 200) || validation.videoId,
+    tags,
+    memo: safeText(changes.memo, 1000),
+    updatedAt: safeDate(options.now || new Date().toISOString())
+  };
+  const items = library.items.slice();
+  items[index] = item;
+  return {
+    ok:true,
+    item,
+    library:{ ...library, items, updatedAt:item.updatedAt }
+  };
+}
+
 function removeVideoEntry(libraryInput, videoIdInput) {
   const library = normalizeVideoLibrary(libraryInput);
   const validation = normalizeNiconicoVideoUrl(String(videoIdInput || ""));
@@ -271,6 +299,7 @@ module.exports = {
   mergeVideoHistory,
   normalizeHistoryEntry,
   removeVideoEntry,
+  updateVideoEntry,
   clearVideoHistory,
   filterVideoEntries,
   parseVideoImportText
