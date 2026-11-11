@@ -1,7 +1,7 @@
 "use strict";
 
 const api = (() => {
-  const MAX_USER_PROFILES = 5000;
+  const MAX_USER_PROFILES = 1000;
 
   function cleanText(value, limit) {
     return String(value ?? "")
