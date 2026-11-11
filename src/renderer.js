@@ -82,7 +82,7 @@ html=hero("STREAM CONTROL CENTER","配信コントロールセンター","配信
 '<div class="muted" id="dashboard-stats-error">'+esc(dashboardStats.error||"")+'</div>'+
 '<div class="columns">'+panel("クイック操作","よく使う機能",'<div class="quick">'+[["♫","動画リクエスト","requests"],["◈","自動アンケート","poll"],["⟳","次枠・自動延長","automation"],["▣","OBS・外部ツール","external"]].map(x=>`<button data-go="${x[2]}"><span>${x[0]}</span><b>${x[1]}</b><small>機能を開く</small></button>`).join("")+'</div>')+
 panel("システムログ","ローカルに記録した直近の操作",state.logs.slice(0,5).map(x=>`<div class="row"><i></i><div><b>${esc(x)}</b><small>ローカル記録</small></div></div>`).join(""))+'</div>'+
-'<footer>kananeo nico live stream <span>0.1.0-beta.13 · Beta preview</span></footer>';
+'<footer>kananeo nico live stream <span>0.1.0-beta.14 · Beta preview</span></footer>';
 }else if(page==="requests"){
 const waiting=state.requests.filter(x=>!["completed","skipped","rejected"].includes(x.status)).length;
 const requestRows=state.requests.map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+(x.status==="playing"?"再生中":x.status==="completed"?"再生済み":x.status==="skipped"?"スキップ":x.status==="rejected"?"引用不可":"待機中")+'</td><td>'+esc(x.title)+'</td><td>'+esc(x.videoId||x.url)+'</td><td><button class="btn" data-play="'+esc(x.id)+'">プレビュー</button> <button class="btn primary" data-quote-request="'+esc(x.id)+'">ニコ生へ送る</button> <button class="btn" data-up="'+i+'" '+(i===0?"disabled":"")+'>&uarr;</button> <button class="btn" data-down="'+i+'" '+(i===state.requests.length-1?"disabled":"")+'>&darr;</button> <button class="btn" data-remove="'+esc(x.id)+'">削除</button></td></tr>').join("");
@@ -154,7 +154,7 @@ html=hero("ACTIVITY & BACKUP","履歴・バックアップ","設定データのJ
 panel("システムログ","操作履歴",state.logs.map(x=>`<div class="row"><i></i><b>${esc(x)}</b></div>`).join("")+'<div class="actions"><button class="btn primary" data-export>設定JSONを書き出す</button><button class="btn" data-clear-logs>ログを消去</button></div>');
 }else{
 html=hero("APPLICATION SETTINGS","設定","アプリのバージョンとローカル設定を管理します。")+
-panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>0.1.0-beta.13</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Beta 13 / manual, sequential and random playback</span></div>');
+panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>0.1.0-beta.14</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Beta 13 / manual, sequential and random playback</span></div>');
 }
 document.getElementById("content").innerHTML=html;
 }
@@ -635,30 +635,38 @@ async function maybeAddCommentRequest(comment){
 if(!state.requestSettings?.acceptComments||comment?.type!=="comment"||comment.isHistory)return;
 const content=String(comment.content||"");
 const userId=String(comment.userId||"");
-if(!content||state.ngUsers.includes(userId))return;
-if(state.ngWords.some(word=>String(word||"").length>0&&content.includes(word)))return;
+if(!content)return;
 const candidate=await window.kananeoApp.niconico.extractRequestCandidate(content);
 if(!candidate)return;
 const idMatch=candidate.match(/(?:sm|nm|so)\d{1,12}/i);
 if(!idMatch)return;
 const pendingId=idMatch[0].toLowerCase();
-if(pendingCommentRequestIds.has(pendingId)||[...state.requests,...state.stocks].some(item=>(item.videoId||"").toLowerCase()===pendingId))return;
-if(state.requests.filter(item=>!["completed","skipped","rejected"].includes(item.status)).length>=200){toast("リクエストキューが上限200件に達しています。");return;}
-const perUserLimit=Math.min(50,Math.max(1,Number(state.requestSettings.maxPerUser)||5));
-if(userId){
-const userCount=state.requests.filter(item=>item.source==="comment"&&item.requestUserId===userId&&!["completed","skipped","rejected"].includes(item.status)).length;
-if(userCount>=perUserLimit)return;
-}
+if(pendingCommentRequestIds.has(pendingId))return;
 pendingCommentRequestIds.add(pendingId);
 try{
 const validation=await window.kananeoApp.niconico.validateVideo(candidate);
 if(!validation?.ok)return;
-if([...state.requests,...state.stocks].some(item=>(item.videoId||"").toLowerCase()===validation.videoId))return;
+const policy=await window.kananeoApp.niconico.evaluateCommentRequest({
+comment:{userId,content},
+videoId:validation.videoId,
+requests:state.requests,
+stocks:state.stocks,
+ngUsers:state.ngUsers,
+ngWords:state.ngWords,
+pendingVideoIds:[],
+settings:state.requestSettings
+});
+if(!policy?.accepted){
+if(policy?.code==="QUEUE_FULL")toast(policy.message);
+return;
+}
 const item={id:"req-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8),title:validation.videoId,url:validation.url,videoId:validation.videoId,status:"queued",lengthMs:0,addedAt:new Date().toISOString(),source:"comment",requestUserId:userId,requestedBy:String(comment.userName||"")};
 state.requests.push(item);state.logs.unshift("コメントから動画リクエスト："+item.videoId);save();
 if(page==="requests")render();
 toast("コメントからリクエストを受け付けました："+item.videoId);
-}catch{}finally{pendingCommentRequestIds.delete(pendingId);}
+}catch(error){
+state.logs.unshift("コメントリクエスト判定エラー："+String(error?.message||"不明なエラー").slice(0,120));save();
+}finally{pendingCommentRequestIds.delete(pendingId);}
 }
 function receiveComment(comment){
 if(!comment||typeof comment!=="object")return;
