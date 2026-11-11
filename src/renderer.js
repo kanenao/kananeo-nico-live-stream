@@ -17,6 +17,7 @@ let librarySourceType="";
 let librarySourceLimited=false;
 let librarySourceLoading=false;
 let librarySourceSelected=new Set();
+let userProfileSearch="";
 const pendingCommentRequestIds=new Set();
 const requestReplyQueue=[];
 const repliedRequestComments=new Set();
@@ -95,6 +96,21 @@ return profile?.nickname||String(comment?.userName||fallback||"匿名");
 function getRequesterDisplayName(item){
 return getUserDisplayName({userId:item?.requestUserId,userName:item?.requestedBy},item?.requestUserId||"");
 }
+function getFilteredUserProfiles(){
+const query=String(userProfileSearch||"").trim().toLocaleLowerCase("ja-JP");
+return state.userProfiles.map((profile,index)=>({profile,index})).filter(({profile})=>{
+if(!query)return true;
+return [profile.userId,profile.nickname,profile.memo].join(" ").toLocaleLowerCase("ja-JP").includes(query);
+});
+}
+function renderUserProfileRows(){
+const body=document.getElementById("user-profile-rows");
+const count=document.getElementById("user-profile-count");
+if(!body)return;
+const rows=getFilteredUserProfiles();
+if(count)count.textContent=rows.length+" / "+state.userProfiles.length+" 人";
+body.innerHTML=rows.length?rows.map(({profile,index})=>'<tr><td><b>'+esc(profile.nickname||"（表示名なし）")+'</b><div class="muted">'+esc(profile.userId)+'</div></td><td>'+esc(profile.memo||"—")+'</td><td>'+new Date(profile.updatedAt).toLocaleDateString("ja-JP")+'</td><td><button class="btn" data-user-profile-edit="'+index+'">編集</button> <button class="btn" data-user-profile-remove="'+index+'">削除</button></td></tr>').join(""):'<tr><td colspan="4"><div class="empty">'+(state.userProfiles.length?"検索条件に一致するユーザーはいません。":"コテハン登録はまだありません。")+'</div></td></tr>';
+}
 function toast(s){const t=document.getElementById("toast");t.textContent=s;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200)}
 function hero(k,t,d,b=""){return `<div class="hero"><div><div class="eyebrow">${k}</div><h1>${t}</h1><p class="desc">${d}</p></div>${b}</div>`}
 function panel(t,d,body){return `<article class="panel"><h2>${t}</h2><p>${d}</p>${body}</article>`}
@@ -148,12 +164,12 @@ panel("自動延長","動画の残り時間と枠の残り時間を同期",toggl
 html=hero("EXTERNAL TOOLS","OBS・外部配信ツール","OBS Studio / N Air / XSplitの起動パスを登録します。外部操作は未実装です。")+
 '<div class="grid3">'+panel("OBS Studio","実行ファイルのパス",field("OBS実行ファイル","obs",state.external.obs,"obs64.exe"))+panel("N Air","実行ファイルのパス",field("N Air実行ファイル","nair",state.external.nair,"N Air.exe"))+panel("XSplit","実行ファイルのパス",field("XSplit実行ファイル","xsplit",state.external.xsplit,"XSplit.exe"))+'</div><button class="btn primary" data-save-paths>パスを保存</button>';
 }else if(page==="users"){
-const profileRows=state.userProfiles.map((profile,index)=>'<tr><td><b>'+esc(profile.nickname||"（表示名なし）")+'</b><div class="muted">'+esc(profile.userId)+'</div></td><td>'+esc(profile.memo||"—")+'</td><td>'+new Date(profile.updatedAt).toLocaleDateString("ja-JP")+'</td><td><button class="btn" data-user-profile-edit="'+index+'">編集</button> <button class="btn" data-user-profile-remove="'+index+'">削除</button></td></tr>').join("");
+
 html=hero("MODERATION & USERS","ユーザー・NG管理","NGワード・NGユーザーに加え、ユーザーIDごとのコテハンとメモをローカル管理します。")+
 '<div class="grid2">'+panel("NGワード","非表示・受付対象外の文字列",'<form id="ng-word-form" class="actions"><input id="ng-word" class="input" placeholder="NGワード" required><button class="btn primary">追加</button></form><div class="tags">'+state.ngWords.map((x,i)=>'<span class="tag">'+esc(x)+' <button data-ngw="'+i+'">×</button></span>').join("")+'</div>')+
 panel("NGユーザー","ユーザーID単位で制限",'<form id="ng-user-form" class="actions"><input id="ng-user" class="input" placeholder="ユーザーID" required><button class="btn primary">追加</button></form><div class="tags">'+state.ngUsers.map((x,i)=>'<span class="tag">'+esc(x)+' <button data-ngu="'+i+'">×</button></span>').join("")+'</div>')+'</div>'+
 panel("コテハン・ユーザーメモ","登録した表示名はコメントビューアと動画リクエスト一覧に反映します。",'<form id="user-profile-form"><div class="grid3">'+field("ニコニコユーザーID","profile-user-id","","例：12345678")+field("コテハン（表示名）","profile-nickname","","コメント欄に表示する名前")+'<div class="field"><label>メモ（任意・1,000文字以内）</label><textarea class="input" id="profile-memo" maxlength="1000" rows="3" placeholder="常連・リクエスト傾向など"></textarea></div></div><div class="actions"><button class="btn primary" type="submit">登録・更新</button><button class="btn" type="button" data-user-profile-clear>入力をクリア</button></div><div class="muted">コテハンはこのPC内に保存します。ニコニコ側のプロフィールやコメント投稿名は変更しません。</div></form>')+
-panel("登録ユーザー",state.userProfiles.length+" 人を登録中",state.userProfiles.length?'<div style="overflow-x:auto"><table class="table"><thead><tr><th>ユーザー</th><th>メモ</th><th>更新日</th><th>操作</th></tr></thead><tbody>'+profileRows+'</tbody></table></div>':'<div class="empty">コテハン登録はまだありません。</div>');
+panel("登録ユーザー",state.userProfiles.length+" 人を登録中",'<div class="field"><label>ユーザーID・コテハン・メモで検索</label><input class="input" id="user-profile-search" value="'+esc(userProfileSearch)+'" placeholder="登録ユーザーを検索"></div><div class="muted" id="user-profile-count">'+state.userProfiles.length+" / "+state.userProfiles.length+' 人</div><div style="overflow-x:auto"><table class="table"><thead><tr><th>ユーザー</th><th>メモ</th><th>更新日</th><th>操作</th></tr></thead><tbody id="user-profile-rows"></tbody></table></div>');
 }else if(page==="player"){
 const current=currentQueueItem();
 const playerLabel=({closed:"未起動",loading:"読み込み中",playing:"再生中",paused:"一時停止",ended:"再生終了",error:"読み込みエラー"}[playerState.state]||"状態確認中");
@@ -204,6 +220,7 @@ html=html.replace('<div class="section"><p id="library-count">','<div class="fie
 }
 document.getElementById("content").innerHTML=html;
 if(page==="library")renderLibrarySourcePreview();
+if(page==="users")renderUserProfileRows();
 }
 async function refreshVideoLibrary(silent=false){
 if(videoLibraryLoading)return;
@@ -773,7 +790,8 @@ const history=c.isHistory?'<span class="chip">過去</span>':"";
 const profile=findUserProfile(c.userId);
 const displayName=profile?.nickname||c.userName||kind;
 const originalName=profile?.nickname&&c.userName&&profile.nickname!==c.userName?'<small class="muted">（'+esc(c.userName)+'）</small>':"";
-return '<div class="comment-entry"><div class="comment-meta"><b>'+esc(displayName)+'</b>'+originalName+'<span>'+esc(time)+'</span><span class="chip purple">'+kind+'</span>'+history+'</div><div class="comment-body">'+esc(c.content||"")+'</div><div class="comment-user-id">'+esc(c.userId||"")+'</div></div>';
+const profileButton=c.userId?'<button class="btn" data-user-profile-from-comment="'+esc(c.userId)+'" data-user-name="'+esc(c.userName||"")+'">コテハン登録</button>':"";
+return '<div class="comment-entry"><div class="comment-meta"><b>'+esc(displayName)+'</b>'+originalName+'<span>'+esc(time)+'</span><span class="chip purple">'+kind+'</span>'+history+'</div><div class="comment-body">'+esc(c.content||"")+'</div><div class="comment-user-id">'+esc(c.userId||"")+' '+profileButton+'</div></div>';
 }).join("");
 list.scrollTop=list.scrollHeight;
 }
@@ -957,7 +975,7 @@ try{const r=await window.kananeoApp.niconico.checkProgram(input);node.replaceChi
 catch{node.textContent="確認中にエラーが発生しました。";}
 finally{if(button)button.disabled=false;}
 }
-function go(p){page=p;render();if(p==="dashboard")void refreshDashboardStatistics(true);if(p==="player")void refreshQuotePlayback();if(p==="library"){void refreshVideoLibrary();renderVideoLibraryRows();}}
+function go(p){page=p;render();if(p==="dashboard")void refreshDashboardStatistics(true);if(p==="player")void refreshQuotePlayback();if(p==="comments")renderComments();if(p==="library"){void refreshVideoLibrary();renderVideoLibraryRows();}if(p==="users")renderUserProfileRows();}
 document.getElementById("nav").addEventListener("click",e=>{const b=e.target.closest("[data-page]");if(b)go(b.dataset.page)});
 document.addEventListener("click",async e=>{
 const goBtn=e.target.closest("[data-go]");if(goBtn){go(goBtn.dataset.go);return}
@@ -1055,6 +1073,17 @@ if(b.hasAttribute("data-stock-remove")){state.stocks=state.stocks.filter(x=>x.id
 if(b.hasAttribute("data-stock-clear")){if(quotePlayback.queueType==="stock"&&quotePlayback.active){toast("引用再生を停止してからストックを消去してください。");return;}state.stocks=[];save();render();}
 if(b.hasAttribute("data-remove")){const removed=state.requests.find(x=>x.id===b.dataset.remove);state.requests=state.requests.filter(x=>x.id!==b.dataset.remove);if(removed&&removed.id===state.player.currentId){state.player.currentId="";state.player.status="closed";void window.kananeoApp.niconico.closeVideo();}save();render()}
 if(b.hasAttribute("data-clear")){if(state.player.currentId)void window.kananeoApp.niconico.closeVideo();state.requests=[];state.player.currentId="";state.player.status="closed";save();render()}
+if(b.hasAttribute("data-user-profile-from-comment")){
+const userId=b.dataset.userProfileFromComment||"";
+const existing=findUserProfile(userId);
+const userName=b.dataset.userName||"";
+go("users");
+document.getElementById("profile-user-id").value=userId;
+document.getElementById("profile-nickname").value=existing?.nickname||userName;
+document.getElementById("profile-memo").value=existing?.memo||"";
+document.getElementById("profile-nickname").focus();
+return;
+}
 if(b.hasAttribute("data-user-profile-edit")){
 const profile=state.userProfiles[Number(b.dataset.userProfileEdit)];
 if(profile){document.getElementById("profile-user-id").value=profile.userId;document.getElementById("profile-nickname").value=profile.nickname;document.getElementById("profile-memo").value=profile.memo;document.getElementById("profile-nickname").focus();}
@@ -1081,7 +1110,7 @@ if(b.hasAttribute("data-export")){const a=document.createElement("a");a.href=URL
 if(b.hasAttribute("data-clear-logs")){state.logs=[];save();render()}
 if(b.hasAttribute("data-placeholder"))toast("現在の段階ではこの操作は未実装です。");
 });
-document.addEventListener("input",e=>{if(e.target.id==="comments-search")renderComments();if(e.target.id==="library-search")renderVideoLibraryRows();if(e.target.id==="library-source-search"){librarySourceQuery=e.target.value;renderLibrarySourcePreview();}});
+document.addEventListener("input",e=>{if(e.target.id==="comments-search")renderComments();if(e.target.id==="user-profile-search"){userProfileSearch=e.target.value;renderUserProfileRows();}if(e.target.id==="library-search")renderVideoLibraryRows();if(e.target.id==="library-source-search"){librarySourceQuery=e.target.value;renderLibrarySourcePreview();}});
 document.addEventListener("change",e=>{if(e.target.id==="library-sort"){librarySort=e.target.value;renderVideoLibraryRows();}if(e.target.id==="library-source"){librarySource=e.target.value;renderVideoLibraryRows();}});
 document.addEventListener("change",e=>{if(e.target.matches("[data-library-source-check]")){const id=e.target.dataset.librarySourceCheck;if(e.target.checked)librarySourceSelected.add(id);else librarySourceSelected.delete(id);const count=document.getElementById("library-source-selection-count");if(count)count.textContent=librarySourceSelected.size+" 件を選択中";const button=document.querySelector("[data-library-source-import]");if(button){button.disabled=librarySourceSelected.size===0;button.textContent="選択した "+librarySourceSelected.size+" 件を取り込む";}}});
 document.addEventListener("change",e=>{if(e.target.matches('[data-toggle="quote-auto-next"]')){if(state.playback.playStyle===0&&e.target.checked){e.target.checked=false;state.playback.quoteAutoNext=false;save();toast("手動モードでは自動次動画を使えません。自動順次または自動ランダムに変更してください。");return;}state.playback.quoteAutoNext=e.target.checked;save();if(e.target.checked&&quotePlayback.active){const active=currentQueueItem();const started=Number(state.player.quoteStartedAt);if(started>0)scheduleQuoteAutoNext(active||{videoId:quotePlayback.videoId,lengthMs:state.player.quoteDurationMs},started);else{quoteAutoMessage="引用再生の開始時刻が不明です。次の動画から自動予約します。";updateQuoteScheduleUi();}}else clearQuoteAutoTimer("引用再生の自動次動画はOFFです。");toast(e.target.checked?"引用再生の自動次動画をONにしました。":"引用再生の自動次動画をOFFにしました。");}if(e.target.id==="comments-filter")renderComments();if(e.target.id==="player-auto-next"){state.player.autoNext=e.target.checked;save();toast(e.target.checked?"自動で次の動画へ切り替えます。":"自動次動画切替をOFFにしました。");}if(e.target.id==="request-from-comments"){state.requestSettings.acceptComments=e.target.checked;save();toast(e.target.checked?"コメントからのリクエスト受付をONにしました。":"コメントからのリクエスト受付をOFFにしました。");}if(e.target.id==="request-max-per-user"){state.requestSettings.maxPerUser=Math.min(50,Math.max(1,Number(e.target.value)||5));save();toast("ユーザー別リクエスト上限を保存しました。");}if(e.target.id==="request-reply-enabled"){state.requestSettings.replyEnabled=e.target.checked;save();toast(e.target.checked?"受付結果の自動返信をONにしました。":"受付結果の自動返信をOFFにしました。");}if(e.target.id==="request-reply-accepted"){state.requestSettings.replyAccepted=Array.from(String(e.target.value||"")).slice(0,80).join("");save();}if(e.target.id==="request-reply-rejected"){state.requestSettings.replyRejected=Array.from(String(e.target.value||"")).slice(0,80).join("");save();}});
