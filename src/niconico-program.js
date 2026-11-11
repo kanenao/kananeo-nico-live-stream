@@ -74,11 +74,15 @@ function isTrustedWebSocketEndpoint(value) {
 function inspectWatchPage(html, programId) {
   const embedded = extractEmbeddedData(html);
   const props = embedded.props && typeof embedded.props === "object" ? embedded.props : embedded;
-  const title = props.program?.title || props.program?.program?.title || props.site?.program?.title || null;
+  const program = props.program && typeof props.program === "object" ? props.program : {};
+  const title = program.title || program.program?.title || props.site?.program?.title || null;
   const webSocketUrl = props.site?.relive?.webSocketUrl;
+  const endTime = Number(program.endTime);
   return {
     programId: normalizeProgramId(programId),
     title: typeof title === "string" && title.trim() ? title.trim().slice(0, 200) : null,
+    programStatus:typeof program.status === "string" ? program.status.slice(0,40) : null,
+    endTime:Number.isFinite(endTime) && endTime > 0 ? endTime : null,
     watchingApiAvailable: isTrustedWebSocketEndpoint(webSocketUrl),
     pageDataFound: true
   };
