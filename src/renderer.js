@@ -14,6 +14,7 @@ let pollCurrentProgramId="";
 let pollEnqueteOpen=false;
 let pollWaitTimer=null;
 let pollWaitResolve=null;
+let pollFinishPromise=null;
 const initial={requests:[],ngWords:[],ngUsers:[],playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false},external:{obs:"",nair:"",xsplit:""},logs:["β2 UIプロトタイプを起動しました"]};
 let state=load(),page="dashboard";
 function load(){
@@ -201,9 +202,18 @@ pollWaitResolve=null;
 if(resolve)resolve(false);
 }
 async function finishActiveEnquete(programId){
-if(!pollEnqueteOpen)return;
-pollEnqueteOpen=false;
-try{await window.kananeoApp.niconico.finishEnquete({programId});}catch{}
+if(!pollEnqueteOpen)return {ok:true};
+if(pollFinishPromise)return pollFinishPromise;
+pollFinishPromise=(async()=>{
+try{
+const result=await window.kananeoApp.niconico.finishEnquete({programId});
+if(result?.ok)pollEnqueteOpen=false;
+return result||{ok:false,message:"アンケート終了APIから応答がありません。"};
+}catch{return {ok:false,message:"アンケート終了APIに接続できませんでした。"};}
+})();
+const result=await pollFinishPromise;
+pollFinishPromise=null;
+return result;
 }
 async function stopAutomaticPoll(){
 if(!pollRuntime.active)return;
@@ -258,7 +268,8 @@ if(input.resultSeconds>0){
 const resultWait=await waitForPoll(input.resultSeconds*1000,token);
 if(!resultWait){await finishActiveEnquete(programId);break;}
 }
-await finishActiveEnquete(programId);
+const finishResult=await finishActiveEnquete(programId);
+if(!finishResult?.ok)throw new Error(finishResult?.message||"アンケートを終了できませんでした。");
 opened=false;
 if(token!==pollRunToken)break;
 if(decision.decision==="next"){
