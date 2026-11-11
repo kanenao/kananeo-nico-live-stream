@@ -222,13 +222,22 @@ pollRunToken++;
 pollRuntime.active=false;
 cancelPollWait();
 setPollRuntime("stopping","アンケートを終了しています。");
-await finishActiveEnquete(programId);
+const finishResult=await finishActiveEnquete(programId);
 pollCurrentProgramId="";
+if(!finishResult?.ok){
+setPollRuntime("error",finishResult?.message||"アンケートを終了できませんでした。");
+toast(finishResult?.message||"アンケートを終了できませんでした。");
+return;
+}
 setPollRuntime("idle","自動アンケートを停止しました。");
 toast("自動アンケートを停止しました。");
 }
 async function startAutomaticPoll(){
 if(pollRuntime.active){toast("自動アンケートは既に実行中です。");return;}
+if(pollEnqueteOpen){
+const cleanup=await finishActiveEnquete(pollCurrentProgramId||state.lastProgramId||commentConnection.programId);
+if(!cleanup?.ok){toast(cleanup?.message||"前回のアンケートを終了できません。");return;}
+}
 savePollSettings();
 const programId=state.lastProgramId||commentConnection.programId;
 if(!programId){toast("先に「放送・枠管理」で放送IDを確認してください。");return;}
