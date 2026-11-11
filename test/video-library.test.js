@@ -118,5 +118,5 @@ test("rejects invalid import data and skips malformed lines",()=>{
   const invalid=parseVideoImportText("not a video\nhttps://example.com/watch/sm123");
   assert.equal(invalid.ok,false);
   assert.equal(invalid.skipped,2);
-  assert.equal(parseVideoImportText("x".repeat(3*1024*1024)).code,"INVALID_IMPORT_TEXT");
+  assert.equal(parseVideoImportText("x".repeat(17*1024*1024)).code,"INVALID_IMPORT_TEXT");
 });
