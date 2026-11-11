@@ -25,6 +25,16 @@
 - Cookie、WebSocket URL、view URI、raw ProtobufはRenderer・ログ・CSVに渡さない
 - 切断時はライブラリの上限付き自動再接続を利用
 
+## β7：自動アンケート
+
+- アンケート開始：`POST https://live2.nicovideo.jp/unama/watch/{lv}/enquete`。JSONの `question` と `items` を送信
+- 結果取得：`POST https://live2.nicovideo.jp/unama/watch/{lv}/enquete/result`
+- アンケート終了：`DELETE https://live2.nicovideo.jp/unama/watch/{lv}/enquete`
+- リクエストはElectronの専用セッションから送信し、Cookie値をRendererに渡さない
+- 401 / 403 / 404 / 409 / timeout をアプリ側で区別して表示
+- 配信主権限がない場合はAPI側の拒否を表示し、権限を偽装しない
+- 実装根拠にした公開クライアントは2024年更新のコミュニティ実装であり、ニコニコ公式仕様書ではない。APIの継続動作は実アカウント試験が必要
+
 ## 制約
 
 - `connected` は視聴セッション確立を意味し、配信主権限やコメント送信権限を示しません。
