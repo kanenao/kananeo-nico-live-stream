@@ -25,6 +25,9 @@ let requestReplyBusy=false;
 let lastRequestReplySentAt=0;
 let lastRequestReplyErrorToastAt=0;
 let playerState={state:"closed",currentTime:0,duration:0,message:"プレイヤー未起動"};
+let speechQueue=[];
+let speechBusy=false;
+let speechDroppedCount=0;
 const MAX_DISPLAY_COMMENTS=1000;
 const MAX_QUEUE_ITEMS=1000;
 let nicoStatus={authenticated:false,label:"状態を確認中"};
@@ -43,7 +46,7 @@ let pollEnqueteOpen=false;
 let pollWaitTimer=null;
 let pollWaitResolve=null;
 let pollFinishPromise=null;
-const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,mainVolume:1,subVolume:0,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},logs:["β2 UIプロトタイプを起動しました"]};
+const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,mainVolume:1,subVolume:0,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},logs:["β2 UIプロトタイプを起動しました"]};
 let state=load(),page="dashboard";
 function load(){
 try{
@@ -53,6 +56,7 @@ loaded.player={...initial.player,...(stored.player||{})};
 loaded.playback={...initial.playback,...(stored.playback||{})};
 loaded.poll={...initial.poll,...(stored.poll||{})};
 loaded.requestSettings={...initial.requestSettings,...(stored.requestSettings||{})};
+loaded.voice={...initial.voice,...(stored.voice||{})};
 loaded.userProfiles=window.KananeoUserProfiles.normalizeUserProfiles(stored.userProfiles);
 loaded.requests=(Array.isArray(stored.requests)?stored.requests:[]).map((item,index)=>({...item,id:typeof item?.id==="string"?item.id:"legacy-"+index,status:item?.status||"queued"}));
 loaded.stocks=(Array.isArray(stored.stocks)?stored.stocks:[]).map((item,index)=>({...item,id:typeof item?.id==="string"?item.id:"stock-legacy-"+index,status:item?.status||"queued"}));
@@ -204,8 +208,10 @@ panel("番組ページを確認","放送IDまたはニコ生番組URLを入力",
 panel("この段階で確認すること","番組ページ確認とコメント受信を区別します。",'<div class="row"><i></i><div><b>実装済み</b><small>公式ログイン画面、専用セッション、Cookieの存在確認、放送ID検証、番組ページの取得</small></div></div><div class="row"><i></i><div><b>次段階</b><small>NDGRコメントサーバー接続、コメント受信、配信主権限確認</small></div></div>')+
 '<div class="banner"><i class="led"></i><div><b>注意</b><small>番組ページを確認しても、コメント接続や配信操作が成功したことにはなりません。</small></div></div>';
 }else if(page==="voice"){
-html=hero("VOICE & AUTO RESPONSE","音声・自動応答","コメント読み上げ、音声認識コマンド、定時通知、自動応答を追加予定です。")+
-panel("音声・通知", "オプション機能",toggle("read","コメント読み上げ","棒読みちゃん等と連携予定",false)+toggle("reply","自動応答","許可ユーザー・頻度制限付きで実装予定",false));
+const speechAvailable=!!(window.speechSynthesis&&typeof window.SpeechSynthesisUtterance==="function");
+html=hero("VOICE & AUTO RESPONSE","音声・自動応答","コメント読み上げをローカル音声合成で行います。読み上げは初期状態OFFで、NGワード・過去コメントは対象外です。")+
+panel("コメント読み上げ","Windows／Chromiumにインストールされた日本語音声を使用します。",'<form id="voice-settings-form"><label class="switchrow"><span><b>コメント読み上げを有効にする</b><small>通常コメントを受信した順に読み上げます。初期状態はOFFです。</small></span><input type="checkbox" id="voice-enabled" '+(state.voice.enabled?"checked":"")+'></label><label class="switchrow"><span><b>読み上げにコテハンを含める</b><small>登録済みコテハン、未登録ならニコニコ表示名を読み上げます。</small></span><input type="checkbox" id="voice-include-name" '+(state.voice.includeName?"checked":"")+'></label><label class="switchrow"><span><b>放送者コメントも読み上げる</b><small>通常コメントとは別に、放送者コメントを読み上げ対象にします。</small></span><input type="checkbox" id="voice-speak-operator" '+(state.voice.speakOperator?"checked":"")+'></label><div class="field"><label>音声</label><select class="input" id="voice-uri"><option value="">システム標準の日本語音声</option></select><small class="muted" id="voice-engine-status">'+(speechAvailable?"利用可能な音声を確認しています…":"この環境では音声合成APIを利用できません。")+'</small></div><div class="grid3"><div class="field"><label>読み上げ速度（0.5〜2）</label><input class="input" id="voice-rate" type="number" min="0.5" max="2" step="0.1" value="'+Number(state.voice.rate||1)+'"></div><div class="field"><label>声の高さ（0〜2）</label><input class="input" id="voice-pitch" type="number" min="0" max="2" step="0.1" value="'+Number(state.voice.pitch||1)+'"></div><div class="field"><label>音量（0〜1）</label><input class="input" id="voice-volume" type="number" min="0" max="1" step="0.1" value="'+Number(state.voice.volume??1)+'"></div></div><div class="actions"><button class="btn primary" type="submit">読み上げ設定を保存</button><button class="btn" type="button" data-voice-test '+(!speechAvailable?"disabled":"")+'>テスト読み上げ</button><button class="btn" type="button" data-voice-pause '+(!speechAvailable?"disabled":"")+'>一時停止</button><button class="btn" type="button" data-voice-resume '+(!speechAvailable?"disabled":"")+'>再開</button><button class="btn" type="button" data-voice-clear>待ち行列をクリア</button></div><div class="muted" id="voice-queue-status">待ち行列：'+speechQueue.length+' 件 / 読み上げ待ちで破棄：'+speechDroppedCount+' 件</div></form>')+
+panel("読み上げ対象・安全設定","過去コメント、NGワードを含むコメント、空コメントは読み上げません。",'<div class="row"><b>対象</b><span>通常コメント'+(state.voice.speakOperator?" ＋ 放送者コメント":"")+'</span></div><div class="row"><b>キュー上限</b><span>100件（古い未読から破棄）</span></div><div class="muted">音声はこのPC上で再生されます。ニコ生のコメントとして投稿されることはありません。音声出力先や利用できる声はWindowsの音声設定に依存します。</div>');
 }else if(page==="logs"){
 html=hero("ACTIVITY & BACKUP","履歴・バックアップ","設定データのJSON書き出し・読み込み。")+
 panel("システムログ","操作履歴",state.logs.map(x=>`<div class="row"><i></i><b>${esc(x)}</b></div>`).join("")+'<div class="actions"><button class="btn primary" data-export>設定JSONを書き出す</button><button class="btn" data-clear-logs>ログを消去</button></div>');
@@ -219,6 +225,7 @@ const options=sources.map(source=>'<option value="'+esc(source)+'" '+(librarySou
 html=html.replace('<div class="section"><p id="library-count">','<div class="field"><label>取り込み元で絞り込み</label><select class="input" id="library-source"><option value="">すべて</option>'+options+'</select></div><div class="section"><p id="library-count">');
 }
 document.getElementById("content").innerHTML=html;
+if(page==="voice")renderSpeechVoices();
 if(page==="library")renderLibrarySourcePreview();
 if(page==="users")renderUserProfileRows();
 }
@@ -890,6 +897,7 @@ state.logs.unshift("コメントリクエスト判定エラー："+String(error?
 function receiveComment(comment){
 if(!comment||typeof comment!=="object")return;
 receivedComments.push(comment);
+queueCommentSpeech(comment);
 void maybeAddCommentRequest(comment);
 if(receivedComments.length>MAX_DISPLAY_COMMENTS)receivedComments.splice(0,receivedComments.length-MAX_DISPLAY_COMMENTS);
 renderComments();
@@ -959,6 +967,93 @@ for(const c of rows)lines.push([c.timestamp,c.type,c.userName,c.userId,c.content
 const blob=new Blob(["\\uFEFF"+lines.join("\\r\\n")],{type:"text/csv;charset=utf-8"});
 const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="nicolive-comments-"+(commentConnection.programId||"session")+".csv";a.click();URL.revokeObjectURL(url);
 toast("CSVファイルを保存しました。");
+}
+function isSpeechEngineAvailable(){
+return !!(window.speechSynthesis&&typeof window.SpeechSynthesisUtterance==="function");
+}
+function renderSpeechVoices(){
+const select=document.getElementById("voice-uri");
+const status=document.getElementById("voice-engine-status");
+if(!select)return;
+if(!isSpeechEngineAvailable()){if(status)status.textContent="この環境では音声合成APIを利用できません。";return;}
+const voices=window.speechSynthesis.getVoices()||[];
+const current=state.voice.voiceURI||"";
+select.innerHTML='<option value="">システム標準の日本語音声</option>'+voices.map(voice=>'<option value="'+esc(voice.voiceURI)+'">'+esc(voice.name)+'（'+esc(voice.lang||"言語不明")+'）</option>').join("");
+select.value=voices.some(voice=>voice.voiceURI===current)?current:"";
+if(status)status.textContent=voices.length?voices.length+" 個の音声が利用できます。日本語音声がある場合は「ja-JP」を選んでください。":"音声一覧を取得できませんでした。Windowsの音声機能を確認してください。";
+}
+function updateSpeechQueueUi(){
+const node=document.getElementById("voice-queue-status");
+if(node)node.textContent="待ち行列："+speechQueue.length+" 件 / 読み上げ中："+(speechBusy?"はい":"いいえ")+" / 待ち行列で破棄："+speechDroppedCount+" 件";
+}
+function stopSpeechQueue(clear=true){
+if(clear)speechQueue=[];
+if(isSpeechEngineAvailable())window.speechSynthesis.cancel();
+speechBusy=false;
+updateSpeechQueueUi();
+}
+function speakDirect(text){
+if(!isSpeechEngineAvailable()){toast("この環境では音声合成を利用できません。");return false;}
+const utterance=new window.SpeechSynthesisUtterance(String(text||"").slice(0,320));
+utterance.lang="ja-JP";
+utterance.rate=Number(state.voice.rate)||1;
+utterance.pitch=Number(state.voice.pitch)||1;
+utterance.volume=Number(state.voice.volume??1);
+const voice=(window.speechSynthesis.getVoices()||[]).find(item=>item.voiceURI===state.voice.voiceURI);
+if(voice)utterance.voice=voice;
+window.speechSynthesis.speak(utterance);
+return true;
+}
+function speakNextComment(){
+if(speechBusy||!speechQueue.length||!state.voice.enabled||!isSpeechEngineAvailable())return;
+const next=speechQueue.shift();
+speechBusy=true;
+updateSpeechQueueUi();
+const utterance=new window.SpeechSynthesisUtterance(next);
+utterance.lang="ja-JP";
+utterance.rate=Number(state.voice.rate)||1;
+utterance.pitch=Number(state.voice.pitch)||1;
+utterance.volume=Number(state.voice.volume??1);
+const voice=(window.speechSynthesis.getVoices()||[]).find(item=>item.voiceURI===state.voice.voiceURI);
+if(voice)utterance.voice=voice;
+const finish=()=>{
+speechBusy=false;
+updateSpeechQueueUi();
+if(state.voice.enabled)speakNextComment();
+};
+utterance.onend=finish;
+utterance.onerror=finish;
+window.speechSynthesis.speak(utterance);
+}
+function queueCommentSpeech(comment){
+if(!state.voice?.enabled)return;
+const profile=findUserProfile(comment?.userId);
+const result=window.KananeoCommentSpeech.createCommentSpeechText(comment,profile,state.voice,state.ngWords);
+if(!result.ok)return;
+const queued=window.KananeoCommentSpeech.appendSpeechQueue(speechQueue,result.text,state.voice.maxQueue||100);
+speechQueue=queued.queue;
+speechDroppedCount+=queued.dropped;
+updateSpeechQueueUi();
+speakNextComment();
+}
+function saveVoiceSettings(){
+const result=window.KananeoCommentSpeech.normalizeCommentSpeechSettings({
+enabled:document.getElementById("voice-enabled").checked,
+includeName:document.getElementById("voice-include-name").checked,
+speakOperator:document.getElementById("voice-speak-operator").checked,
+rate:document.getElementById("voice-rate").value,
+pitch:document.getElementById("voice-pitch").value,
+volume:document.getElementById("voice-volume").value,
+voiceURI:document.getElementById("voice-uri").value,
+maxQueue:100
+});
+state.voice=result;
+save();
+if(!state.voice.enabled)stopSpeechQueue(true);
+else if(isSpeechEngineAvailable())window.speechSynthesis.resume();
+toast("コメント読み上げ設定を保存しました。");
+renderSpeechVoices();
+updateSpeechQueueUi();
 }
 function applyNicoStatus(status){
 nicoStatus=status||{authenticated:false,label:"状態を確認できません"};
@@ -1073,6 +1168,10 @@ if(b.hasAttribute("data-stock-remove")){state.stocks=state.stocks.filter(x=>x.id
 if(b.hasAttribute("data-stock-clear")){if(quotePlayback.queueType==="stock"&&quotePlayback.active){toast("引用再生を停止してからストックを消去してください。");return;}state.stocks=[];save();render();}
 if(b.hasAttribute("data-remove")){const removed=state.requests.find(x=>x.id===b.dataset.remove);state.requests=state.requests.filter(x=>x.id!==b.dataset.remove);if(removed&&removed.id===state.player.currentId){state.player.currentId="";state.player.status="closed";void window.kananeoApp.niconico.closeVideo();}save();render()}
 if(b.hasAttribute("data-clear")){if(state.player.currentId)void window.kananeoApp.niconico.closeVideo();state.requests=[];state.player.currentId="";state.player.status="closed";save();render()}
+if(b.hasAttribute("data-voice-test")){if(!isSpeechEngineAvailable())toast("この環境では音声合成を利用できません。");else speakDirect("コメント読み上げのテストです。日本語の音声を確認してください。");return;}
+if(b.hasAttribute("data-voice-pause")){if(isSpeechEngineAvailable())window.speechSynthesis.pause();return;}
+if(b.hasAttribute("data-voice-resume")){if(isSpeechEngineAvailable())window.speechSynthesis.resume();return;}
+if(b.hasAttribute("data-voice-clear")){speechDroppedCount=0;stopSpeechQueue(true);toast("読み上げ待ち行列をクリアしました。");return;}
 if(b.hasAttribute("data-user-profile-from-comment")){
 const userId=b.dataset.userProfileFromComment||"";
 const existing=findUserProfile(userId);
@@ -1181,6 +1280,7 @@ toast("取り込み完了：新規 "+(result.added||0)+" 件、重複統合 "+(r
 }catch{toast("動画一覧の取り込みに失敗しました。通信とログイン状態を確認してください。");}
 finally{if(submitButton)submitButton.disabled=false;}
 }
+if(e.target.id==="voice-settings-form"){saveVoiceSettings();}
 if(e.target.id==="user-profile-form"){
 const userId=document.getElementById("profile-user-id").value;
 const nickname=document.getElementById("profile-nickname").value;
@@ -1193,6 +1293,7 @@ if(e.target.id==="ng-word-form"){state.ngWords.push(document.getElementById("ng-
 if(e.target.id==="ng-user-form"){state.ngUsers.push(document.getElementById("ng-user").value.trim());save();render()}
 if(e.target.id==="track-form"){state.playlist.push(document.getElementById("track").value.trim());save();render()}
 });
+if(window.speechSynthesis&&typeof window.speechSynthesis.addEventListener==="function"){window.speechSynthesis.addEventListener("voiceschanged",()=>{if(page==="voice")renderSpeechVoices();});}
 if(window.kananeoApp?.niconico){window.kananeoApp.niconico.getSessionStatus().then(applyNicoStatus).catch(()=>{});window.kananeoApp.niconico.onSessionChanged(applyNicoStatus);
     void refreshVideoLibrary(true);
     window.kananeoApp.niconico.onComment(receiveComment);
