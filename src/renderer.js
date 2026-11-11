@@ -197,11 +197,19 @@ toast(result.message||"引用再生の要求を送信しました。");
 }catch{toast("引用再生APIに接続できませんでした。");}
 }
 async function stopQuotedPlayback(){
-if(!quotePlayback.active){toast("引用再生は停止していません。");return;}
+const programId=quotePlayback.programId||state.lastProgramId;
+if(!programId){toast("放送IDを確認してください。");return;}
 if(!confirm("現在ニコ生へ送っている引用再生を停止しますか？"))return;
-const result=await window.kananeoApp.niconico.stopQuotedVideo({programId:quotePlayback.programId||state.lastProgramId,confirmed:true});
+const current=await window.kananeoApp.niconico.getCurrentQuotation({programId});
+if(!current?.ok){toast(current?.message||"引用再生状態を確認できませんでした。");return;}
+if(!current.exists){
+quotePlayback={active:false,verified:true,programId,videoId:"",queueType:"",message:"ニコ生側では引用再生が既に停止しています。"};
+for(const list of [state.requests,state.stocks])list.forEach(x=>{if(x.status==="playing")x.status="queued";});
+state.player.currentId="";save();if(page==="player")render();toast(quotePlayback.message);return;
+}
+const result=await window.kananeoApp.niconico.stopQuotedVideo({programId,confirmed:true});
 if(!result?.ok){toast(result?.message||"引用再生を停止できませんでした。");return;}
-quotePlayback={active:false,verified:true,programId:quotePlayback.programId,videoId:"",queueType:"",message:result.message};
+quotePlayback={active:false,verified:true,programId,videoId:"",queueType:"",message:result.message};
 for(const list of [state.requests,state.stocks])list.forEach(x=>{if(x.status==="playing")x.status="queued";});
 state.player.currentId="";save();if(page==="player"||page==="requests"||page==="stocks")render();toast(result.message);
 }
@@ -548,7 +556,7 @@ try{const r=await window.kananeoApp.niconico.checkProgram(input);node.replaceChi
 catch{node.textContent="確認中にエラーが発生しました。";}
 finally{if(button)button.disabled=false;}
 }
-function go(p){page=p;render();if(p==="dashboard")void refreshDashboardStatistics(true)}
+function go(p){page=p;render();if(p==="dashboard")void refreshDashboardStatistics(true);if(p==="player")void refreshQuotePlayback();}
 document.getElementById("nav").addEventListener("click",e=>{const b=e.target.closest("[data-page]");if(b)go(b.dataset.page)});
 document.addEventListener("click",e=>{
 const goBtn=e.target.closest("[data-go]");if(goBtn){go(goBtn.dataset.go);return}
