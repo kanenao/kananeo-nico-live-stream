@@ -42,7 +42,7 @@ let pollEnqueteOpen=false;
 let pollWaitTimer=null;
 let pollWaitResolve=null;
 let pollFinishPromise=null;
-const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,mainVolume:1,subVolume:0,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},logs:["β2 UIプロトタイプを起動しました"]};
+const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,mainVolume:1,subVolume:0,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},logs:["β2 UIプロトタイプを起動しました"]};
 let state=load(),page="dashboard";
 function load(){
 try{
@@ -52,6 +52,7 @@ loaded.player={...initial.player,...(stored.player||{})};
 loaded.playback={...initial.playback,...(stored.playback||{})};
 loaded.poll={...initial.poll,...(stored.poll||{})};
 loaded.requestSettings={...initial.requestSettings,...(stored.requestSettings||{})};
+loaded.userProfiles=window.KananeoUserProfiles.normalizeUserProfiles(stored.userProfiles);
 loaded.requests=(Array.isArray(stored.requests)?stored.requests:[]).map((item,index)=>({...item,id:typeof item?.id==="string"?item.id:"legacy-"+index,status:item?.status||"queued"}));
 loaded.stocks=(Array.isArray(stored.stocks)?stored.stocks:[]).map((item,index)=>({...item,id:typeof item?.id==="string"?item.id:"stock-legacy-"+index,status:item?.status||"queued"}));
 return loaded;
@@ -84,6 +85,16 @@ function formatRemainingTime(){const end=Number(state.lastProgramEndAt);if(!Numb
 function updateDashboardStatsUi(){const viewers=document.getElementById("dashboard-viewers"),comments=document.getElementById("dashboard-comments"),requests=document.getElementById("dashboard-requests"),remaining=document.getElementById("dashboard-remaining"),updated=document.getElementById("dashboard-updated"),error=document.getElementById("dashboard-stats-error"),program=document.getElementById("dashboard-program-label"),refresh=document.querySelector("[data-dashboard-refresh]");if(viewers)viewers.textContent=dashboardStats.loading&&dashboardStats.watchCount==null?"取得中…":dashboardStats.watchCount==null?"—":Number(dashboardStats.watchCount).toLocaleString("ja-JP");if(comments)comments.textContent=dashboardStats.loading&&dashboardStats.commentCount==null?"取得中…":dashboardStats.commentCount==null?"—":Number(dashboardStats.commentCount).toLocaleString("ja-JP");if(requests)requests.textContent=String(state.requests.filter(x=>!["completed","skipped"].includes(x.status)).length);if(remaining)remaining.textContent=formatRemainingTime();if(updated)updated.textContent=dashboardStats.updatedAt?"更新："+new Date(dashboardStats.updatedAt).toLocaleTimeString("ja-JP"):dashboardStats.loading?"取得中…":"統計未取得";if(error)error.textContent=dashboardStats.error||"";if(program)program.textContent=state.lastProgramId?(state.lastProgramTitle||state.lastProgramId)+" / "+programStatusLabel(state.lastProgramStatus):"放送ID未設定";if(refresh)refresh.disabled=dashboardStats.loading}
 async function refreshDashboardStatistics(silent=false){const programId=state.lastProgramId||commentConnection.programId;if(!programId){dashboardStats.error="放送IDを確認すると来場者数・コメント数を表示できます。";updateDashboardStatsUi();if(!silent)toast(dashboardStats.error);return;}if(dashboardStats.loading)return;dashboardStats.loading=true;dashboardStats.error="";updateDashboardStatsUi();try{const result=await window.kananeoApp.niconico.getProgramStatistics({programId});if(!result?.ok)throw new Error(result?.message||"番組統計を取得できませんでした。");dashboardStats={loading:false,watchCount:result.watchCount,commentCount:result.commentCount,updatedAt:result.updatedAt||new Date().toISOString(),error:""};}catch(error){dashboardStats.loading=false;dashboardStats.error=error?.message||"番組統計を取得できませんでした。";}updateDashboardStatsUi()}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function findUserProfile(userId){
+return window.KananeoUserProfiles?.findUserProfile(state.userProfiles,userId)||null;
+}
+function getUserDisplayName(comment,fallback="匿名"){
+const profile=findUserProfile(comment?.userId);
+return profile?.nickname||String(comment?.userName||fallback||"匿名");
+}
+function getRequesterDisplayName(item){
+return getUserDisplayName({userId:item?.requestUserId,userName:item?.requestedBy},item?.requestUserId||"");
+}
 function toast(s){const t=document.getElementById("toast");t.textContent=s;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200)}
 function hero(k,t,d,b=""){return `<div class="hero"><div><div class="eyebrow">${k}</div><h1>${t}</h1><p class="desc">${d}</p></div>${b}</div>`}
 function panel(t,d,body){return `<article class="panel"><h2>${t}</h2><p>${d}</p>${body}</article>`}
@@ -104,7 +115,7 @@ panel("システムログ","ローカルに記録した直近の操作",state.lo
 '<footer>kananeo nico live stream <span>0.1.0-beta.18 · Beta preview</span></footer>';
 }else if(page==="requests"){
 const waiting=state.requests.filter(x=>!["completed","skipped","rejected"].includes(x.status)).length;
-const requestRows=state.requests.map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+(x.status==="playing"?"再生中":x.status==="completed"?"再生済み":x.status==="skipped"?"スキップ":x.status==="rejected"?"引用不可":"待機中")+'</td><td>'+esc(x.title)+'</td><td>'+esc(x.videoId||x.url)+'</td><td><button class="btn" data-play="'+esc(x.id)+'">プレビュー</button> <button class="btn primary" data-quote-request="'+esc(x.id)+'">ニコ生へ送る</button> <button class="btn" data-up="'+i+'" '+(i===0?"disabled":"")+'>&uarr;</button> <button class="btn" data-down="'+i+'" '+(i===state.requests.length-1?"disabled":"")+'>&darr;</button> <button class="btn" data-remove="'+esc(x.id)+'">削除</button></td></tr>').join("");
+const requestRows=state.requests.map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+(x.status==="playing"?"再生中":x.status==="completed"?"再生済み":x.status==="skipped"?"スキップ":x.status==="rejected"?"引用不可":"待機中")+'</td><td>'+esc(x.title)+(x.requestUserId?'<div class="muted">リクエスト者：'+esc(getRequesterDisplayName(x))+'</div>':"")+'</td><td>'+esc(x.videoId||x.url)+'</td><td><button class="btn" data-play="'+esc(x.id)+'">プレビュー</button> <button class="btn primary" data-quote-request="'+esc(x.id)+'">ニコ生へ送る</button> <button class="btn" data-up="'+i+'" '+(i===0?"disabled":"")+'>&uarr;</button> <button class="btn" data-down="'+i+'" '+(i===state.requests.length-1?"disabled":"")+'>&darr;</button> <button class="btn" data-remove="'+esc(x.id)+'">削除</button></td></tr>').join("");
 html=hero("VIEWER REQUESTS","動画リクエスト","視聴者から受け付けた動画を管理します。プレビューとニコ生への引用再生は別操作です。")+
 panel("動画リクエストを追加","動画ID・watch URLと、分かる場合は動画時間も登録します。",'<form id="request-form" class="grid3">'+field("動画タイトル（任意）","req-title","","未入力なら動画IDを表示")+field("動画URL / ID","req-url","","sm12345678 または動画URL")+field("動画時間（秒・任意）","req-duration","","例：240")+'<button class="btn primary">キューに追加</button></form><label class="switchrow"><span><b>コメントからリクエスト自動受付</b><small>明示コマンドのみ受付。NGユーザー・NGワード・重複・上限を順に確認します。</small></span><input type="checkbox" id="request-from-comments" '+(state.requestSettings.acceptComments?"checked":"")+'></label><div class="field"><label>1ユーザーあたりの未再生リクエスト上限（1〜50）</label><input class="input" id="request-max-per-user" type="number" min="1" max="50" value="'+(state.requestSettings.maxPerUser||5)+'"></div><label class="switchrow"><span><b>受付結果を運営コメントで自動返信</b><small>初期設定OFF。配信主権限が必要で、送信間隔は最低5秒に制限します。</small></span><input type="checkbox" id="request-reply-enabled" '+(state.requestSettings.replyEnabled?"checked":"")+'></label><div class="field"><label>受付時の返信（80文字以内）</label><textarea class="input" id="request-reply-accepted" rows="2" maxlength="80">'+esc(state.requestSettings.replyAccepted||initial.requestSettings.replyAccepted)+'</textarea></div><div class="field"><label>却下時の返信（80文字以内）</label><textarea class="input" id="request-reply-rejected" rows="2" maxlength="80">'+esc(state.requestSettings.replyRejected||initial.requestSettings.replyRejected)+'</textarea></div><div class="muted">使用できる置換：{video_id}、{comment_no}、{reason}。受付返信はキュー登録後、却下返信はNG・重複・上限などの判定後に送信します。一般コメントとしてではなく、ニコ生の運営コメントとして投稿されます。</div><div class="muted">「プレビュー」は動画ページを開くだけです。「ニコ生へ送る」は放送中の番組に引用再生を要求します。</div>')+
 panel("リクエストキュー",waiting+" 件が未再生",state.requests.length?'<table class="table"><thead><tr><th>#</th><th>状態</th><th>タイトル</th><th>動画ID</th><th>操作</th></tr></thead><tbody>'+requestRows+'</tbody></table><div class="actions"><button class="btn" data-player-next>次の動画をプレビュー</button><button class="btn primary" data-quote-next>次の動画をニコ生へ引用再生</button><button class="btn" data-clear>リクエストを全消去</button><button class="btn" data-go="stocks">ストックを管理</button></div>':'<div class="empty">リクエストキューは空です。</div>');
@@ -137,9 +148,12 @@ panel("自動延長","動画の残り時間と枠の残り時間を同期",toggl
 html=hero("EXTERNAL TOOLS","OBS・外部配信ツール","OBS Studio / N Air / XSplitの起動パスを登録します。外部操作は未実装です。")+
 '<div class="grid3">'+panel("OBS Studio","実行ファイルのパス",field("OBS実行ファイル","obs",state.external.obs,"obs64.exe"))+panel("N Air","実行ファイルのパス",field("N Air実行ファイル","nair",state.external.nair,"N Air.exe"))+panel("XSplit","実行ファイルのパス",field("XSplit実行ファイル","xsplit",state.external.xsplit,"XSplit.exe"))+'</div><button class="btn primary" data-save-paths>パスを保存</button>';
 }else if(page==="users"){
-html=hero("MODERATION","ユーザー・NG管理","NGワード・NGユーザーをローカル保存します。")+
-'<div class="grid2">'+panel("NGワード","非表示対象の文字列",'<form id="ng-word-form" class="actions"><input id="ng-word" class="input" placeholder="NGワード" required><button class="btn primary">追加</button></form><div class="tags">'+state.ngWords.map((x,i)=>`<span class="tag">${esc(x)} <button data-ngw="${i}">×</button></span>`).join("")+'</div>')+
-panel("NGユーザー","ユーザーID単位で制限",'<form id="ng-user-form" class="actions"><input id="ng-user" class="input" placeholder="ユーザーID" required><button class="btn primary">追加</button></form><div class="tags">'+state.ngUsers.map((x,i)=>`<span class="tag">${esc(x)} <button data-ngu="${i}">×</button></span>`).join("")+'</div>')+'</div>';
+const profileRows=state.userProfiles.map((profile,index)=>'<tr><td><b>'+esc(profile.nickname||"（表示名なし）")+'</b><div class="muted">'+esc(profile.userId)+'</div></td><td>'+esc(profile.memo||"—")+'</td><td>'+new Date(profile.updatedAt).toLocaleDateString("ja-JP")+'</td><td><button class="btn" data-user-profile-edit="'+index+'">編集</button> <button class="btn" data-user-profile-remove="'+index+'">削除</button></td></tr>').join("");
+html=hero("MODERATION & USERS","ユーザー・NG管理","NGワード・NGユーザーに加え、ユーザーIDごとのコテハンとメモをローカル管理します。")+
+'<div class="grid2">'+panel("NGワード","非表示・受付対象外の文字列",'<form id="ng-word-form" class="actions"><input id="ng-word" class="input" placeholder="NGワード" required><button class="btn primary">追加</button></form><div class="tags">'+state.ngWords.map((x,i)=>'<span class="tag">'+esc(x)+' <button data-ngw="'+i+'">×</button></span>').join("")+'</div>')+
+panel("NGユーザー","ユーザーID単位で制限",'<form id="ng-user-form" class="actions"><input id="ng-user" class="input" placeholder="ユーザーID" required><button class="btn primary">追加</button></form><div class="tags">'+state.ngUsers.map((x,i)=>'<span class="tag">'+esc(x)+' <button data-ngu="'+i+'">×</button></span>').join("")+'</div>')+'</div>'+
+panel("コテハン・ユーザーメモ","登録した表示名はコメントビューアと動画リクエスト一覧に反映します。",'<form id="user-profile-form"><div class="grid3">'+field("ニコニコユーザーID","profile-user-id","","例：12345678")+field("コテハン（表示名）","profile-nickname","","コメント欄に表示する名前")+'<div class="field"><label>メモ（任意・1,000文字以内）</label><textarea class="input" id="profile-memo" maxlength="1000" rows="3" placeholder="常連・リクエスト傾向など"></textarea></div></div><div class="actions"><button class="btn primary" type="submit">登録・更新</button><button class="btn" type="button" data-user-profile-clear>入力をクリア</button></div><div class="muted">コテハンはこのPC内に保存します。ニコニコ側のプロフィールやコメント投稿名は変更しません。</div></form>')+
+panel("登録ユーザー",state.userProfiles.length+" 人を登録中",state.userProfiles.length?'<div style="overflow-x:auto"><table class="table"><thead><tr><th>ユーザー</th><th>メモ</th><th>更新日</th><th>操作</th></tr></thead><tbody>'+profileRows+'</tbody></table></div>':'<div class="empty">コテハン登録はまだありません。</div>');
 }else if(page==="player"){
 const current=currentQueueItem();
 const playerLabel=({closed:"未起動",loading:"読み込み中",playing:"再生中",paused:"一時停止",ended:"再生終了",error:"読み込みエラー"}[playerState.state]||"状態確認中");
@@ -741,7 +755,7 @@ const filter=document.getElementById("comments-filter")?.value||"all";
 return receivedComments.filter(c=>{
 if(filter!=="all"&&c.type!==filter)return false;
 if(!q)return true;
-return [c.content,c.userName,c.userId].some(v=>String(v||"").toLocaleLowerCase().includes(q));
+return [c.content,c.userName,c.userId,findUserProfile(c.userId)?.nickname].some(v=>String(v||"").toLocaleLowerCase().includes(q));
 });
 }
 function renderComments(){
@@ -756,7 +770,10 @@ const d=new Date(c.timestamp);
 const time=Number.isNaN(d.getTime())?"--:--:--":d.toLocaleTimeString("ja-JP",{hour12:false});
 const kind=({comment:"コメント",operatorComment:"放送者",gift:"ギフト",emotion:"エモーション",notification:"通知"}[c.type]||"イベント");
 const history=c.isHistory?'<span class="chip">過去</span>':"";
-return '<div class="comment-entry"><div class="comment-meta"><b>'+esc(c.userName||kind)+'</b><span>'+esc(time)+'</span><span class="chip purple">'+kind+'</span>'+history+'</div><div class="comment-body">'+esc(c.content||"")+'</div><div class="comment-user-id">'+esc(c.userId||"")+'</div></div>';
+const profile=findUserProfile(c.userId);
+const displayName=profile?.nickname||c.userName||kind;
+const originalName=profile?.nickname&&c.userName&&profile.nickname!==c.userName?'<small class="muted">（'+esc(c.userName)+'）</small>':"";
+return '<div class="comment-entry"><div class="comment-meta"><b>'+esc(displayName)+'</b>'+originalName+'<span>'+esc(time)+'</span><span class="chip purple">'+kind+'</span>'+history+'</div><div class="comment-body">'+esc(c.content||"")+'</div><div class="comment-user-id">'+esc(c.userId||"")+'</div></div>';
 }).join("");
 list.scrollTop=list.scrollHeight;
 }
@@ -843,7 +860,7 @@ queueCommentRequestReply(comment,state.requestSettings.replyRejected,validation.
 if(policy?.code==="QUEUE_FULL")toast(policy.message);
 return;
 }
-const item={id:"req-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8),title:validation.videoId,url:validation.url,videoId:validation.videoId,status:"queued",lengthMs:0,addedAt:new Date().toISOString(),source:"comment",requestUserId:userId,requestedBy:String(comment.userName||"")};
+const item={id:"req-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8),title:validation.videoId,url:validation.url,videoId:validation.videoId,status:"queued",lengthMs:0,addedAt:new Date().toISOString(),source:"comment",requestUserId:userId,requestedBy:getUserDisplayName(comment,String(comment.userName||""))};
 state.requests.push(item);state.logs.unshift("コメントから動画リクエスト："+item.videoId);save();
 if(page==="requests")render();
 toast("コメントからリクエストを受け付けました："+item.videoId);
@@ -1038,6 +1055,25 @@ if(b.hasAttribute("data-stock-remove")){state.stocks=state.stocks.filter(x=>x.id
 if(b.hasAttribute("data-stock-clear")){if(quotePlayback.queueType==="stock"&&quotePlayback.active){toast("引用再生を停止してからストックを消去してください。");return;}state.stocks=[];save();render();}
 if(b.hasAttribute("data-remove")){const removed=state.requests.find(x=>x.id===b.dataset.remove);state.requests=state.requests.filter(x=>x.id!==b.dataset.remove);if(removed&&removed.id===state.player.currentId){state.player.currentId="";state.player.status="closed";void window.kananeoApp.niconico.closeVideo();}save();render()}
 if(b.hasAttribute("data-clear")){if(state.player.currentId)void window.kananeoApp.niconico.closeVideo();state.requests=[];state.player.currentId="";state.player.status="closed";save();render()}
+if(b.hasAttribute("data-user-profile-edit")){
+const profile=state.userProfiles[Number(b.dataset.userProfileEdit)];
+if(profile){document.getElementById("profile-user-id").value=profile.userId;document.getElementById("profile-nickname").value=profile.nickname;document.getElementById("profile-memo").value=profile.memo;document.getElementById("profile-nickname").focus();}
+return;
+}
+if(b.hasAttribute("data-user-profile-remove")){
+const profile=state.userProfiles[Number(b.dataset.userProfileRemove)];
+if(profile&&confirm(profile.nickname+"（"+profile.userId+"）のコテハンを削除しますか？")){
+const result=window.KananeoUserProfiles.removeUserProfile(state.userProfiles,profile.userId);
+state.userProfiles=result.profiles;save();render();toast("ユーザー登録を削除しました。");
+}
+return;
+}
+if(b.hasAttribute("data-user-profile-clear")){
+document.getElementById("profile-user-id").value="";
+document.getElementById("profile-nickname").value="";
+document.getElementById("profile-memo").value="";
+return;
+}
 if(b.hasAttribute("data-ngw")){state.ngWords.splice(+b.dataset.ngw,1);save();render()}
 if(b.hasAttribute("data-ngu")){state.ngUsers.splice(+b.dataset.ngu,1);save();render()}
 if(b.hasAttribute("data-track")){state.playlist.splice(+b.dataset.track,1);save();render()}
@@ -1115,6 +1151,14 @@ state.logs.unshift("動画ライブラリ取り込み："+type+" / 追加 "+resu
 toast("取り込み完了：新規 "+(result.added||0)+" 件、重複統合 "+(result.updated||0)+" 件、履歴追加 "+(result.historyImported||0)+" 件、除外 "+(result.skipped||0)+" 件");
 }catch{toast("動画一覧の取り込みに失敗しました。通信とログイン状態を確認してください。");}
 finally{if(submitButton)submitButton.disabled=false;}
+}
+if(e.target.id==="user-profile-form"){
+const userId=document.getElementById("profile-user-id").value;
+const nickname=document.getElementById("profile-nickname").value;
+const memo=document.getElementById("profile-memo").value;
+const result=window.KananeoUserProfiles.upsertUserProfile(state.userProfiles,{userId,nickname,memo});
+if(!result.ok){toast(result.code==="PROFILE_LIMIT"?"登録ユーザー数が上限です。":"ユーザーIDとコテハンを入力してください。");return;}
+state.userProfiles=result.profiles;state.logs.unshift("コテハンを登録・更新："+result.profile.nickname+" / "+result.profile.userId);save();render();toast("コテハンを保存しました。");
 }
 if(e.target.id==="ng-word-form"){state.ngWords.push(document.getElementById("ng-word").value.trim());save();render()}
 if(e.target.id==="ng-user-form"){state.ngUsers.push(document.getElementById("ng-user").value.trim());save();render()}
