@@ -4,7 +4,13 @@
 
 ## 現在のバージョン
 
-**0.1.0-beta.8** — 自動アンケートに加え、来場者数・コメント数・放送残り時間を表示する配信ダッシュボードを追加しました。
+**0.1.0-beta.9** — β8機能に加え、Windowsインストーラーとポータブル版のビルド工程を追加しました。
+
+## β9で追加した機能
+
+- Windows x64向けNSISインストーラーとポータブル版のビルド設定
+- GitHub ActionsのWindows Buildワークフロー
+- ビルド前に単体テストを実行し、生成したEXEをActions artifactとして14日間保存
 
 ## β6で追加した機能
 
@@ -62,6 +68,18 @@
 - ニコニコ公式ログイン画面を専用セッションで開く
 - 放送ID / URLの検証、番組ページ情報確認
 
+## Windows版のビルド
+
+Windows環境で以下を実行すると、`dist` フォルダーにNSISインストーラーとポータブル版を生成します。
+
+```bash
+npm install
+npm test
+npm run dist:win
+```
+
+GitHubのActionsタブから「Windows Build」を手動実行するか、`v*` タグをpushするとWindows x64ビルドを実行します。生成EXEはワークフローのArtifactsから取得できます（保存期間14日）。現時点では署名証明書を設定していないため、Windows SmartScreenの警告が出る可能性があります。
+
 ## 起動方法
 
 1. Node.js 20以降をインストール
@@ -81,6 +99,7 @@
 ## 技術・依存ライブラリ
 
 - Electron 45.2.3
+- electron-builder 26.18.1（MIT）
 - [nicomget](https://github.com/Segu-g/nicomget) 2.2.4（MIT）
 - [@n-air-app/nicolive-comment-protobuf](https://github.com/Segu-g/nicolive-comment-protobuf)互換のprotobuf定義（MIT）
 
@@ -100,7 +119,7 @@
 - 終了検知はページ内のHTML5 `video` 要素を監視する方式です。ニコニコ側のページ構造変更、広告・読み込み状態、プレイヤー内部の実装によっては検知できない場合があります。その場合はアプリの「次の動画へ」を使用してください。
 - 対応対象はHTTPSのニコニコ動画 watch URL / 動画ID（`sm` / `nm` / `so`）です。YouTube、外部サイト、マイリスト、チャンネルURL、ローカル動画ファイルは未対応です。
 - コメント本文からの自動リクエスト抽出、ニコ生へのコメント送信・運営コメント送信、番組作成、次枠、無料延長、OBS等の外部操作は未実装です。アンケートAPIはβ7で追加しました。
-- β6の動画終了検知・連続再生、β7のアンケートAPI、β8の統計APIは実アカウント・実放送で未検証です。GitHub Actionsのテスト成功は、実配信での動作保証ではありません。
+- β6の動画終了検知・連続再生、β7のアンケートAPI、β8の統計APIは実アカウント・実放送で未検証です。β9のWindowsパッケージはGitHub Actionsで実ビルドを確認する必要があります。GitHub Actionsのテスト成功は、実配信での動作保証ではありません。
 
 ## β7の自動アンケートの使い方
 
