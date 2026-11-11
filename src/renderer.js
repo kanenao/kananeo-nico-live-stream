@@ -194,6 +194,7 @@ const start=Number(startedAt)||Date.now();
 state.player.quoteStartedAt=start;
 state.player.quoteDurationMs=durationMs;
 state.player.quoteVideoId=String(item?.videoId||item?.video_id||quotePlayback.videoId||"");
+state.player.quoteProgramId=String(quotePlayback.programId||state.lastProgramId||"");
 if(!state.playback.quoteAutoNext){
 quoteAutoMessage="引用再生の自動次動画はOFFです。";
 save();updateQuoteScheduleUi();return false;
@@ -228,7 +229,19 @@ const expectedVideoId=quotePlayback.videoId||state.player.quoteVideoId;
 if(!programId||!expectedVideoId)throw new Error("対象放送または動画IDを確認できません。");
 const current=await window.kananeoApp.niconico.getCurrentQuotation({programId});
 if(!current?.ok)throw new Error(current?.message||"引用再生状態を確認できませんでした。");
-if(current.exists&&current.currentVideoId!==expectedVideoId){
+if(!current.exists){
+const finishedId=quotePlayback.itemId||state.player.currentId;
+const finished=[...state.requests,...state.stocks].find(item=>item.id===finishedId);
+if(finished&&finished.status==="playing")finished.status="completed";
+quotePlayback={active:false,verified:true,programId,videoId:"",queueType:"",itemId:"",message:"予定時刻に引用再生が停止していたため、自動次動画を中止しました。"};
+state.player.quoteStartedAt=0;state.player.quoteDurationMs=0;state.player.quoteVideoId="";state.player.quoteProgramId="";state.player.quoteExpectedEndAt=0;
+save();
+quoteAutoSchedule=null;
+quoteAutoMessage="ニコ生の引用再生が停止しているため、自動次動画を中止しました。";
+updateQuoteScheduleUi();
+return;
+}
+if(current.currentVideoId!==expectedVideoId){
 await refreshQuotePlayback({silent:true});
 quoteAutoMessage="ニコ生側で別の動画に変更されたため、自動次動画を中止しました。";
 updateQuoteScheduleUi();
@@ -292,7 +305,7 @@ state.player.quoteDurationMs=0;
 state.player.quoteVideoId="";
 state.player.quoteExpectedEndAt=0;
 }else if(result.exists){
-const storedMatches=state.player.quoteVideoId===result.currentVideoId&&Number(state.player.quoteStartedAt)>0&&Number(state.player.quoteDurationMs)>0;
+const storedMatches=state.player.quoteVideoId===result.currentVideoId&&state.player.quoteProgramId===programId&&Number(state.player.quoteStartedAt)>0&&Number(state.player.quoteDurationMs)>0;
 if(storedMatches){
 const scheduleItem={videoId:result.currentVideoId,lengthMs:Number(state.player.quoteDurationMs)};
 scheduleQuoteAutoNext(scheduleItem,Number(state.player.quoteStartedAt));
@@ -358,7 +371,7 @@ if(!current.exists){
 clearQuoteAutoTimer("引用再生は既に停止しています。");
 const stoppedItemId=quotePlayback.itemId;
 quotePlayback={active:false,verified:true,programId,videoId:"",queueType:"",itemId:"",message:"ニコ生側では引用再生が既に停止しています。"};
-state.player.quoteStartedAt=0;state.player.quoteDurationMs=0;state.player.quoteVideoId="";state.player.quoteExpectedEndAt=0;
+state.player.quoteStartedAt=0;state.player.quoteDurationMs=0;state.player.quoteVideoId="";state.player.quoteProgramId="";state.player.quoteExpectedEndAt=0;
 for(const list of [state.requests,state.stocks])list.forEach(x=>{if(x.id===stoppedItemId&&x.status==="playing")x.status="queued";});
 if(state.player.currentId===stoppedItemId){state.player.currentId="";}save();if(page==="player")render();toast(quotePlayback.message);return;
 }
@@ -726,7 +739,7 @@ const goBtn=e.target.closest("[data-go]");if(goBtn){go(goBtn.dataset.go);return}
 const b=e.target.closest("button");if(!b)return;
 if(b.hasAttribute("data-nico-login")){window.kananeoApp.niconico.openLogin().then(()=>toast("ニコニコ公式ログイン画面を開きました"));return;}
 if(b.hasAttribute("data-nico-refresh")){window.kananeoApp.niconico.getSessionStatus().then(applyNicoStatus);return;}
-if(b.hasAttribute("data-nico-logout")){if(confirm("このアプリ専用のニコニコセッションを削除しますか？"))window.kananeoApp.niconico.logout().then(r=>{toast(r.message);return window.kananeoApp.niconico.getSessionStatus()}).then(applyNicoStatus);return;}
+if(b.hasAttribute("data-nico-logout")){if(confirm("このアプリ専用のニコニコセッションを削除しますか？")){clearQuoteAutoTimer("ログアウトのため引用再生の自動次動画を停止しました。");state.playback.quoteAutoNext=false;save();window.kananeoApp.niconico.logout().then(r=>{toast(r.message);return window.kananeoApp.niconico.getSessionStatus()}).then(applyNicoStatus);}return;}
 if(b.hasAttribute("data-nico-check")){void checkProgram();return;}
 if(b.hasAttribute("data-dashboard-refresh")){void refreshDashboardStatistics(false);return;}
 if(b.hasAttribute("data-extension-check")){void refreshExtensionOptions();return;}
