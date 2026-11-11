@@ -61,7 +61,7 @@
 - [x] Windows x64 NSISインストーラー / ポータブル版の設定
 - [x] GitHub Actions Windows Build workflow
 - [x] ビルド前の単体テストとEXE artifact保存
-- [ ] Windows CIでインストーラー / ポータブル版の実ビルド確認
+- [x] Windows CIでインストーラー / ポータブル版の実ビルド確認
 - [ ] コード署名と自動更新
 
 ## β10：配信運用自動化
