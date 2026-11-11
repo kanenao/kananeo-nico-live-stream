@@ -3,7 +3,8 @@
 const TERMINAL_STATUSES = new Set(["completed","skipped","rejected"]);
 
 function isEligible(item, queueType, remainingMs) {
-  if (!item || item.noLivePlay === true || item.no_live_play === 1 || item.playable === false) return false;
+  if (!item || item.noLivePlay === true || item.no_live_play === true || item.no_live_play === 1 || item.playable === false) return false;
+  if (Number.isFinite(remainingMs) && remainingMs <= 0) return false;
   if (TERMINAL_STATUSES.has(String(item.status || "").toLowerCase())) return false;
   if (queueType === "stock" && (item.isPlayed === true || item.is_played === true)) return false;
 
