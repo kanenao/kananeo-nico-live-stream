@@ -9,6 +9,7 @@ const {
   mergeVideoEntries,
   addPlaybackHistory,
   mergeVideoHistory,
+  prepareSelectedVideoEntries,
   removeVideoEntry,
   updateVideoEntry,
   clearVideoHistory,
@@ -71,6 +72,23 @@ test("removes library items without deleting playback history",()=>{
   assert.equal(removed.removed,true);
   assert.equal(removed.library.items.length,0);
   assert.equal(removed.library.history.length,1);
+});
+
+test("prepares selected list entries and forces a trusted source label",()=>{
+  const result=prepareSelectedVideoEntries([
+    {videoId:"sm501",title:"Selected",source:"manual"},
+    {videoId:"invalid",title:"Bad"}
+  ],"mylist");
+  assert.equal(result.ok,true);
+  assert.equal(result.entries.length,1);
+  assert.equal(result.entries[0].source,"mylist");
+  assert.equal(result.skipped,1);
+});
+
+test("rejects empty, oversized, and unsupported selected imports",()=>{
+  assert.equal(prepareSelectedVideoEntries([],"mylist").code,"INVALID_SELECTION");
+  assert.equal(prepareSelectedVideoEntries([{videoId:"sm1"}],"other").code,"INVALID_SOURCE");
+  assert.equal(prepareSelectedVideoEntries(Array.from({length:1001},(_,i)=>({videoId:"sm"+(i+1)})),"series").code,"INVALID_SELECTION");
 });
 
 test("updates a saved video's title, tags, memo, and timestamp",()=>{
