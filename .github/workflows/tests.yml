@@ -29,5 +29,6 @@ jobs:
           node --check src/extension-api.js
           node --check src/quotation-api.js
           node --check src/playback-scheduler.js
+          node --check src/quote-scheduler.js
       - name: Run unit tests
         run: npm test
