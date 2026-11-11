@@ -18,7 +18,7 @@ function buildBroadcasterCommentRequest(input = {}) {
   if (!csrfToken || csrfToken.length > 4096 || /[\r\n]/.test(csrfToken)) {
     return { ok:false, code:"CSRF_TOKEN_MISSING", message:"番組ページから送信用トークンを取得できませんでした。" };
   }
-  if (!text || text.length > MAX_COMMENT_LENGTH || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(text)) {
+  if (!text || Array.from(text).length > MAX_COMMENT_LENGTH || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(text)) {
     return { ok:false, code:"INVALID_COMMENT", message:"運営コメントは1〜80文字で入力してください。" };
   }
   if (name.length > 64 || command.length > 64 || /[\r\n]/.test(name + command)) {
