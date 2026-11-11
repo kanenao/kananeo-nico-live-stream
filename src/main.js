@@ -1312,7 +1312,7 @@ function registerIpcHandlers() {
       sourceType=imported.sourceType;
       skipped=imported.skippedCount||0;
     }
-    if(!entries.length) return {ok:false,code:"NO_VALID_VIDEOS",message:"取り込める動画がありませんでした。"};
+    if(!entries.length&&!historyEntries.length) return {ok:false,code:"NO_VALID_VIDEOS",message:"取り込める動画または再生履歴がありませんでした。"};
     const tagged=entries.map(entry=>({...entry,source:sourceType}));
     const saved=await updateVideoLibrary(library=>{
       const merged=mergeVideoEntries(library,tagged);
