@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { normalizeProgramId, extractEmbeddedData, inspectWatchPage, NiconicoPageError } = require("../src/niconico-program");
+const { normalizeProgramId, extractEmbeddedData, extractBroadcasterCommentToken, inspectWatchPage, NiconicoPageError } = require("../src/niconico-program");
 
 test("normalizes a bare program ID", () => {
   assert.equal(normalizeProgramId(" LV123456789 "), "lv123456789");
@@ -26,6 +26,18 @@ test("parses escaped embedded data", () => {
   assert.deepEqual(inspectWatchPage(html, "lv123"), {
     programId: "lv123", title: "テスト配信", programStatus:"ON_AIR", endTime:1794326400, watchingApiAvailable: true, pageDataFound: true
   });
+});
+
+test("extracts the broadcaster comment token without exposing it in page inspection", () => {
+  const payload = { program:{title:"テスト",status:"ON_AIR"}, site:{relive:{csrfToken:"csrf-secret",webSocketUrl:"wss://a.live.nicovideo.jp/wsapi/v2/watch/lv123"}} };
+  const html = '<script id="embedded-data" data-props="' + JSON.stringify(payload).replace(/"/g,"&quot;") + '"></script>';
+  assert.equal(extractBroadcasterCommentToken(html),"csrf-secret");
+  assert.equal(Object.hasOwn(inspectWatchPage(html,"lv123"),"csrfToken"),false);
+});
+
+test("returns no broadcaster token when the page does not provide one", () => {
+  const html = '<script id="embedded-data" data-props=\'{"site":{"relive":{}}}\'></script>';
+  assert.equal(extractBroadcasterCommentToken(html),"");
 });
 
 test("does not trust arbitrary websocket destinations", () => {
