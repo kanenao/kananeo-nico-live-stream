@@ -10,6 +10,7 @@ const {
   addPlaybackHistory,
   mergeVideoHistory,
   removeVideoEntry,
+  updateVideoEntry,
   clearVideoHistory,
   filterVideoEntries,
   parseVideoImportText
@@ -70,6 +71,25 @@ test("removes library items without deleting playback history",()=>{
   assert.equal(removed.removed,true);
   assert.equal(removed.library.items.length,0);
   assert.equal(removed.library.history.length,1);
+});
+
+test("updates a saved video's title, tags, memo, and timestamp",()=>{
+  const library={...createEmptyVideoLibrary(),items:[normalizeVideoEntry({videoId:"sm88",title:"Before",tags:["old"],memo:"old memo",createdAt:"2026-01-01T00:00:00.000Z"})]};
+  const result=updateVideoEntry(library,"sm88",{title:"After",tags:"music, live, music",memo:"updated note"},{now:"2026-11-12T00:00:00.000Z"});
+  assert.equal(result.ok,true);
+  assert.equal(result.item.title,"After");
+  assert.deepEqual(result.item.tags,["music","live"]);
+  assert.equal(result.item.memo,"updated note");
+  assert.equal(result.item.createdAt,"2026-01-01T00:00:00.000Z");
+  assert.equal(result.item.updatedAt,"2026-11-12T00:00:00.000Z");
+});
+
+test("rejects editing a missing video without changing the library",()=>{
+  const library={...createEmptyVideoLibrary(),items:[normalizeVideoEntry({videoId:"sm88"})]};
+  const result=updateVideoEntry(library,"sm99",{title:"Missing"});
+  assert.equal(result.ok,false);
+  assert.equal(result.code,"VIDEO_NOT_FOUND");
+  assert.equal(result.library.items.length,1);
 });
 
 test("clears history independently from library items",()=>{
