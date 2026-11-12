@@ -4,9 +4,9 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
-  version:"0.1.0-beta.26",
+  version:"0.1.0-beta.27",
   platform:process.platform,
-  stage:"remote-security-foundation",
+  stage:"broadcast-management-ui",
   updates:Object.freeze({
     check:()=>ipcRenderer.invoke("app:check-updates"),
     openReleases:()=>ipcRenderer.invoke("app:open-releases")
@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   }),
   niconico:Object.freeze({
     openLogin:()=>ipcRenderer.invoke("niconico:open-login"),
+    openBroadcastCreate:()=>ipcRenderer.invoke("niconico:open-broadcast-create"),
+    openBroadcastManage:programId=>ipcRenderer.invoke("niconico:open-broadcast-manage",programId),
     validateVideo:input=>ipcRenderer.invoke("niconico:validate-video",input),
     startEnquete:input=>ipcRenderer.invoke("niconico:start-enquete",input),
     showEnqueteResult:input=>ipcRenderer.invoke("niconico:show-enquete-result",input),
