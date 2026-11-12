@@ -1,5 +1,5 @@
 (() => {
-const names={remote:"リモート操作",dashboard:"ダッシュボード",broadcast:"放送・枠管理",comments:"コメントビューア",requests:"動画リクエスト",stocks:"ストック",library:"動画ライブラリ",poll:"自動アンケート",player:"プレイヤー・BGM",automation:"自動枠取り・延長",external:"OBS・外部ツール",voice:"音声・自動応答",users:"ユーザー・NG管理",logs:"履歴・バックアップ",settings:"設定"};
+const names={audit:"監査ログ",remote:"リモート操作",dashboard:"ダッシュボード",broadcast:"放送・枠管理",comments:"コメントビューア",requests:"動画リクエスト",stocks:"ストック",library:"動画ライブラリ",poll:"自動アンケート",player:"プレイヤー・BGM",automation:"自動枠取り・延長",external:"OBS・外部ツール",voice:"音声・自動応答",users:"ユーザー・NG管理",logs:"履歴・バックアップ",settings:"設定"};
 const key="kananeo-beta2";
 const COMMENT_VIEW_STORAGE_KEY=key+"-comment-view";
 const BROADCAST_COMMENT_COLUMNS=[{key:"number",label:"番号"},{key:"time",label:"時刻"},{key:"user",label:"投稿者"},{key:"userId",label:"ユーザーID"},{key:"content",label:"コメント本文"},{key:"type",label:"種別"}];
@@ -73,6 +73,7 @@ let pollWaitTimer=null;
 let pollWaitResolve=null;
 let pollFinishPromise=null;
 const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},logs:["β2 UIプロトタイプを起動しました"]};
+let remoteAuditEntries=[],remoteAuditFilters={query:"",type:"all",from:"",to:""};
 let state=load(),page="dashboard";
 function load(){
 try{
@@ -152,6 +153,14 @@ function remotePermissionLabel(permission){
 function formatRemoteTimestamp(value){
  if(!value)return "未接続";
  const date=new Date(value);return Number.isNaN(date.getTime())?"—":date.toLocaleString("ja-JP");
+}
+async function refreshRemoteAudit(){const result=await window.kananeoApp.remote.getAudit();if(!result?.ok){toast("監査ログを取得できませんでした。");return;}remoteAuditEntries=Array.isArray(result.entries)?result.entries:[];renderRemoteAuditRows();}
+function renderRemoteAuditRows(){
+ const host=document.getElementById("remote-audit-rows");if(!host)return;
+ const q=remoteAuditFilters.query.toLowerCase(),from=Date.parse(remoteAuditFilters.from||""),to=Date.parse((remoteAuditFilters.to||"")+"T23:59:59.999");
+ const rows=remoteAuditEntries.filter(x=>{const at=Date.parse(x.at);return (!q||[x.at,x.type,x.path,x.ip,x.command,x.method].join(" ").toLowerCase().includes(q))&&(remoteAuditFilters.type==="all"||x.type===remoteAuditFilters.type)&&(!Number.isFinite(from)||at>=from)&&(!Number.isFinite(to)||at<=to);});
+ const count=document.getElementById("remote-audit-count");if(count)count.textContent=rows.length+"件";
+ host.innerHTML=rows.length?'<div class="table-wrap"><table class="table"><thead><tr><th>日時</th><th>イベント</th><th>重要度</th><th>接続元</th><th>API</th><th>操作</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(formatRemoteTimestamp(x.at))+'</td><td>'+esc(x.type)+'</td><td>'+esc(x.severity)+'</td><td>'+esc(x.ip||"—")+'</td><td>'+esc((x.method||"")+" "+(x.path||""))+'</td><td>'+esc(x.command||"—")+'</td></tr>').join("")+'</tbody></table></div>':'<div class="empty">条件に一致する監査ログはありません。</div>';
 }
 function renderRemoteDeviceRows(){
  const host=document.getElementById("remote-device-rows");
@@ -377,6 +386,9 @@ html=hero("SECURE REMOTE CONTROL","リモート操作","ペアリングしたブ
 panel("端末ペアリング","操作を許可する端末にだけワンタイムコードを渡してください。コードの有効期限は5分、試行は最大5回です。",'<div class="remote-permissions"><label><input type="checkbox" checked disabled> 状態閲覧（必須）</label><label><input type="checkbox" data-remote-permission="comments:read" checked> コメント閲覧</label><label><input type="checkbox" data-remote-permission="player:control"> 動画プレビュー操作</label><label><input type="checkbox" data-remote-permission="bgm:control"> BGM操作</label></div><div class="actions"><button class="btn primary" type="button" data-remote-pair-create '+(!remoteControlUi.status.running?"disabled":"")+'>ワンタイムコードを発行</button></div><div class="remote-pairing-code" id="remote-pairing-code">'+esc(remoteControlUi.pairingCode||"未発行")+'</div><div class="actions"><button class="btn" type="button" data-remote-copy-code '+(!remoteControlUi.pairingCode?"disabled":"")+'>コードをコピー</button></div><div class="muted" id="remote-pairing-expiry">ペアリングコードは5分間有効です。</div><div class="muted">コードをブラウザーコントローラーの画面に入力すると端末が登録されます。認証トークンは登録時に一度だけ返し、PC内にはハッシュのみ保存します。</div>')+
 panel("登録済み端末","登録は最大20台。不要になった端末は失効してください。失効後は同じトークンで再接続できません。",'<div class="row"><b>登録端末</b><span id="remote-device-count">0台</span></div><div id="remote-device-rows" class="remote-device-list"><div class="empty">登録端末はありません。</div></div>')+
 '<div class="banner"><i class="led"></i><div><b>接続範囲の制限</b><small>localhostモードは同じPC内のみ。LANモードは選択したIPv4にバインドし、有効なHTTPS証明書・秘密鍵と明示的な有効化が必要です。ルーターのポート開放やインターネットへの公開には対応しません。</small></div></div>';
+ }else if(page==="audit"){
+html=hero("REMOTE AUDIT","リモート監査ログ","接続拒否・認証失敗・レート制限・ペアリング・操作結果を確認し、CSVへ出力します。")+
+panel("監査ログ検索","現在の起動セッションで保持している最大500件を表示します。",'<div class="grid2"><div class="field"><label>キーワード</label><input class="input" id="remote-audit-query" placeholder="IP・API・操作名"></div><div class="field"><label>イベント種別</label><select class="input" id="remote-audit-type"><option value="all">すべて</option>'+["peer_rejected","host_rejected","origin_rejected","cross_site_rejected","ip_rate_limited","pair_rate_limited","pair_succeeded","pair_failed","auth_failed","device_rate_limited","command_succeeded","command_failed"].map(x=>'<option value="'+x+'">'+x+'</option>').join("")+'</select></div></div><div class="grid2"><div class="field"><label>開始日</label><input class="input" type="date" id="remote-audit-from"></div><div class="field"><label>終了日</label><input class="input" type="date" id="remote-audit-to"></div></div><div class="actions"><button class="btn" type="button" data-remote-audit-refresh>更新</button><button class="btn primary" type="button" data-remote-audit-export>CSV書き出し</button><button class="btn danger" type="button" data-remote-audit-clear>全消去</button><span id="remote-audit-count" class="muted">0件</span></div><div class="muted">Bearerトークン・ペアリングコード・コメント本文は監査ログに含めません。</div><div id="remote-audit-rows" class="remote-device-list"><div class="empty">読み込み中…</div></div>');
 }else if(page==="logs"){
 html=hero("ACTIVITY & BACKUP","履歴・バックアップ","設定データのJSON書き出し・読み込み。")+
 panel("システムログ","操作履歴",state.logs.map(x=>`<div class="row"><i></i><b>${esc(x)}</b></div>`).join("")+'<div class="actions"><button class="btn primary" data-export>設定JSONを書き出す</button><button class="btn" data-clear-logs>ログを消去</button></div>');
@@ -400,6 +412,7 @@ updateLiveVideoBounds();
 if(page==="voice"){renderSpeechVoices();updateSpeechQueueUi();}
 if(page==="settings")renderUpdateCheck();
 if(page==="remote")updateRemoteControlUi();
+if(page==="audit")void refreshRemoteAudit();
 if(page==="library")renderLibrarySourcePreview();
 if(page==="users")renderUserProfileRows();
 }
@@ -1753,6 +1766,9 @@ if(b.hasAttribute("data-ncv-order-move")){
 }
 if(b.hasAttribute("data-ncv-display-save")){saveBroadcastCommentViewSettings();return;}
 if(b.hasAttribute("data-ncv-display-reset")){resetBroadcastCommentViewSettings();return;}
+if(b.hasAttribute("data-remote-audit-refresh")){void refreshRemoteAudit();return;}
+if(b.hasAttribute("data-remote-audit-export")){const result=await window.kananeoApp.remote.exportAudit(remoteAuditFilters);if(result?.ok)toast("CSVを書き出しました（"+result.count+"件）。");else if(result?.code!=="CANCELLED")toast(result?.message||"CSVを書き出せませんでした。");return;}
+if(b.hasAttribute("data-remote-audit-clear")){if(confirm("監査ログをすべて消去しますか？")){const result=await window.kananeoApp.remote.clearAudit();if(result?.ok){remoteAuditEntries=[];renderRemoteAuditRows();toast("監査ログを消去しました。");}else toast(result?.message||"消去できませんでした。");}return;}
 if(b.hasAttribute("data-remote-start")){void startRemoteControlFromUi("localhost");return;}
 if(b.hasAttribute("data-remote-start-lan")){void startRemoteControlFromUi("lan");return;}
 if(b.hasAttribute("data-remote-choose-cert")){void chooseRemoteTlsFile("certificate");return;}
@@ -2038,7 +2054,7 @@ if(b.hasAttribute("data-placeholder"))toast("現在の段階ではこの操作�
 });
  document.addEventListener("click",e=>{const marker=e.target.closest("[data-broadcast-read-through]");if(marker){broadcastReadThroughIndex=Number(marker.dataset.broadcastReadThrough);renderBroadcastComments();}});
  document.addEventListener("dblclick",e=>{if(e.target.closest("[data-broadcast-read-through]")){broadcastReadThroughIndex=-1;renderBroadcastComments();}});
-document.addEventListener("input",e=>{if(e.target.id==="ncv-comment-font-size"){const output=document.getElementById("ncv-comment-font-size-value");if(output)output.textContent=e.target.value+"px";}if(e.target.id==="broadcast-comment-search"){broadcastCommentSearch=e.target.value;renderBroadcastComments();}if(e.target.id==="broadcast-manage-id"){broadcastManageVerification=null;renderBroadcastManageVerification();}if(e.target.id==="comments-search")renderComments();if(e.target.id==="user-profile-search"){userProfileSearch=e.target.value;renderUserProfileRows();}if(e.target.id==="library-search")renderVideoLibraryRows();if(e.target.id==="library-source-search"){librarySourceQuery=e.target.value;renderLibrarySourcePreview();}});
+document.addEventListener("input",e=>{if(["remote-audit-query","remote-audit-type","remote-audit-from","remote-audit-to"].includes(e.target.id)){remoteAuditFilters={query:document.getElementById("remote-audit-query")?.value||"",type:document.getElementById("remote-audit-type")?.value||"all",from:document.getElementById("remote-audit-from")?.value||"",to:document.getElementById("remote-audit-to")?.value||""};renderRemoteAuditRows();}if(e.target.id==="ncv-comment-font-size"){const output=document.getElementById("ncv-comment-font-size-value");if(output)output.textContent=e.target.value+"px";}if(e.target.id==="broadcast-comment-search"){broadcastCommentSearch=e.target.value;renderBroadcastComments();}if(e.target.id==="broadcast-manage-id"){broadcastManageVerification=null;renderBroadcastManageVerification();}if(e.target.id==="comments-search")renderComments();if(e.target.id==="user-profile-search"){userProfileSearch=e.target.value;renderUserProfileRows();}if(e.target.id==="library-search")renderVideoLibraryRows();if(e.target.id==="library-source-search"){librarySourceQuery=e.target.value;renderLibrarySourcePreview();}});
 document.addEventListener("input",e=>{
  if(e.target.id==="bgm-volume"){state.playback.bgmVolume=clampBgmVolume(e.target.value);if(bgmAudio)bgmAudio.volume=state.playback.bgmVolume;updateBgmPlaybackUi();}
  if(e.target.id==="bgm-progress"&&bgmAudio&&Number.isFinite(bgmAudio.duration)){bgmAudio.currentTime=bgmAudio.duration*(Math.max(0,Math.min(1000,Number(e.target.value)||0))/1000);updateBgmPlaybackUi();}
