@@ -4,6 +4,12 @@ const { app, BrowserWindow, WebContentsView, shell, session, ipcMain, clipboard,
 const path = require("node:path");
 const fs = require("node:fs/promises");
 const { randomUUID } = require("node:crypto");
+const {
+  createPairingChallenge, verifyPairingCode, createDeviceCredential,
+  verifyDeviceToken, revokeRemoteDevice, sanitizeRemoteDevice,
+  normalizeDeviceName, normalizeDevicePermissions, DEVICE_PERMISSIONS
+} = require("./remote-control-security");
+const { createRemoteControlServer } = require("./remote-control-server");
 const { pathToFileURL } = require("node:url");
 const {
   createEmptyVideoLibrary, normalizeVideoLibrary, normalizeVideoEntry,
@@ -65,6 +71,16 @@ let playerMonitorGeneration = 0;
 let playerVideoId = "";
 let playerVideoUrl = "";
 let playerEndNotified = false;
+const REMOTE_CONTROL_STORE_FILE_NAME = "remote-control-devices.json";
+const REMOTE_CONTROL_MAX_DEVICES = 20;
+let remoteControlDevices = [];
+let remoteControlStoreLoaded = false;
+let remoteControlStoreHealthy = true;
+let remoteControlStoreError = "";
+let remoteControlStoreQueue = Promise.resolve();
+let remoteControlServer = null;
+let remoteControlPairing = null;
+const pendingRemoteRendererRequests = new Map();
 
 function isNiconicoHost(hostname) {
   const host = String(hostname || "").toLowerCase();
@@ -856,6 +872,23 @@ async function openVideoPlayer(input) {
   }
 }
 
+async function pauseVideoPlayer() {
+  if (!playerWindow || playerWindow.isDestroyed() || playerWindow.webContents.isDestroyed()) {
+    return {ok:false,code:"PLAYER_NOT_OPEN",message:"プレビューは開いていません。"};
+  }
+  try {
+    const paused = await playerWindow.webContents.executeJavaScript(`(() => {
+      const video = document.querySelector("video");
+      if (!video) return false;
+      video.pause();
+      return true;
+    })()`,true);
+    return paused?{ok:true,message:"プレビューを一時停止しました。"}:{ok:false,code:"VIDEO_NOT_FOUND",message:"動画プレイヤーを確認できません。"};
+  } catch {
+    return {ok:false,code:"PAUSE_FAILED",message:"プレビューを一時停止できませんでした。"};
+  }
+}
+
 function focusVideoPlayer() {
   if (!playerWindow || playerWindow.isDestroyed()) {
     return { ok:false, message:"プレイヤーウィンドウは開いていません。" };
@@ -1556,7 +1589,250 @@ async function checkApplicationUpdates() {
   }
 }
 
+
+function normalizeRemoteDeviceRecord(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  if (typeof input.id !== "string" || !/^[a-f0-9-]{36}$/i.test(input.id)) return null;
+  if (typeof input.tokenHash !== "string" || !/^[a-f0-9]{64}$/i.test(input.tokenHash)) return null;
+  if (typeof input.createdAt !== "string" || !Number.isFinite(Date.parse(input.createdAt))) return null;
+  const optionalDate = value => typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : null;
+  return {
+    id:input.id,
+    name:normalizeDeviceName(input.name),
+    tokenHash:input.tokenHash.toLowerCase(),
+    permissions:normalizeDevicePermissions(input.permissions),
+    createdAt:input.createdAt,
+    lastSeenAt:optionalDate(input.lastSeenAt),
+    revokedAt:optionalDate(input.revokedAt)
+  };
+}
+
+function getRemoteControlStorePath() {
+  return path.join(app.getPath("userData"),REMOTE_CONTROL_STORE_FILE_NAME);
+}
+
+async function loadRemoteControlDeviceStore() {
+  if (remoteControlStoreLoaded) return {ok:remoteControlStoreHealthy,message:remoteControlStoreError};
+  remoteControlStoreLoaded = true;
+  try {
+    const content = await fs.readFile(getRemoteControlStorePath(),"utf8");
+    if (content.length > 256 * 1024) throw new Error("STORE_TOO_LARGE");
+    const parsed = JSON.parse(content);
+    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.devices) || parsed.devices.length > 100) {
+      throw new Error("STORE_INVALID");
+    }
+    remoteControlDevices = parsed.devices.map(normalizeRemoteDeviceRecord).filter(Boolean);
+    remoteControlStoreHealthy = true;
+    remoteControlStoreError = "";
+    return {ok:true};
+  } catch(error) {
+    if (error?.code === "ENOENT") {
+      remoteControlDevices = [];
+      remoteControlStoreHealthy = true;
+      return {ok:true};
+    }
+    remoteControlStoreHealthy = false;
+    remoteControlStoreError = "リモート端末の保存データを読み取れません。元データ保護のため新規登録を停止しています。";
+    return {ok:false,message:remoteControlStoreError};
+  }
+}
+
+function persistRemoteControlDeviceStore(devices = remoteControlDevices) {
+  const snapshot = devices.map(device => ({
+    id:device.id,name:device.name,tokenHash:device.tokenHash,
+    permissions:[...device.permissions],createdAt:device.createdAt,
+    lastSeenAt:device.lastSeenAt||null,revokedAt:device.revokedAt||null
+  }));
+  const task = remoteControlStoreQueue.then(async()=>{
+    if (!remoteControlStoreHealthy) return {ok:false,code:"STORE_UNAVAILABLE",message:remoteControlStoreError};
+    const filePath = getRemoteControlStorePath();
+    const tempPath = filePath + ".tmp";
+    try {
+      await fs.mkdir(app.getPath("userData"),{recursive:true,mode:0o700});
+      await fs.writeFile(tempPath,JSON.stringify({version:1,devices:snapshot},null,2),{encoding:"utf8",mode:0o600});
+      await fs.rename(tempPath,filePath);
+      return {ok:true};
+    } catch {
+      try { await fs.rm(tempPath,{force:true}); } catch {}
+      return {ok:false,code:"STORE_WRITE_FAILED",message:"リモート端末情報を保存できませんでした。"};
+    }
+  });
+  remoteControlStoreQueue = task.then(()=>undefined,()=>undefined);
+  return task;
+}
+
+function getRemoteControlStatus() {
+  const address = remoteControlServer?.address() || null;
+  return {
+    ok:true,
+    running:!!address,
+    host:address?.host||"127.0.0.1",
+    port:address?.port||0,
+    url:address?.url||"",
+    pairingExpiresAt:remoteControlPairing?.challenge?.expiresAt||null,
+    storageHealthy:remoteControlStoreHealthy,
+    storageMessage:remoteControlStoreError,
+    devices:remoteControlDevices.map(sanitizeRemoteDevice)
+  };
+}
+
+async function createRemotePairingChallenge(input = {}) {
+  if (!remoteControlStoreLoaded) await loadRemoteControlDeviceStore();
+  if (!remoteControlStoreHealthy) return {ok:false,code:"STORE_UNAVAILABLE",message:remoteControlStoreError};
+  if (!remoteControlServer?.address()) return {ok:false,code:"SERVER_NOT_RUNNING",message:"先にリモート操作サーバーを起動してください。"};
+  if (remoteControlDevices.filter(device=>!device.revokedAt).length >= REMOTE_CONTROL_MAX_DEVICES) {
+    return {ok:false,code:"DEVICE_LIMIT",message:"登録できる有効端末は最大20台です。不要な端末を失効してください。"};
+  }
+  const requested = normalizeDevicePermissions(Array.isArray(input.permissions)?input.permissions:["status:read","comments:read"]);
+  const permissions = [...new Set(["status:read",...requested])];
+  const ttlMs = 5 * 60 * 1000;
+  const created = createPairingChallenge(Date.now(),ttlMs);
+  remoteControlPairing = {challenge:created.challenge,permissions};
+  return {ok:true,code:created.code,expiresAt:created.challenge.expiresAt,permissions,message:"5分間有効なワンタイムコードを発行しました。"};
+}
+
+async function completeRemotePairing(input = {}) {
+  if (!remoteControlPairing) return {ok:false,code:"NO_ACTIVE_PAIRING",message:"有効なペアリングコードがありません。アプリ側で新しいコードを発行してください。"};
+  if (!input || typeof input.code !== "string" || input.code.length > 32) {
+    return {ok:false,code:"INVALID_CODE",message:"ペアリングコードを確認してください。"};
+  }
+  if (remoteControlDevices.filter(device=>!device.revokedAt).length >= REMOTE_CONTROL_MAX_DEVICES) {
+    return {ok:false,code:"DEVICE_LIMIT",message:"登録できる有効端末は最大20台です。不要な端末を失効してください。"};
+  }
+  const verified = verifyPairingCode(input.code,remoteControlPairing.challenge);
+  remoteControlPairing.challenge = verified.challenge || remoteControlPairing.challenge;
+  if (!verified.ok) {
+    const messages = {
+      INVALID_CHALLENGE:"ペアリングコードが無効です。",
+      ALREADY_USED:"このペアリングコードは既に使用されています。",
+      EXPIRED:"ペアリングコードの有効期限が切れました。",
+      LOCKED:"試行回数の上限に達しました。新しいコードを発行してください。",
+      BAD_CODE:"ペアリングコードが一致しません。"
+    };
+    return {ok:false,code:verified.reason,message:messages[verified.reason]||"ペアリングできませんでした。",attemptsRemaining:verified.attemptsRemaining};
+  }
+  const credential = createDeviceCredential({
+    name:input.name,
+    permissions:remoteControlPairing.permissions
+  });
+  const nextDevices = [...remoteControlDevices,credential.device];
+  const saved = await persistRemoteControlDeviceStore(nextDevices);
+  if (!saved.ok) return saved;
+  remoteControlDevices = nextDevices;
+  remoteControlPairing = null;
+  return {
+    ok:true,
+    token:credential.token,
+    device:sanitizeRemoteDevice(credential.device),
+    message:"端末を登録しました。認証トークンはこの応答で一度だけ返します。"
+  };
+}
+
+async function resolveRemoteDevice(token) {
+  const device = remoteControlDevices.find(item=>verifyDeviceToken(token,item));
+  if (!device) return null;
+  const now = Date.now();
+  if (!device.lastSeenAt || now-Date.parse(device.lastSeenAt)>=60_000) {
+    device.lastSeenAt = new Date(now).toISOString();
+    void persistRemoteControlDeviceStore();
+  }
+  return device;
+}
+
+async function revokeRemoteControlDevice(deviceId) {
+  if (typeof deviceId !== "string" || deviceId.length > 64) return {ok:false,code:"INVALID_DEVICE",message:"端末IDを確認してください。"};
+  const index = remoteControlDevices.findIndex(device=>device.id===deviceId);
+  if (index < 0) return {ok:false,code:"NOT_FOUND",message:"登録端末が見つかりません。"};
+  const revoked = revokeRemoteDevice(remoteControlDevices[index]);
+  const nextDevices = [...remoteControlDevices];
+  nextDevices[index] = revoked;
+  const saved = await persistRemoteControlDeviceStore(nextDevices);
+  if (!saved.ok) return saved;
+  remoteControlDevices = nextDevices;
+  if (remoteControlPairing) remoteControlPairing = null;
+  return {ok:true,device:sanitizeRemoteDevice(revoked),message:"端末を失効しました。以後、この端末のトークンは使用できません。"};
+}
+
+function requestRendererRemoteAction(action,payload = {}) {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) {
+    return Promise.resolve({ok:false,code:"APP_UNAVAILABLE",message:"アプリのメイン画面が利用できません。"});
+  }
+  const requestId = randomUUID();
+  return new Promise(resolve=>{
+    const timer = setTimeout(()=>{
+      pendingRemoteRendererRequests.delete(requestId);
+      resolve({ok:false,code:"RENDERER_TIMEOUT",message:"アプリ画面から応答がありませんでした。"});
+    },7000);
+    pendingRemoteRendererRequests.set(requestId,{resolve,timer});
+    mainWindow.webContents.send("remote-control:request",{requestId,action,payload});
+  });
+}
+
+function createRemoteControlHttpServer() {
+  if (remoteControlServer) return remoteControlServer;
+  remoteControlServer = createRemoteControlServer({
+    staticDirectory:__dirname,
+    onPair:completeRemotePairing,
+    resolveDevice:resolveRemoteDevice,
+    onSnapshot:()=>requestRendererRemoteAction("snapshot"),
+    onComments:(_device,limit)=>requestRendererRemoteAction("comments",{limit}),
+    onCommand:(_device,command,payload)=>requestRendererRemoteAction("command",{command,payload})
+  });
+  return remoteControlServer;
+}
+
+async function startRemoteControlServer(port) {
+  await loadRemoteControlDeviceStore();
+  if (!remoteControlStoreHealthy) return {ok:false,code:"STORE_UNAVAILABLE",message:remoteControlStoreError};
+  const server = createRemoteControlHttpServer();
+  const result = await server.start(port);
+  return result.ok?{...result,status:getRemoteControlStatus()}:result;
+}
+
+async function stopRemoteControlServer() {
+  remoteControlPairing = null;
+  if (!remoteControlServer) return {ok:true,stopped:false,status:getRemoteControlStatus()};
+  const result = await remoteControlServer.stop();
+  return {...result,status:getRemoteControlStatus()};
+}
+
 function registerIpcHandlers() {
+  ipcMain.on("remote-control:response",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents||!input||typeof input.requestId!=="string") return;
+    const pending=pendingRemoteRendererRequests.get(input.requestId);
+    if(!pending)return;
+    clearTimeout(pending.timer);
+    pendingRemoteRendererRequests.delete(input.requestId);
+    pending.resolve(input.result&&typeof input.result==="object"?input.result:{ok:false,code:"INVALID_RESPONSE",message:"アプリ画面から無効な応答が返されました。"});
+  });
+  ipcMain.handle("remote:get-status",event=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    return getRemoteControlStatus();
+  });
+  ipcMain.handle("remote:start",async(event,port)=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    return startRemoteControlServer(port);
+  });
+  ipcMain.handle("remote:stop",event=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    return stopRemoteControlServer();
+  });
+  ipcMain.handle("remote:create-pairing",async(event,input)=>{
+    if(event.sender!==mainWindow?.webContents||!input||typeof input!=="object")return {ok:false,code:"FORBIDDEN"};
+    if(JSON.stringify(input).length>2000)return {ok:false,code:"INVALID_INPUT",message:"権限設定を確認してください。"};
+    return createRemotePairingChallenge(input);
+  });
+  ipcMain.handle("remote:revoke-device",async(event,deviceId)=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    return revokeRemoteControlDevice(deviceId);
+  });
+  ipcMain.handle("remote:open-controller",async event=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    const address=remoteControlServer?.address();
+    if(!address)return {ok:false,code:"SERVER_NOT_RUNNING",message:"リモート操作サーバーは起動していません。"};
+    try{await shell.openExternal(address.url);return {ok:true,message:"ローカルコントローラーをブラウザーで開きました。"};}
+    catch{return {ok:false,code:"OPEN_FAILED",message:"ブラウザーで開けませんでした。"};}
+  });
   ipcMain.handle("niconico:open-login",()=>openNiconicoLoginWindow());
   ipcMain.handle("niconico:open-broadcast-create",event=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
@@ -1636,6 +1912,10 @@ function registerIpcHandlers() {
   ipcMain.handle("niconico:open-video",(event,input)=>{
     if(event.sender!==mainWindow?.webContents||typeof input!=="string"||input.length>2048) return {ok:false,code:"INVALID_INPUT",message:"動画URLを確認してください。"};
     return openVideoPlayer(input);
+  });
+  ipcMain.handle("niconico:pause-video",event=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    return pauseVideoPlayer();
   });
   ipcMain.handle("niconico:focus-video",event=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,message:"この操作は許可されていません。"};
@@ -1839,7 +2119,8 @@ function createMainWindow() {
   mainWindow.on("closed",()=>{closeNiconicoLiveVideoView();mainWindow=null;});
 }
 
-app.whenReady().then(()=>{
+app.whenReady().then(async()=>{
+  await loadRemoteControlDeviceStore();
   app.setAppUserModelId("jp.kanenao.nicolivestream");
   niconicoSession=session.fromPartition(NICONICO_PARTITION);
   niconicoSession.setPermissionRequestHandler((_webContents,_permission,callback)=>callback(false));
@@ -1853,6 +2134,17 @@ app.on("before-quit",event=>{
   event.preventDefault();
   closeNiconicoLiveVideoView();
   finalQuitInProgress=true;
-  void stopCommentStream("アプリを終了しました。").finally(()=>{ closeVideoPlayer(); app.quit(); });
+  void Promise.all([
+    stopCommentStream("アプリを終了しました。"),
+    stopRemoteControlServer()
+  ]).finally(()=>{
+    for(const pending of pendingRemoteRendererRequests.values()){
+      clearTimeout(pending.timer);
+      pending.resolve({ok:false,code:"APP_SHUTDOWN",message:"アプリを終了しました。"});
+    }
+    pendingRemoteRendererRequests.clear();
+    closeVideoPlayer();
+    app.quit();
+  });
 });
 app.on("window-all-closed",()=>{if(process.platform!=="darwin")app.quit();});
