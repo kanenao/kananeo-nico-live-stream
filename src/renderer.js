@@ -187,7 +187,7 @@ const current=currentQueueItem();
 const playerLabel=({closed:"未起動",loading:"読み込み中",playing:"再生中",paused:"一時停止",ended:"再生終了",error:"読み込みエラー"}[playerState.state]||"状態確認中");
 const quoteLabel=quotePlayback.active?(quotePlayback.verified?"引用再生中（状態確認済み）":"引用再生API受付済み（状態未確認）"):"停止中";
 const bgmCurrentTrack=bgmTracks.find(track=>track.id===bgmCurrentId)||null;
-const bgmRows=bgmTracks.map(track=>'<div class="row bgm-track-row"><div><b>'+esc(track.name)+'</b><small>'+esc(track.extension.toUpperCase().slice(1))+' / '+formatBgmFileSize(track.size)+(track.id===bgmCurrentId?' / 選択中':'')+'</small></div><div class="actions"><button class="btn '+(track.id===bgmCurrentId&&!bgmAudio?.paused?'primary':'')+'" data-bgm-play="'+esc(track.id)+'">'+(track.id===bgmCurrentId&&!bgmAudio?.paused?'再生中':'再生')+'</button><button class="btn" data-bgm-remove="'+esc(track.id)+'">削除</button></div></div>').join("");
+const bgmRows=bgmTracks.map((track,index)=>'<div class="row bgm-track-row"><div><b>'+esc(track.name)+'</b><small>'+(index+1)+'. '+esc(track.extension.toUpperCase().slice(1))+' / '+formatBgmFileSize(track.size)+(track.id===bgmCurrentId?' / 選択中':'')+'</small></div><div class="actions"><button class="btn" data-bgm-move="up" data-bgm-id="'+esc(track.id)+'" '+(index===0?'disabled':'')+' title="上へ移動">↑</button><button class="btn" data-bgm-move="down" data-bgm-id="'+esc(track.id)+'" '+(index===bgmTracks.length-1?'disabled':'')+' title="下へ移動">↓</button><button class="btn '+(track.id===bgmCurrentId&&!bgmAudio?.paused?'primary':'')+'" data-bgm-play="'+esc(track.id)+'">'+(track.id===bgmCurrentId&&!bgmAudio?.paused?'再生中':'再生')+'</button><button class="btn" data-bgm-remove="'+esc(track.id)+'">削除</button></div></div>').join("");
 const bgmVolume=clampBgmVolume(state.playback.bgmVolume);
 const legacyPlaylistRows=state.playlist.map((name,index)=>'<div class="row"><b>'+esc(name)+'</b><button class="btn" type="button" data-track="'+index+'">メモを削除</button></div>').join("");
 html=hero("PLAYER & BGM","プレイヤー・BGM","プレビュー再生と、配信中の番組へ動画を送る引用再生を分けて管理します。")+
@@ -1266,6 +1266,18 @@ if(b.hasAttribute("data-bgm-toggle")){void toggleBgmPlayback();return;}
 if(b.hasAttribute("data-bgm-next")){void playNextBgmTrack(false);return;}
 if(b.hasAttribute("data-bgm-prev")){void playPreviousBgmTrack();return;}
 if(b.hasAttribute("data-bgm-stop")){stopBgmPlayback();return;}
+if(b.hasAttribute("data-bgm-move")){
+ const id=b.dataset.bgmId,direction=b.dataset.bgmMove;
+ b.disabled=true;
+ try{
+  const result=await window.kananeoApp.bgm.move(id,direction);
+  if(!result?.ok)throw new Error(result?.message||"BGMの順番を変更できませんでした。");
+  bgmTracks=Array.isArray(result.tracks)?result.tracks:[];
+  bgmError="";
+  if(page==="player")render();
+ }catch(error){toast(error?.message||"BGMの順番を変更できませんでした。");}
+ return;
+}
 if(b.hasAttribute("data-bgm-remove")){
  const id=b.dataset.bgmRemove,target=bgmTracks.find(track=>track.id===id);
  if(!target)return;
