@@ -6,6 +6,8 @@ const {
   isLoopbackRemoteAddress,
   parseLoopbackHostHeader,
   isSameLoopbackOrigin,
+  parseBoundHostHeader,
+  isSameBoundOrigin,
   createRemoteControlServer
 } = require("../src/remote-control-server");
 
@@ -89,4 +91,14 @@ test("serves authenticated status, comments, and only permissioned commands", as
 
   const crossOrigin=await fetch(base+"/api/status",{headers:{...auth,Origin:"http://attacker.example"}});
   assert.equal(crossOrigin.status,403);
+});
+
+test("validates exact LAN host header and HTTPS origin",()=>{
+ assert.equal(parseBoundHostHeader("192.168.1.25:18240","192.168.1.25",18240,"https"),true);
+ assert.equal(parseBoundHostHeader("192.168.1.26:18240","192.168.1.25",18240,"https"),false);
+ assert.equal(parseBoundHostHeader("192.168.1.25:18241","192.168.1.25",18240,"https"),false);
+ assert.equal(parseBoundHostHeader("evil.example:18240","192.168.1.25",18240,"https"),false);
+ assert.equal(isSameBoundOrigin("https://192.168.1.25:18240","192.168.1.25",18240,"https"),true);
+ assert.equal(isSameBoundOrigin("http://192.168.1.25:18240","192.168.1.25",18240,"https"),false);
+ assert.equal(isSameBoundOrigin("https://evil.example:18240","192.168.1.25",18240,"https"),false);
 });

@@ -19,6 +19,7 @@ jobs:
           node --check src/main.js
           node --check src/preload.js
           node --check src/remote-control-security.js
+          node --check src/remote-control-tls.js
           node --check src/remote-control-server.js
           node --check src/remote-controller.js
           node --check src/renderer.js

@@ -2,6 +2,7 @@
 
 const { app, BrowserWindow, WebContentsView, shell, session, ipcMain, clipboard, dialog } = require("electron");
 const path = require("node:path");
+const os = require("node:os");
 const fs = require("node:fs/promises");
 const { randomUUID } = require("node:crypto");
 const {
@@ -10,6 +11,7 @@ const {
   normalizeDeviceName, normalizeDevicePermissions, DEVICE_PERMISSIONS
 } = require("./remote-control-security");
 const { createRemoteControlServer } = require("./remote-control-server");
+const { isPrivateLanIpv4, validateLanTlsMaterial } = require("./remote-control-tls");
 const { pathToFileURL } = require("node:url");
 const {
   createEmptyVideoLibrary, normalizeVideoLibrary, normalizeVideoEntry,
@@ -80,6 +82,7 @@ let remoteControlStoreError = "";
 let remoteControlStoreQueue = Promise.resolve();
 let remoteControlServer = null;
 let remoteControlPairing = null;
+let remoteTlsFilePaths = {certificate:"",privateKey:""};
 const pendingRemoteRendererRequests = new Map();
 
 function isNiconicoHost(hostname) {
@@ -1668,18 +1671,37 @@ function persistRemoteControlDeviceStore(devices = remoteControlDevices) {
 }
 
 function getRemoteControlStatus() {
-  const address = remoteControlServer?.address() || null;
-  return {
-    ok:true,
-    running:!!address,
-    host:address?.host||"127.0.0.1",
-    port:address?.port||0,
-    url:address?.url||"",
-    pairingExpiresAt:remoteControlPairing?.challenge?.expiresAt||null,
-    storageHealthy:remoteControlStoreHealthy,
-    storageMessage:remoteControlStoreError,
-    devices:remoteControlDevices.map(sanitizeRemoteDevice)
-  };
+ const address=remoteControlServer?.address()||null;
+ return {ok:true,running:!!address,mode:address?.mode||"localhost",protocol:address?.protocol||"http",
+  host:address?.host||"127.0.0.1",port:address?.port||0,url:address?.url||"",
+  pairingExpiresAt:remoteControlPairing?.challenge?.expiresAt||null,storageHealthy:remoteControlStoreHealthy,
+  storageMessage:remoteControlStoreError,devices:remoteControlDevices.map(sanitizeRemoteDevice)};
+}
+function getRemoteLanAddresses(){
+ const found=new Map();
+ for(const [interfaceName,entries] of Object.entries(os.networkInterfaces()))for(const entry of entries||[]){
+  const family=entry.family==="IPv4"||entry.family===4;
+  if(!family||entry.internal||!isPrivateLanIpv4(entry.address))continue;
+  if(!found.has(entry.address))found.set(entry.address,{address:entry.address,interfaceName});
+ }
+ return [...found.values()].sort((a,b)=>a.address.localeCompare(b.address,"en"));
+}
+function getRemoteLanOptions(){
+ return {ok:true,addresses:getRemoteLanAddresses(),
+  certificateName:remoteTlsFilePaths.certificate?path.basename(remoteTlsFilePaths.certificate):"",
+  privateKeyName:remoteTlsFilePaths.privateKey?path.basename(remoteTlsFilePaths.privateKey):""};
+}
+async function chooseRemoteTlsFile(kind){
+ if(kind!=="certificate"&&kind!=="privateKey")return {ok:false,code:"INVALID_TLS_FILE_KIND",message:"TLSファイルの種類を確認してください。"};
+ const isCert=kind==="certificate";
+ const result=await dialog.showOpenDialog(mainWindow,{title:isCert?"TLS証明書ファイルを選択":"TLS秘密鍵ファイルを選択",properties:["openFile"],
+  filters:[{name:isCert?"PEM / CRT certificate":"PEM private key",extensions:isCert?["pem","crt","cer"]:["pem","key"]}]});
+ if(result.canceled||!result.filePaths?.[0])return {ok:false,code:"CANCELLED",message:"ファイル選択をキャンセルしました。"};
+ const selectedPath=result.filePaths[0];
+ try{const stat=await fs.stat(selectedPath);if(!stat.isFile()||stat.size<1||stat.size>512*1024)return {ok:false,code:"TLS_FILE_SIZE",message:"TLSファイルは512KB以下のファイルを選択してください。"};await fs.access(selectedPath);}
+ catch{return {ok:false,code:"TLS_FILE_UNAVAILABLE",message:"選択したTLSファイルを読み取れません。"};}
+ remoteTlsFilePaths={...remoteTlsFilePaths,[kind]:selectedPath};
+ return {ok:true,name:path.basename(selectedPath),options:getRemoteLanOptions()};
 }
 
 async function createRemotePairingChallenge(input = {}) {
@@ -1799,12 +1821,25 @@ function createRemoteControlHttpServer() {
   return remoteControlServer;
 }
 
-async function startRemoteControlServer(port) {
-  await loadRemoteControlDeviceStore();
-  if (!remoteControlStoreHealthy) return {ok:false,code:"STORE_UNAVAILABLE",message:remoteControlStoreError};
-  const server = createRemoteControlHttpServer();
-  const result = await server.start(port);
-  return result.ok?{...result,status:getRemoteControlStatus()}:result;
+async function startRemoteControlServer(input = {}) {
+ await loadRemoteControlDeviceStore();
+ if(!remoteControlStoreHealthy)return {ok:false,code:"STORE_UNAVAILABLE",message:remoteControlStoreError};
+ const options=input&&typeof input==="object"?input:{port:input},port=options.port??18240,mode=options.mode||"localhost";
+ let serverOptions={mode:"localhost"};
+ if(mode==="lan"){
+  if(options.enableLan!==true)return {ok:false,code:"LAN_NOT_CONFIRMED",message:"LAN接続を有効にするチェックを入れてから起動してください。"};
+  const bindAddress=String(options.bindAddress||"");
+  if(!getRemoteLanAddresses().some(item=>item.address===bindAddress))return {ok:false,code:"INVALID_BIND_ADDRESS",message:"現在このPCで使用中のLAN IPv4アドレスを選択してください。"};
+  if(!remoteTlsFilePaths.certificate||!remoteTlsFilePaths.privateKey)return {ok:false,code:"TLS_FILES_REQUIRED",message:"LAN接続にはTLS証明書と秘密鍵の両方が必要です。"};
+  let certificate,privateKey;
+  try{certificate=await fs.readFile(remoteTlsFilePaths.certificate,"utf8");privateKey=await fs.readFile(remoteTlsFilePaths.privateKey,"utf8");}
+  catch{return {ok:false,code:"TLS_FILE_UNAVAILABLE",message:"選択したTLSファイルを読み取れません。もう一度選択してください。"};}
+  const validation=validateLanTlsMaterial({bindAddress,certificate,privateKey});
+  if(!validation.ok)return validation;
+  serverOptions={mode:"lan",bindAddress,tls:{cert:certificate,key:privateKey}};
+ }else if(mode!=="localhost")return {ok:false,code:"INVALID_MODE",message:"接続モードを確認してください。"};
+ const server=createRemoteControlHttpServer(),result=await server.start(port,serverOptions);
+ return result.ok?{...result,status:getRemoteControlStatus()}:result;
 }
 
 async function stopRemoteControlServer() {
@@ -1827,9 +1862,18 @@ function registerIpcHandlers() {
     if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
     return getRemoteControlStatus();
   });
-  ipcMain.handle("remote:start",async(event,port)=>{
+  ipcMain.handle("remote:get-lan-options",event=>{
     if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
-    return startRemoteControlServer(port);
+    return getRemoteLanOptions();
+  });
+  ipcMain.handle("remote:select-tls-file",async(event,kind)=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    return chooseRemoteTlsFile(kind);
+  });
+  ipcMain.handle("remote:start",async(event,input)=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    if(input&&typeof input==="object"&&JSON.stringify(input).length>2000)return {ok:false,code:"INVALID_INPUT",message:"接続設定を確認してください。"};
+    return startRemoteControlServer(input);
   });
   ipcMain.handle("remote:stop",event=>{
     if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};

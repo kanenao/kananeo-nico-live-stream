@@ -4,12 +4,14 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
-  version:"0.1.0-beta.31",
+  version:"0.1.0-beta.32",
   platform:process.platform,
-  stage:"localhost-remote-control",
+  stage:"https-lan-remote-control",
   remote:Object.freeze({
     getStatus:()=>ipcRenderer.invoke("remote:get-status"),
-    start:port=>ipcRenderer.invoke("remote:start",port),
+    getLanOptions:()=>ipcRenderer.invoke("remote:get-lan-options"),
+    selectTlsFile:kind=>ipcRenderer.invoke("remote:select-tls-file",kind),
+    start:options=>ipcRenderer.invoke("remote:start",options),
     stop:()=>ipcRenderer.invoke("remote:stop"),
     createPairing:input=>ipcRenderer.invoke("remote:create-pairing",input),
     revokeDevice:id=>ipcRenderer.invoke("remote:revoke-device",id),

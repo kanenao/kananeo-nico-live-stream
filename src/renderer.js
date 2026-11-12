@@ -58,7 +58,7 @@ let bgmLoading=false;
 let bgmError="";
 let bgmCurrentId="";
 let bgmAudio=null;
-let remoteControlUi={loading:false,lastRefreshAt:0,status:{running:false,host:"127.0.0.1",port:0,url:"",devices:[],storageHealthy:true,storageMessage:""},pairingCode:"",pairingExpiresAt:null,error:""};
+let remoteControlUi={loading:false,lastRefreshAt:0,status:{running:false,mode:"localhost",protocol:"http",host:"127.0.0.1",port:0,url:"",devices:[],storageHealthy:true,storageMessage:""},lanOptions:{addresses:[],certificateName:"",privateKeyName:""},pairingCode:"",pairingExpiresAt:null,error:""};
 let quotePlayback={active:false,verified:false,programId:"",videoId:"",queueType:"",itemId:"",message:"ニコ生への引用再生は停止中です。"};
 let quoteAutoTimer=null;
 let quoteAutoToken=0;
@@ -166,30 +166,23 @@ function renderRemoteDeviceRows(){
  }).join(""):'<div class="empty">登録端末はありません。</div>';
 }
 function updateRemoteControlUi(){
- const status=remoteControlUi.status||{};
- const serverLabel=document.getElementById("remote-server-state");
- const url=document.getElementById("remote-server-url");
- const start=document.querySelector("[data-remote-start]");
- const stop=document.querySelector("[data-remote-stop]");
- const open=document.querySelector("[data-remote-open-controller]");
- const storage=document.getElementById("remote-storage-message");
- const pairing=document.getElementById("remote-pairing-code");
- const copyCode=document.querySelector("[data-remote-copy-code]");
- const expiry=document.getElementById("remote-pairing-expiry");
- const error=document.getElementById("remote-control-error");
- if(serverLabel)serverLabel.textContent=remoteControlUi.loading?"状態確認中…":status.running?"起動中":"停止中";
+ const status=remoteControlUi.status||{},serverLabel=document.getElementById("remote-server-state"),url=document.getElementById("remote-server-url");
+ const start=document.querySelector("[data-remote-start]"),stop=document.querySelector("[data-remote-stop]"),open=document.querySelector("[data-remote-open-controller]");
+ const copyUrl=document.querySelector("[data-remote-copy-url]"),storage=document.getElementById("remote-storage-message"),pairing=document.getElementById("remote-pairing-code");
+ const copyCode=document.querySelector("[data-remote-copy-code]"),expiry=document.getElementById("remote-pairing-expiry"),error=document.getElementById("remote-control-error");
+ const startLan=document.querySelector("[data-remote-start-lan]"),certificateLabel=document.getElementById("remote-tls-certificate-label"),keyLabel=document.getElementById("remote-tls-key-label");
+ if(serverLabel)serverLabel.textContent=remoteControlUi.loading?"状態確認中…":status.running?(status.mode==="lan"?"LAN HTTPS 起動中":"localhost 起動中"):"停止中";
  if(url)url.textContent=status.url||"サーバーを起動するとURLを表示します。";
- if(start)start.disabled=remoteControlUi.loading||!!status.running;
- if(stop)stop.disabled=remoteControlUi.loading||!status.running;
- if(open)open.disabled=!status.running;
- const pairButton=document.querySelector("[data-remote-pair-create]");
- if(pairButton)pairButton.disabled=remoteControlUi.loading||!status.running;
+ if(start)start.disabled=remoteControlUi.loading||!!status.running;if(stop)stop.disabled=remoteControlUi.loading||!status.running;
+ if(open)open.disabled=!status.running;if(copyUrl)copyUrl.disabled=!status.url;
+ const pairButton=document.querySelector("[data-remote-pair-create]");if(pairButton)pairButton.disabled=remoteControlUi.loading||!status.running;
+ if(startLan)startLan.disabled=remoteControlUi.loading||!!status.running||!remoteControlUi.lanOptions.addresses.length||!remoteControlUi.lanOptions.certificateName||!remoteControlUi.lanOptions.privateKeyName;
+ if(certificateLabel)certificateLabel.textContent=remoteControlUi.lanOptions.certificateName||"未選択";
+ if(keyLabel)keyLabel.textContent=remoteControlUi.lanOptions.privateKeyName||"未選択";
  if(storage)storage.textContent=status.storageHealthy===false?(status.storageMessage||"保存データを読み取れません。"):"端末情報はこのPC内にハッシュ形式で保存します。";
- if(pairing)pairing.textContent=remoteControlUi.pairingCode||"未発行";
- if(copyCode)copyCode.disabled=!remoteControlUi.pairingCode;
+ if(pairing)pairing.textContent=remoteControlUi.pairingCode||"未発行";if(copyCode)copyCode.disabled=!remoteControlUi.pairingCode;
  if(expiry)expiry.textContent=remoteControlUi.pairingExpiresAt?"有効期限："+formatRemoteTimestamp(remoteControlUi.pairingExpiresAt):"ペアリングコードは5分間有効です。";
- if(error)error.textContent=remoteControlUi.error||"";
- renderRemoteDeviceRows();
+ if(error)error.textContent=remoteControlUi.error||"";renderRemoteDeviceRows();
 }
 async function refreshRemoteControlUi(silent=false){
  if(remoteControlUi.loading)return;
@@ -204,15 +197,32 @@ async function refreshRemoteControlUi(silent=false){
   if(!silent)toast(remoteControlUi.error);
  }finally{remoteControlUi.loading=false;remoteControlUi.lastRefreshAt=Date.now();if(page==="remote")updateRemoteControlUi();}
 }
-async function startRemoteControlFromUi(){
- const port=Number(document.getElementById("remote-port")?.value||18240);
- remoteControlUi.loading=true;remoteControlUi.error="";updateRemoteControlUi();
+async function refreshRemoteLanOptions(){
  try{
-  const result=await window.kananeoApp.remote.start(port);
-  if(!result?.ok)throw new Error(result?.message||"サーバーを起動できませんでした。");
-  remoteControlUi.status=result.status;remoteControlUi.error="";
-  toast("localhostリモート操作サーバーを起動しました。");
- }catch(error){remoteControlUi.error=error?.message||"サーバーを起動できませんでした。";}
+  const result=await window.kananeoApp.remote.getLanOptions();if(!result?.ok)throw new Error(result?.message||"LAN情報を取得できませんでした。");
+  remoteControlUi.lanOptions={addresses:Array.isArray(result.addresses)?result.addresses:[],certificateName:result.certificateName||"",privateKeyName:result.privateKeyName||""};
+  const select=document.getElementById("remote-lan-address");
+  if(select){const previous=select.value;select.innerHTML=remoteControlUi.lanOptions.addresses.map(item=>'<option value="'+esc(item.address)+'">'+esc(item.address+" / "+item.interfaceName)+'</option>').join("")||'<option value="">利用可能なLAN IPv4がありません</option>';if(remoteControlUi.lanOptions.addresses.some(item=>item.address===previous))select.value=previous;}
+  if(page==="remote")updateRemoteControlUi();
+ }catch(error){remoteControlUi.error=error?.message||"LAN情報を取得できませんでした。";if(page==="remote")updateRemoteControlUi();}
+}
+async function chooseRemoteTlsFile(kind){
+ const result=await window.kananeoApp.remote.selectTlsFile(kind);
+ if(!result?.ok){if(result?.code!=="CANCELLED")toast(result?.message||"TLSファイルを選択できませんでした。");return;}
+ await refreshRemoteLanOptions();toast((kind==="certificate"?"証明書":"秘密鍵")+"を選択しました。");
+}
+async function startRemoteControlFromUi(mode="localhost"){
+ const port=Number(document.getElementById("remote-port")?.value||18240),input={port,mode};
+ if(mode==="lan"){
+  if(!document.getElementById("remote-lan-enable")?.checked){toast("LAN接続を有効にするチェックを入れてください。");return;}
+  const bindAddress=document.getElementById("remote-lan-address")?.value||"";
+  if(!bindAddress||!remoteControlUi.lanOptions.certificateName||!remoteControlUi.lanOptions.privateKeyName){toast("LANアドレス・TLS証明書・秘密鍵をすべて選択してください。");return;}
+  if(!confirm("LAN内の他端末からHTTPS接続できるようになります。選択したネットワークと証明書を確認しましたか？"))return;
+  input.bindAddress=bindAddress;input.enableLan=true;
+ }
+ remoteControlUi.loading=true;remoteControlUi.error="";updateRemoteControlUi();
+ try{const result=await window.kananeoApp.remote.start(input);if(!result?.ok)throw new Error(result?.message||"サーバーを起動できませんでした。");remoteControlUi.status=result.status;remoteControlUi.error="";toast(mode==="lan"?"HTTPS LANリモート操作サーバーを起動しました。":"localhostリモート操作サーバーを起動しました。");}
+ catch(error){remoteControlUi.error=error?.message||"サーバーを起動できませんでした。";}
  finally{remoteControlUi.loading=false;updateRemoteControlUi();}
 }
 async function stopRemoteControlFromUi(){
@@ -361,11 +371,12 @@ html=hero("VOICE & AUTO RESPONSE","音声・自動応答","コメント読み上
 panel("コメント読み上げ","Windows／Chromiumにインストールされた日本語音声を使用します。",'<form id="voice-settings-form"><label class="switchrow"><span><b>コメント読み上げを有効にする</b><small>通常コメントを受信した順に読み上げます。初期状態はOFFです。</small></span><input type="checkbox" id="voice-enabled" '+(state.voice.enabled?"checked":"")+'></label><label class="switchrow"><span><b>読み上げにコテハンを含める</b><small>登録済みコテハン、未登録ならニコニコ表示名を読み上げます。</small></span><input type="checkbox" id="voice-include-name" '+(state.voice.includeName?"checked":"")+'></label><label class="switchrow"><span><b>放送者コメントも読み上げる</b><small>通常コメントとは別に、放送者コメントを読み上げ対象にします。</small></span><input type="checkbox" id="voice-speak-operator" '+(state.voice.speakOperator?"checked":"")+'></label><div class="field"><label>音声</label><select class="input" id="voice-uri"><option value="">システム標準の日本語音声</option></select><small class="muted" id="voice-engine-status">'+(speechAvailable?"利用可能な音声を確認しています…":"この環境では音声合成APIを利用できません。")+'</small></div><div class="grid3"><div class="field"><label>読み上げ速度（0.5〜2）</label><input class="input" id="voice-rate" type="number" min="0.5" max="2" step="0.1" value="'+Number(state.voice.rate||1)+'"></div><div class="field"><label>声の高さ（0〜2）</label><input class="input" id="voice-pitch" type="number" min="0" max="2" step="0.1" value="'+Number(state.voice.pitch??1)+'"></div><div class="field"><label>音量（0〜1）</label><input class="input" id="voice-volume" type="number" min="0" max="1" step="0.1" value="'+Number(state.voice.volume??1)+'"></div></div><div class="actions"><button class="btn primary" type="submit">読み上げ設定を保存</button><button class="btn" type="button" data-voice-test '+(!speechAvailable?"disabled":"")+'>テスト読み上げ</button><button class="btn" type="button" data-voice-pause '+(!speechAvailable?"disabled":"")+'>一時停止</button><button class="btn" type="button" data-voice-resume '+(!speechAvailable?"disabled":"")+'>再開</button><button class="btn" type="button" data-voice-clear>停止・待ち行列クリア</button></div><div class="muted" id="voice-queue-status">待ち行列：'+speechQueue.length+' 件</div><div id="voice-queue-preview" class="queue-preview"></div></form>')+
 panel("個別ユーザーの読み上げ設定","特定ユーザーのコメントを読み上げ対象から除外できます。除外すると、その人の待ち行列内コメントも削除され、読み上げ中なら停止します。コメント欄からも切り替えできます。",'<div class="row"><b>除外中のユーザー</b><span>'+state.voice.mutedUserIds.length+' 人</span></div>'+(mutedSpeechRows||'<div class="empty">個別除外ユーザーは登録されていません。</div>')+'<div class="actions"><button class="btn" type="button" data-voice-clear-muted '+(!state.voice.mutedUserIds.length?"disabled":"")+'>個別除外をすべて解除</button></div><div class="muted">この設定はこのPC内に保存され、NGユーザー設定とは独立しています。解除後に受信したコメントから読み上げを再開します。</div>');
 }else if(page==="remote"){
-html=hero("LOCAL REMOTE CONTROL","リモート操作","ペアリングしたブラウザーから、状態確認・コメント閲覧・動画プレビュー・BGMを操作します。")+
-panel("サーバー設定","サーバーは既定で停止しています。起動操作を行ったときだけ127.0.0.1にHTTP接続を開きます。",'<div class="row"><b>状態</b><span id="remote-server-state">停止中</span></div><div class="grid2"><div class="field"><label>localhostポート（1024〜65535）</label><input class="input" id="remote-port" type="number" min="1024" max="65535" value="'+(remoteControlUi.status.port||18240)+'"></div><div class="field"><label>接続URL</label><div class="remote-url" id="remote-server-url">サーバーを起動するとURLを表示します。</div></div></div><div class="actions"><button class="btn primary" type="button" data-remote-start>サーバーを起動</button><button class="btn" type="button" data-remote-stop '+(!remoteControlUi.status.running?"disabled":"")+'>サーバーを停止</button><button class="btn" type="button" data-remote-open-controller '+(!remoteControlUi.status.running?"disabled":"")+'>ブラウザーで操作画面を開く</button><button class="btn" type="button" data-remote-refresh>状態を更新</button></div><div class="muted" id="remote-storage-message"></div><div class="muted" id="remote-control-error">'+esc(remoteControlUi.error||"")+'</div>')+
+html=hero("SECURE REMOTE CONTROL","リモート操作","ペアリングしたブラウザーから、状態確認・コメント閲覧・動画プレビュー・BGMを操作します。")+
+ panel("サーバー設定","初期状態は停止です。localhost HTTPと、証明書を使うLAN HTTPSを別々に明示起動します。",'<div class="row"><b>状態</b><span id="remote-server-state">停止中</span></div><div class="grid2"><div class="field"><label>ポート（1024〜65535）</label><input class="input" id="remote-port" type="number" min="1024" max="65535" value="'+(remoteControlUi.status.port||18240)+'"></div><div class="field"><label>接続URL</label><div class="remote-url" id="remote-server-url">サーバーを起動するとURLを表示します。</div></div></div><div class="actions"><button class="btn primary" type="button" data-remote-start>localhost HTTPで起動</button><button class="btn" type="button" data-remote-copy-url disabled>接続URLをコピー</button><button class="btn" type="button" data-remote-stop '+(!remoteControlUi.status.running?"disabled":"")+'>サーバーを停止</button><button class="btn" type="button" data-remote-open-controller '+(!remoteControlUi.status.running?"disabled":"")+'>このPCのブラウザーで開く</button><button class="btn" type="button" data-remote-refresh>状態を更新</button></div><div class="muted" id="remote-storage-message"></div><div class="muted" id="remote-control-error">'+esc(remoteControlUi.error||"")+'</div>')+
+ panel("LAN接続（HTTPS）","同じLAN内のスマートフォン等から接続する場合だけ使用します。選択したIPv4アドレスだけで待ち受けます。",'<label class="switchrow"><span><b>LAN接続を有効にする</b><small>チェック・専用起動ボタン・確認ダイアログが必要です。</small></span><input type="checkbox" id="remote-lan-enable"></label><div class="field"><label>待ち受けるLAN IPv4アドレス</label><select class="input" id="remote-lan-address">'+(remoteControlUi.lanOptions.addresses.map(item=>'<option value="'+esc(item.address)+'">'+esc(item.address+" / "+item.interfaceName)+'</option>').join("")||'<option value="">利用可能なLAN IPv4がありません</option>')+'</select></div><div class="grid2"><div class="field"><label>TLS証明書ファイル</label><div class="muted" id="remote-tls-certificate-label">'+esc(remoteControlUi.lanOptions.certificateName||"未選択")+'</div><button class="btn" type="button" data-remote-choose-cert>証明書を選択</button></div><div class="field"><label>TLS秘密鍵ファイル（未暗号化PEM）</label><div class="muted" id="remote-tls-key-label">'+esc(remoteControlUi.lanOptions.privateKeyName||"未選択")+'</div><button class="btn" type="button" data-remote-choose-key>秘密鍵を選択</button></div></div><div class="actions"><button class="btn primary" type="button" data-remote-start-lan '+(!remoteControlUi.lanOptions.addresses.length||!remoteControlUi.lanOptions.certificateName||!remoteControlUi.lanOptions.privateKeyName?"disabled":"")+'>HTTPSでLANサーバーを起動</button><button class="btn" type="button" data-remote-refresh-lan>ネットワーク情報を更新</button></div><div class="muted">証明書は選択したIPアドレスをSANに含み、有効期間内で、接続端末が信頼する認証局から発行されている必要があります。単なる自己署名証明書ではブラウザーに警告が出て通信に失敗する場合があります。秘密鍵のパスはメインプロセス内だけで保持し、アプリ終了後は再選択が必要です。</div>')+
 panel("端末ペアリング","操作を許可する端末にだけワンタイムコードを渡してください。コードの有効期限は5分、試行は最大5回です。",'<div class="remote-permissions"><label><input type="checkbox" checked disabled> 状態閲覧（必須）</label><label><input type="checkbox" data-remote-permission="comments:read" checked> コメント閲覧</label><label><input type="checkbox" data-remote-permission="player:control"> 動画プレビュー操作</label><label><input type="checkbox" data-remote-permission="bgm:control"> BGM操作</label></div><div class="actions"><button class="btn primary" type="button" data-remote-pair-create '+(!remoteControlUi.status.running?"disabled":"")+'>ワンタイムコードを発行</button></div><div class="remote-pairing-code" id="remote-pairing-code">'+esc(remoteControlUi.pairingCode||"未発行")+'</div><div class="actions"><button class="btn" type="button" data-remote-copy-code '+(!remoteControlUi.pairingCode?"disabled":"")+'>コードをコピー</button></div><div class="muted" id="remote-pairing-expiry">ペアリングコードは5分間有効です。</div><div class="muted">コードをブラウザーコントローラーの画面に入力すると端末が登録されます。認証トークンは登録時に一度だけ返し、PC内にはハッシュのみ保存します。</div>')+
 panel("登録済み端末","登録は最大20台。不要になった端末は失効してください。失効後は同じトークンで再接続できません。",'<div class="row"><b>登録端末</b><span id="remote-device-count">0台</span></div><div id="remote-device-rows" class="remote-device-list"><div class="empty">登録端末はありません。</div></div>')+
-'<div class="banner"><i class="led"></i><div><b>接続範囲の制限</b><small>β31は同じPC内からのlocalhost接続だけに対応します。スマートフォンや別PCからのLAN接続、HTTPS／WSS公開は未実装です。LAN公開はTLS・明示的な有効化・追加の安全確認を実装するまで行いません。</small></div></div>';
+'<div class="banner"><i class="led"></i><div><b>接続範囲の制限</b><small>localhostモードは同じPC内のみ。LANモードは選択したIPv4にバインドし、有効なHTTPS証明書・秘密鍵と明示的な有効化が必要です。ルーターのポート開放やインターネットへの公開には対応しません。</small></div></div>';
 }else if(page==="logs"){
 html=hero("ACTIVITY & BACKUP","履歴・バックアップ","設定データのJSON書き出し・読み込み。")+
 panel("システムログ","操作履歴",state.logs.map(x=>`<div class="row"><i></i><b>${esc(x)}</b></div>`).join("")+'<div class="actions"><button class="btn primary" data-export>設定JSONを書き出す</button><button class="btn" data-clear-logs>ログを消去</button></div>');
@@ -1742,7 +1753,11 @@ if(b.hasAttribute("data-ncv-order-move")){
 }
 if(b.hasAttribute("data-ncv-display-save")){saveBroadcastCommentViewSettings();return;}
 if(b.hasAttribute("data-ncv-display-reset")){resetBroadcastCommentViewSettings();return;}
-if(b.hasAttribute("data-remote-start")){void startRemoteControlFromUi();return;}
+if(b.hasAttribute("data-remote-start")){void startRemoteControlFromUi("localhost");return;}
+if(b.hasAttribute("data-remote-start-lan")){void startRemoteControlFromUi("lan");return;}
+if(b.hasAttribute("data-remote-choose-cert")){void chooseRemoteTlsFile("certificate");return;}
+if(b.hasAttribute("data-remote-choose-key")){void chooseRemoteTlsFile("privateKey");return;}
+if(b.hasAttribute("data-remote-refresh-lan")){void refreshRemoteLanOptions();return;}
 if(b.hasAttribute("data-remote-stop")){void stopRemoteControlFromUi();return;}
 if(b.hasAttribute("data-remote-refresh")){void refreshRemoteControlUi();return;}
 if(b.hasAttribute("data-remote-pair-create")){void createRemotePairingFromUi();return;}
@@ -2119,6 +2134,7 @@ if(window.kananeoApp?.niconico){window.kananeoApp.niconico.getSessionStatus().th
     window.kananeoApp.niconico.onCommentState(updateCommentConnection);window.kananeoApp.niconico.onVideoState(updateVideoPlayerState);}
 render();
 void refreshBgmLibrary(true);
+void refreshRemoteLanOptions();
 void checkForApplicationUpdates(true);
 if(window.kananeoApp?.remote){window.kananeoApp.remote.onRequest(request=>{void handleRemoteControlRequest(request);});}
 if(state.lastProgramId){void refreshDashboardStatistics(true);void refreshQuotePlayback({silent:true});}

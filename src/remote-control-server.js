@@ -1,6 +1,8 @@
 "use strict";
 
 const http = require("node:http");
+const https = require("node:https");
+const { isPrivateLanIpv4, validateLanTlsMaterial } = require("./remote-control-tls");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const {
@@ -51,6 +53,22 @@ function isSameLoopbackOrigin(value, expectedPort) {
   }
 }
 
+function parseBoundHostHeader(value, expectedHost, expectedPort, protocol = "https") {
+  if (typeof value !== "string" || value.length > 255 || typeof expectedHost !== "string") return false;
+  try {
+    const parsed = new URL(protocol + "://" + value);
+    const port = parsed.port ? Number(parsed.port) : (protocol === "https" ? 443 : 80);
+    return parsed.username === "" && parsed.password === "" && parsed.hostname.toLowerCase() === expectedHost.toLowerCase() && port === expectedPort;
+  } catch { return false; }
+}
+function isSameBoundOrigin(value, expectedHost, expectedPort, protocol = "https") {
+  if (typeof value !== "string" || value.length > 512) return false;
+  try {
+    const parsed = new URL(value);
+    const port = parsed.port ? Number(parsed.port) : (protocol === "https" ? 443 : 80);
+    return parsed.protocol === protocol + ":" && parsed.hostname.toLowerCase() === expectedHost.toLowerCase() && port === expectedPort && parsed.username === "" && parsed.password === "";
+  } catch { return false; }
+}
 function sendJson(response, statusCode, payload) {
   const body = Buffer.from(JSON.stringify(payload));
   response.writeHead(statusCode, {
@@ -112,6 +130,9 @@ function createRemoteControlServer({
 
   let server = null;
   let boundPort = 0;
+  let boundHost = "127.0.0.1";
+  let boundProtocol = "http";
+  let serverMode = "localhost";
   const ipLimiter = new RemoteRateLimiter({windowMs:DEVICE_RATE_WINDOW_MS,maxRequests:120,maxKeys:64});
   const pairingLimiter = new RemoteRateLimiter({windowMs:DEVICE_RATE_WINDOW_MS,maxRequests:PAIR_RATE_LIMIT,maxKeys:32});
   const deviceLimiter = new RemoteRateLimiter({windowMs:DEVICE_RATE_WINDOW_MS,maxRequests:DEVICE_RATE_LIMIT,maxKeys:64});
@@ -130,18 +151,22 @@ function createRemoteControlServer({
 
   async function handle(request, response) {
     const ip = request.socket?.remoteAddress || "";
-    if (!isLoopbackRemoteAddress(ip)) {
-      sendJson(response,403,{ok:false,code:"LOOPBACK_ONLY",message:"localhostからの接続だけ利用できます。"});
+    const peerAddress = String(ip).toLowerCase().replace(/^::ffff:/, "");
+    const peerAllowed = serverMode === "localhost" ? isLoopbackRemoteAddress(ip) : isPrivateLanIpv4(peerAddress) && !isLoopbackRemoteAddress(ip);
+    if (!peerAllowed) {
+      sendJson(response,403,{ok:false,code:serverMode === "localhost" ? "LOOPBACK_ONLY" : "PRIVATE_LAN_ONLY",message:serverMode === "localhost" ? "localhostからの接続だけ利用できます。" : "プライベートLANからの接続だけ利用できます。"});
       return;
     }
-    if (!parseLoopbackHostHeader(request.headers.host,boundPort)) {
-      sendJson(response,403,{ok:false,code:"INVALID_HOST",message:"許可されていない接続先です。"});
-      return;
-    }
+    const hostAllowed = serverMode === "localhost" ? parseLoopbackHostHeader(request.headers.host,boundPort) : parseBoundHostHeader(request.headers.host,boundHost,boundPort,boundProtocol);
+    if (!hostAllowed) {sendJson(response,403,{ok:false,code:"INVALID_HOST",message:"許可されていない接続先です。"});return;}
     const origin = request.headers.origin;
-    if (origin && !isSameLoopbackOrigin(origin,boundPort)) {
-      sendJson(response,403,{ok:false,code:"INVALID_ORIGIN",message:"異なる接続元からの要求は拒否しました。"});
-      return;
+    const originAllowed = serverMode === "localhost" ? isSameLoopbackOrigin(origin,boundPort) : isSameBoundOrigin(origin,boundHost,boundPort,boundProtocol);
+    if ((origin && !originAllowed) || (serverMode === "lan" && ["POST","PUT","PATCH","DELETE"].includes(request.method) && !origin)) {
+      sendJson(response,403,{ok:false,code:"INVALID_ORIGIN",message:"異なる接続元からの要求は拒否しました。"});return;
+    }
+    const fetchSite = request.headers["sec-fetch-site"];
+    if (fetchSite && fetchSite !== "same-origin" && fetchSite !== "none") {
+      sendJson(response,403,{ok:false,code:"CROSS_SITE_BLOCKED",message:"別サイトからの要求は拒否しました。"});return;
     }
     const ipLimit = ipLimiter.consume(ip);
     if (!ipLimit.allowed) {
@@ -242,21 +267,29 @@ function createRemoteControlServer({
     sendJson(response,404,{ok:false,code:"NOT_FOUND",message:"指定されたAPIはありません。"});
   }
 
-  async function start(port = 18240) {
+  async function start(port = 18240, options = {}) {
     if (server) return {ok:false,code:"ALREADY_STARTED",message:"リモート操作サーバーは既に起動しています。"};
     const selectedPort = Number(port);
-    if (!Number.isInteger(selectedPort) || selectedPort < 1024 || selectedPort > 65535) {
-      return {ok:false,code:"INVALID_PORT",message:"ポート番号は1024〜65535で指定してください。"};
+    if (!Number.isInteger(selectedPort) || selectedPort < 1024 || selectedPort > 65535) return {ok:false,code:"INVALID_PORT",message:"ポート番号は1024〜65535で指定してください。"};
+    const requestedMode = options?.mode || "localhost";
+    if (requestedMode !== "localhost" && requestedMode !== "lan") return {ok:false,code:"INVALID_MODE",message:"接続モードを確認してください。"};
+    let selectedHost = "127.0.0.1", selectedProtocol = "http", tlsOptions = null;
+    if (requestedMode === "lan") {
+      selectedHost = String(options?.bindAddress || "");
+      if (!isPrivateLanIpv4(selectedHost)) return {ok:false,code:"INVALID_BIND_ADDRESS",message:"LAN接続先はプライベートIPv4アドレスを選択してください。"};
+      const tlsCheck = validateLanTlsMaterial({bindAddress:selectedHost,certificate:options?.tls?.cert,privateKey:options?.tls?.key});
+      if (!tlsCheck.ok) return tlsCheck;
+      selectedProtocol = "https";
+      tlsOptions = {key:options.tls.key,cert:options.tls.cert,minVersion:"TLSv1.2"};
     }
-    if (!isLoopbackBindAddress("127.0.0.1")) {
-      return {ok:false,code:"INVALID_BIND_ADDRESS",message:"localhost以外には接続を公開できません。"};
-    }
-    server = http.createServer((request,response) => {
+    boundHost = selectedHost; boundProtocol = selectedProtocol; serverMode = requestedMode;
+    const requestHandler = (request,response) => {
       void handle(request,response).catch(() => {
         if (!response.headersSent) sendJson(response,500,{ok:false,code:"INTERNAL_ERROR",message:"リモート操作サーバーでエラーが発生しました。"});
         else response.destroy();
       });
-    });
+    };
+    server = requestedMode === "lan" ? https.createServer(tlsOptions,requestHandler) : http.createServer(requestHandler);
     server.requestTimeout = 10_000;
     server.headersTimeout = 5_000;
     server.keepAliveTimeout = 2_000;
@@ -266,13 +299,14 @@ function createRemoteControlServer({
         const onListening=()=>{server?.removeListener("error",onError);resolve();};
         server.once("error",onError);
         server.once("listening",onListening);
-        server.listen(selectedPort,"127.0.0.1");
+        server.listen(selectedPort,selectedHost);
       });
       boundPort = server.address().port;
-      return {ok:true,host:"127.0.0.1",port:boundPort,url:"http://127.0.0.1:"+boundPort+"/"};
+      const url = boundProtocol + "://" + boundHost + ":" + boundPort + "/";
+      return {ok:true,mode:serverMode,protocol:boundProtocol,host:boundHost,port:boundPort,url};
     } catch(error) {
       const code=error?.code||"LISTEN_FAILED";
-      server=null;boundPort=0;
+      server=null;boundPort=0;boundHost="127.0.0.1";boundProtocol="http";serverMode="localhost";
       return {ok:false,code,message:code==="EADDRINUSE"?"指定したポートは既に使用されています。別の番号を指定してください。":"リモート操作サーバーを起動できませんでした。"};
     }
   }
@@ -282,6 +316,7 @@ function createRemoteControlServer({
     const current=server;
     server=null;
     boundPort=0;
+    boundHost="127.0.0.1";boundProtocol="http";serverMode="localhost";
     ipLimiter.reset();pairingLimiter.reset();deviceLimiter.reset();
     await new Promise(resolve=>{
       try { current.close(()=>resolve());current.closeAllConnections?.(); }
@@ -293,7 +328,7 @@ function createRemoteControlServer({
   function address() {
     if(!server)return null;
     const current=server.address();
-    return current&&typeof current==="object"?{host:"127.0.0.1",port:current.port,url:"http://127.0.0.1:"+current.port+"/"}:null;
+    return current&&typeof current==="object"?{mode:serverMode,protocol:boundProtocol,host:boundHost,port:current.port,url:boundProtocol+"://"+boundHost+":"+current.port+"/"}:null;
   }
 
   return Object.freeze({start,stop,address});
@@ -304,6 +339,8 @@ module.exports = {
   isLoopbackRemoteAddress,
   parseLoopbackHostHeader,
   isSameLoopbackOrigin,
+  parseBoundHostHeader,
+  isSameBoundOrigin,
   readJsonBody,
   createRemoteControlServer
 };
