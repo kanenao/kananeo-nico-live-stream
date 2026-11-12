@@ -1910,7 +1910,7 @@ function registerIpcHandlers() {
     const entries=all.filter(x=>{const at=Date.parse(x.at);return (!q||[x.at,x.type,x.path,x.ip,x.command,x.method].join(" ").toLowerCase().includes(q))&&(type==="all"||x.type===type)&&(!Number.isFinite(from)||at>=from)&&(!Number.isFinite(to)||at<=to);});
     const choice=await dialog.showSaveDialog(mainWindow,{title:"リモート監査ログをCSV保存",defaultPath:"remote-control-audit.csv",filters:[{name:"CSV",extensions:["csv"]}]});
     if(choice.canceled||!choice.filePath)return {ok:false,code:"CANCELLED"};
-    const cols=["at","type","severity","method","path","ip","command"],cell=v=>{let s=String(v??"");if(/^[=+@\\-\\t\\r]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};
+    const cols=["at","type","severity","method","path","ip","command"],cell=v=>{let s=String(v??"");if(["=","+","-","@","\\t","\\r"].includes(s[0]))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};
     try{await fs.writeFile(choice.filePath,"\\uFEFF"+[cols.map(cell).join(","),...entries.map(x=>cols.map(k=>cell(x[k])).join(","))].join("\\r\\n")+"\\r\\n",{encoding:"utf8",mode:0o600});return {ok:true,count:entries.length};}
     catch{return {ok:false,code:"EXPORT_FAILED",message:"CSVを書き出せませんでした。"};}
   });
