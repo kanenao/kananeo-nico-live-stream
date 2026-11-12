@@ -21,3 +21,6 @@ input[type="range"]{accent-color:#8c7cff;cursor:pointer}
 #bgm-volume{padding:4px 0}
 #bgm-clock{font-size:9px;color:#aab6cc;font-variant-numeric:tabular-nums}
 @media(max-width:1200px){.bgm-track-row{align-items:flex-start}.bgm-track-row .actions{flex-wrap:nowrap}}
+
+/* Beta 27 broadcast management actions */
+#broadcast-manage-id{max-width:100%}
