@@ -12,6 +12,7 @@ const {
   normalizeBgmLibrary,
   addBgmTrack,
   removeBgmTrack,
+  moveBgmTrack,
   normalizeBgmVolume
 }=require("../src/bgm-library");
 
