@@ -804,7 +804,10 @@ const profile=findUserProfile(c.userId);
 const displayName=profile?.nickname||c.userName||kind;
 const originalName=profile?.nickname&&c.userName&&profile.nickname!==c.userName?'<small class="muted">（'+esc(c.userName)+'）</small>':"";
 const profileButton=c.userId?'<button class="btn" data-user-profile-from-comment="'+esc(c.userId)+'" data-user-name="'+esc(c.userName||"")+'">コテハン登録</button>':"";
-return '<div class="comment-entry"><div class="comment-meta"><b>'+esc(displayName)+'</b>'+originalName+'<span>'+esc(time)+'</span><span class="chip purple">'+kind+'</span>'+history+'</div><div class="comment-body">'+esc(c.content||"")+'</div><div class="comment-user-id">'+esc(c.userId||"")+' '+profileButton+'</div></div>';
+const speechMuted=window.KananeoCommentSpeech.isUserSpeechMuted(state.voice,c.userId);
+const speechToggle=c.userId?'<button class="btn" data-voice-toggle-user="'+esc(c.userId)+'">'+(speechMuted?"読み上げ許可":"読み上げ除外")+'</button>':"";
+const profileButton=c.userId?'<button class="btn" data-user-profile-from-comment="'+esc(c.userId)+'" data-user-name="'+esc(c.userName||"")+'">コテハン登録</button>':"";
+return '<div class="comment-entry"><div class="comment-meta"><b>'+esc(displayName)+'</b>'+originalName+'<span>'+esc(time)+'</span><span class="chip purple">'+kind+'</span>'+history+'</div><div class="comment-body">'+esc(c.content||"")+'</div><div class="comment-user-id">'+esc(c.userId||"")+' '+speechToggle+' '+profileButton+'</div></div>';
 }).join("");
 list.scrollTop=list.scrollHeight;
 }
@@ -1182,6 +1185,25 @@ if(b.hasAttribute("data-stock-remove")){state.stocks=state.stocks.filter(x=>x.id
 if(b.hasAttribute("data-stock-clear")){if(quotePlayback.queueType==="stock"&&quotePlayback.active){toast("引用再生を停止してからストックを消去してください。");return;}state.stocks=[];save();render();}
 if(b.hasAttribute("data-remove")){const removed=state.requests.find(x=>x.id===b.dataset.remove);state.requests=state.requests.filter(x=>x.id!==b.dataset.remove);if(removed&&removed.id===state.player.currentId){state.player.currentId="";state.player.status="closed";void window.kananeoApp.niconico.closeVideo();}save();render()}
 if(b.hasAttribute("data-clear")){if(state.player.currentId)void window.kananeoApp.niconico.closeVideo();state.requests=[];state.player.currentId="";state.player.status="closed";save();render()}
+if(b.hasAttribute("data-voice-toggle-user")){
+const userId=b.dataset.voiceToggleUser||"";
+const result=window.KananeoCommentSpeech.setUserSpeechMuted(state.voice,userId);
+if(!result.ok){toast("ユーザーIDを確認してください。");return;}
+state.voice=result.settings;save();
+if(page==="comments")renderComments();
+if(page==="voice")render();
+toast(result.muted?"このユーザーを読み上げ対象から除外しました。":"このユーザーの読み上げを許可しました。");
+return;
+}
+if(b.hasAttribute("data-voice-unmute-user")){
+const result=window.KananeoCommentSpeech.setUserSpeechMuted(state.voice,b.dataset.voiceUnmuteUser,false);
+if(result.ok){state.voice=result.settings;save();render();toast("このユーザーの読み上げを許可しました。");}
+return;
+}
+if(b.hasAttribute("data-voice-clear-muted")){
+state.voice=window.KananeoCommentSpeech.normalizeCommentSpeechSettings({...state.voice,mutedUserIds:[]});
+save();render();toast("個別除外をすべて解除しました。");return;
+}
 if(b.hasAttribute("data-voice-test")){if(!isSpeechEngineAvailable())toast("この環境では音声合成を利用できません。");else{saveVoiceSettings();speakDirect("コメント読み上げのテストです。日本語の音声を確認してください。");}return;}
 if(b.hasAttribute("data-voice-pause")){if(isSpeechEngineAvailable())window.speechSynthesis.pause();return;}
 if(b.hasAttribute("data-voice-resume")){if(isSpeechEngineAvailable())window.speechSynthesis.resume();return;}
