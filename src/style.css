@@ -70,3 +70,8 @@ input[type="range"]{accent-color:#8c7cff;cursor:pointer}
 .ncv-comment-table th:nth-child(6),.ncv-comment-table td:nth-child(6){width:58px}
 .ncv-user-id-button{border:0;background:transparent;padding:0;color:#7f9bbc;font:inherit;font-size:8px;font-variant-numeric:tabular-nums;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ncv-user-id-button:hover{color:#d5e5ff;text-decoration:underline}
+
+.ncv-context-menu{position:fixed;z-index:2000;min-width:190px;max-width:260px;padding:5px;border:1px solid #465575;border-radius:8px;background:#111c30;box-shadow:0 12px 36px #0009}
+.ncv-context-menu[hidden]{display:none}
+.ncv-context-menu button{display:block;width:100%;border:0;border-radius:5px;background:transparent;color:#dce5f5;text-align:left;padding:8px 10px;font-size:9px;cursor:pointer}
+.ncv-context-menu button:hover{background:#263653;color:#fff}
