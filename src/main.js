@@ -1595,15 +1595,21 @@ function normalizeRemoteDeviceRecord(input) {
   if (typeof input.id !== "string" || !/^[a-f0-9-]{36}$/i.test(input.id)) return null;
   if (typeof input.tokenHash !== "string" || !/^[a-f0-9]{64}$/i.test(input.tokenHash)) return null;
   if (typeof input.createdAt !== "string" || !Number.isFinite(Date.parse(input.createdAt))) return null;
-  const optionalDate = value => typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : null;
+  const optionalDate = value => {
+    if (value === null || value === undefined) return null;
+    return typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : undefined;
+  };
+  const lastSeenAt = optionalDate(input.lastSeenAt);
+  const revokedAt = optionalDate(input.revokedAt);
+  if (lastSeenAt === undefined || revokedAt === undefined) return null;
   return {
     id:input.id,
     name:normalizeDeviceName(input.name),
     tokenHash:input.tokenHash.toLowerCase(),
     permissions:normalizeDevicePermissions(input.permissions),
     createdAt:input.createdAt,
-    lastSeenAt:optionalDate(input.lastSeenAt),
-    revokedAt:optionalDate(input.revokedAt)
+    lastSeenAt,
+    revokedAt
   };
 }
 
@@ -1715,7 +1721,11 @@ async function completeRemotePairing(input = {}) {
     name:input.name,
     permissions:remoteControlPairing.permissions
   });
-  const nextDevices = [...remoteControlDevices,credential.device];
+  const combinedDevices = [...remoteControlDevices,credential.device];
+  const activeDevices = combinedDevices.filter(device=>!device.revokedAt);
+  const revokedDevices = combinedDevices.filter(device=>!!device.revokedAt)
+    .sort((a,b)=>Date.parse(b.revokedAt)-Date.parse(a.revokedAt));
+  const nextDevices = [...activeDevices,...revokedDevices.slice(0,Math.max(0,100-activeDevices.length))];
   const saved = await persistRemoteControlDeviceStore(nextDevices);
   if (!saved.ok) return saved;
   remoteControlDevices = nextDevices;
