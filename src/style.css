@@ -13,3 +13,11 @@
 
 /* β6 video player */
 progress{display:block;width:100%;height:8px;margin:12px 0 16px;accent-color:#8c7cff;background:#0e1729;border:0;border-radius:8px;overflow:hidden}progress::-webkit-progress-bar{background:#0e1729;border-radius:8px}progress::-webkit-progress-value{background:linear-gradient(90deg,#7969f2,#36c6d7);border-radius:8px}.btn:disabled{opacity:.4;cursor:not-allowed;filter:none}
+
+/* Local BGM player */
+.bgm-track-row .actions{margin-top:0;flex-shrink:0}
+.bgm-seek{padding:4px 0;accent-color:#8c7cff;cursor:pointer}
+input[type="range"]{accent-color:#8c7cff;cursor:pointer}
+#bgm-volume{padding:4px 0}
+#bgm-clock{font-size:9px;color:#aab6cc;font-variant-numeric:tabular-nums}
+@media(max-width:1200px){.bgm-track-row{align-items:flex-start}.bgm-track-row .actions{flex-wrap:nowrap}}
