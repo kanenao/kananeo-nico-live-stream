@@ -806,7 +806,6 @@ const originalName=profile?.nickname&&c.userName&&profile.nickname!==c.userName?
 const profileButton=c.userId?'<button class="btn" data-user-profile-from-comment="'+esc(c.userId)+'" data-user-name="'+esc(c.userName||"")+'">コテハン登録</button>':"";
 const speechMuted=window.KananeoCommentSpeech.isUserSpeechMuted(state.voice,c.userId);
 const speechToggle=c.userId?'<button class="btn" data-voice-toggle-user="'+esc(c.userId)+'">'+(speechMuted?"読み上げ許可":"読み上げ除外")+'</button>':"";
-const profileButton=c.userId?'<button class="btn" data-user-profile-from-comment="'+esc(c.userId)+'" data-user-name="'+esc(c.userName||"")+'">コテハン登録</button>':"";
 return '<div class="comment-entry"><div class="comment-meta"><b>'+esc(displayName)+'</b>'+originalName+'<span>'+esc(time)+'</span><span class="chip purple">'+kind+'</span>'+history+'</div><div class="comment-body">'+esc(c.content||"")+'</div><div class="comment-user-id">'+esc(c.userId||"")+' '+speechToggle+' '+profileButton+'</div></div>';
 }).join("");
 list.scrollTop=list.scrollHeight;
