@@ -59,9 +59,12 @@ function setUserSpeechMuted(settingsInput, userIdInput, mutedInput) {
   const muted = typeof mutedInput === "boolean"
     ? mutedInput : !settings.mutedUserIds.includes(userId);
   const next = new Set(settings.mutedUserIds);
+  if (muted && !next.has(userId) && next.size >= 2000) {
+    return {ok:false,code:"MUTE_LIMIT",settings};
+  }
   if (muted) next.add(userId);
   else next.delete(userId);
-  settings.mutedUserIds = [...next].slice(0,2000);
+  settings.mutedUserIds = [...next];
   return {ok:true,muted,userId,settings};
 }
 
