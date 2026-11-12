@@ -1126,6 +1126,75 @@ try{const r=await window.kananeoApp.niconico.checkProgram(input);node.replaceChi
 catch{node.textContent="確認中にエラーが発生しました。";}
 finally{if(button)button.disabled=false;}
 }
+function clampBgmVolume(value){const number=Number(value);return Number.isFinite(number)?Math.max(0,Math.min(1,number)):0.7;}
+function formatBgmFileSize(bytes){const size=Number(bytes);if(!Number.isFinite(size)||size<=0)return "サイズ不明";return size>=1024*1024?(size/(1024*1024)).toFixed(1)+" MB":(size/1024).toFixed(0)+" KB";}
+function formatBgmTime(seconds){const value=Number(seconds);if(!Number.isFinite(value)||value<0)return "00:00";const total=Math.floor(value),hours=Math.floor(total/3600),minutes=Math.floor((total%3600)/60),secs=total%60;return hours?String(hours).padStart(2,"0")+":"+String(minutes).padStart(2,"0")+":"+String(secs).padStart(2,"0"):String(minutes).padStart(2,"0")+":"+String(secs).padStart(2,"0");}
+function getCurrentBgmTrack(){return bgmTracks.find(track=>track.id===bgmCurrentId)||null;}
+function ensureBgmAudio(){
+ if(bgmAudio)return bgmAudio;
+ if(typeof Audio!=="function")return null;
+ bgmAudio=new Audio();bgmAudio.preload="metadata";bgmAudio.volume=clampBgmVolume(state.playback.bgmVolume);
+ bgmAudio.addEventListener("timeupdate",updateBgmPlaybackUi);
+ bgmAudio.addEventListener("loadedmetadata",updateBgmPlaybackUi);
+ bgmAudio.addEventListener("play",updateBgmPlaybackUi);
+ bgmAudio.addEventListener("pause",updateBgmPlaybackUi);
+ bgmAudio.addEventListener("ended",()=>{void playNextBgmTrack(true);});
+ bgmAudio.addEventListener("error",()=>{bgmError="この音源を再生できません。ファイル形式または音源ファイルを確認してください。";updateBgmPlaybackUi();});
+ return bgmAudio;
+}
+function updateBgmPlaybackUi(){
+ const current=getCurrentBgmTrack(),title=document.getElementById("bgm-current-name"),status=document.getElementById("bgm-current-status"),clock=document.getElementById("bgm-clock"),progress=document.getElementById("bgm-progress"),volume=document.getElementById("bgm-volume"),volumeLabel=document.getElementById("bgm-volume-label"),toggle=document.querySelector("[data-bgm-toggle]"),stop=document.querySelector("[data-bgm-stop]");
+ if(title)title.textContent=current?.name||"再生する曲を選択してください";
+ if(status)status.textContent=bgmError||(!current?"停止中":bgmAudio&&!bgmAudio.paused?"再生中":bgmAudio&&bgmAudio.ended?"再生終了":"一時停止中");
+ const duration=bgmAudio&&Number.isFinite(bgmAudio.duration)?bgmAudio.duration:0,currentTime=bgmAudio&&Number.isFinite(bgmAudio.currentTime)?bgmAudio.currentTime:0;
+ if(clock)clock.textContent=formatBgmTime(currentTime)+" / "+formatBgmTime(duration);
+ if(progress){progress.max=1000;progress.value=duration>0?Math.round(Math.max(0,Math.min(1,currentTime/duration))*1000):0;progress.disabled=!current||duration<=0;}
+ if(volume)volume.value=String(clampBgmVolume(state.playback.bgmVolume));
+ if(volumeLabel)volumeLabel.textContent=Math.round(clampBgmVolume(state.playback.bgmVolume)*100)+"%";
+ if(toggle){toggle.disabled=!bgmTracks.length;toggle.textContent=bgmAudio&&!bgmAudio.paused?"一時停止":"再生";}
+ if(stop)stop.disabled=!current;
+ const libraryStatus=document.getElementById("bgm-library-status");
+ if(libraryStatus&&!bgmLoading)libraryStatus.textContent=bgmError||"登録 "+bgmTracks.length+" 曲";
+}
+async function refreshBgmLibrary(silent=false){
+ if(bgmLoading)return;
+ bgmLoading=true;if(page==="player")render();
+ try{
+  const result=await window.kananeoApp.bgm.get();
+  if(!result?.ok)throw new Error(result?.message||"BGMライブラリを読み込めませんでした。");
+  bgmTracks=Array.isArray(result.tracks)?result.tracks:[];bgmError="";
+  if(bgmCurrentId&&!bgmTracks.some(track=>track.id===bgmCurrentId)){if(bgmAudio){bgmAudio.pause();bgmAudio.removeAttribute("src");bgmAudio.load();}bgmCurrentId="";}
+ }catch(error){bgmError=error?.message||"BGMライブラリを読み込めませんでした。";if(!silent)toast(bgmError);}
+ finally{bgmLoading=false;if(page==="player")render();}
+}
+async function playBgmTrack(trackId){
+ const track=bgmTracks.find(item=>item.id===trackId);if(!track){toast("再生するBGMが見つかりません。");return;}
+ const audio=ensureBgmAudio();if(!audio){toast("この環境では音声を再生できません。");return;}
+ bgmError="";
+ if(bgmCurrentId!==track.id||audio.src!==track.url){audio.pause();bgmCurrentId=track.id;audio.src=track.url;audio.load();}
+ audio.volume=clampBgmVolume(state.playback.bgmVolume);if(audio.ended)audio.currentTime=0;
+ try{await audio.play();if(page==="player")render();else updateBgmPlaybackUi();}
+ catch(error){bgmError=error?.name==="NotAllowedError"?"ブラウザーが音声再生を拒否しました。再生ボタンをもう一度押してください。":"音源を再生できませんでした。対応形式とファイルを確認してください。";updateBgmPlaybackUi();toast(bgmError);}
+}
+async function toggleBgmPlayback(){
+ const audio=ensureBgmAudio();if(!audio){toast("この環境では音声を再生できません。");return;}
+ if(!bgmCurrentId){if(bgmTracks.length)await playBgmTrack(bgmTracks[0].id);else toast("先に音源ファイルを追加してください。");return;}
+ if(audio.paused){if(audio.ended)audio.currentTime=0;try{await audio.play();bgmError="";}catch{bgmError="音源を再生できませんでした。";}}else audio.pause();
+ updateBgmPlaybackUi();if(page==="player")render();
+}
+async function playNextBgmTrack(automatic=false){
+ if(!bgmTracks.length)return;
+ const currentIndex=bgmTracks.findIndex(track=>track.id===bgmCurrentId);let nextIndex=currentIndex+1;
+ if(nextIndex>=bgmTracks.length){if(automatic&&!state.playback.bgmRepeat){if(bgmAudio){bgmAudio.pause();bgmAudio.currentTime=0;}updateBgmPlaybackUi();return;}nextIndex=0;}
+ await playBgmTrack(bgmTracks[nextIndex].id);
+}
+async function playPreviousBgmTrack(){
+ if(!bgmTracks.length)return;
+ const audio=ensureBgmAudio();if(audio&&audio.currentTime>3){audio.currentTime=0;updateBgmPlaybackUi();return;}
+ const currentIndex=bgmTracks.findIndex(track=>track.id===bgmCurrentId),previousIndex=currentIndex>0?currentIndex-1:(state.playback.bgmRepeat?bgmTracks.length-1:0);
+ await playBgmTrack(bgmTracks[previousIndex].id);
+}
+function stopBgmPlayback(){if(!bgmAudio)return;bgmAudio.pause();try{bgmAudio.currentTime=0;}catch{}updateBgmPlaybackUi();}
 function renderUpdateCheck(){
  const status=document.getElementById("update-check-status");
  const details=document.getElementById("update-release-details");
@@ -1159,7 +1228,7 @@ async function checkForApplicationUpdates(silent=false){
 if(page==="dashboard"&&updateCheckState.result?.updateAvailable)render();
 if(!silent&&updateCheckState.error)toast(updateCheckState.error);
 }
-function go(p){page=p;render();if(p==="dashboard")void refreshDashboardStatistics(true);if(p==="player")void refreshQuotePlayback();if(p==="comments")renderComments();if(p==="library"){void refreshVideoLibrary();renderVideoLibraryRows();}if(p==="users")renderUserProfileRows();}
+function go(p){page=p;render();if(p==="dashboard")void refreshDashboardStatistics(true);if(p==="player"){void refreshQuotePlayback();if(!bgmTracks.length&&!bgmLoading)void refreshBgmLibrary(true);}if(p==="comments")renderComments();if(p==="library"){void refreshVideoLibrary();renderVideoLibraryRows();}if(p==="users")renderUserProfileRows();}
 document.getElementById("nav").addEventListener("click",e=>{const b=e.target.closest("[data-page]");if(b)go(b.dataset.page)});
 document.addEventListener("click",async e=>{
 const goBtn=e.target.closest("[data-go]");if(goBtn){go(goBtn.dataset.go);return}
@@ -1171,6 +1240,38 @@ if(b.hasAttribute("data-nico-check")){void checkProgram();return;}
 if(b.hasAttribute("data-dashboard-refresh")){void refreshDashboardStatistics(false);return;}
 if(b.hasAttribute("data-extension-check")){void refreshExtensionOptions();return;}
 if(b.hasAttribute("data-update-check")){void checkForApplicationUpdates();return;}
+if(b.hasAttribute("data-bgm-add-files")){
+ b.disabled=true;
+ try{
+  const result=await window.kananeoApp.bgm.addFiles();
+  if(!result?.ok)throw new Error(result?.message||"BGMを追加できませんでした。");
+  if(result.canceled)return;
+  bgmTracks=Array.isArray(result.tracks)?result.tracks:[];
+  bgmError="";
+  if(page==="player")render();
+  toast("BGMを追加しました："+(result.added||0)+" 曲"+(result.skipped?" / 対象外 "+result.skipped+" 件":""));
+ }catch(error){toast(error?.message||"BGMを追加できませんでした。");}
+ finally{if(page==="player")render();}
+ return;
+}
+if(b.hasAttribute("data-bgm-play")){void playBgmTrack(b.dataset.bgmPlay);return;}
+if(b.hasAttribute("data-bgm-toggle")){void toggleBgmPlayback();return;}
+if(b.hasAttribute("data-bgm-next")){void playNextBgmTrack(false);return;}
+if(b.hasAttribute("data-bgm-prev")){void playPreviousBgmTrack();return;}
+if(b.hasAttribute("data-bgm-stop")){stopBgmPlayback();return;}
+if(b.hasAttribute("data-bgm-remove")){
+ const id=b.dataset.bgmRemove,target=bgmTracks.find(track=>track.id===id);
+ if(!target)return;
+ if(!confirm("BGM「"+target.name+"」をプレイリストとアプリ内保存先から削除しますか？"))return;
+ if(bgmCurrentId===id){if(bgmAudio){bgmAudio.pause();bgmAudio.removeAttribute("src");bgmAudio.load();}bgmCurrentId="";}
+ const result=await window.kananeoApp.bgm.remove(id);
+ if(!result?.ok){toast(result?.message||"BGMを削除できませんでした。");return;}
+ bgmTracks=Array.isArray(result.tracks)?result.tracks:[];
+ bgmError="";
+ if(page==="player")render();
+ toast("BGMを削除しました。");
+ return;
+}
 if(b.hasAttribute("data-update-open-releases")){const result=await window.kananeoApp.updates.openReleases();toast(result?.ok?"GitHub Releasesを開きました。":result?.message||"GitHub Releasesを開けませんでした。");return;}
 if(b.hasAttribute("data-library-refresh")){void refreshVideoLibrary();return;}if(b.hasAttribute("data-library-browse")){
 const type=document.getElementById("library-import-type")?.value||"";
@@ -1341,9 +1442,13 @@ if(b.hasAttribute("data-clear-logs")){state.logs=[];save();render()}
 if(b.hasAttribute("data-placeholder"))toast("現在の段階ではこの操作は未実装です。");
 });
 document.addEventListener("input",e=>{if(e.target.id==="comments-search")renderComments();if(e.target.id==="user-profile-search"){userProfileSearch=e.target.value;renderUserProfileRows();}if(e.target.id==="library-search")renderVideoLibraryRows();if(e.target.id==="library-source-search"){librarySourceQuery=e.target.value;renderLibrarySourcePreview();}});
+document.addEventListener("input",e=>{
+ if(e.target.id==="bgm-volume"){state.playback.bgmVolume=clampBgmVolume(e.target.value);if(bgmAudio)bgmAudio.volume=state.playback.bgmVolume;updateBgmPlaybackUi();}
+ if(e.target.id==="bgm-progress"&&bgmAudio&&Number.isFinite(bgmAudio.duration)){bgmAudio.currentTime=bgmAudio.duration*(Math.max(0,Math.min(1000,Number(e.target.value)||0))/1000);updateBgmPlaybackUi();}
+});
 document.addEventListener("change",e=>{if(e.target.id==="library-sort"){librarySort=e.target.value;renderVideoLibraryRows();}if(e.target.id==="library-source"){librarySource=e.target.value;renderVideoLibraryRows();}});
 document.addEventListener("change",e=>{if(e.target.matches("[data-library-source-check]")){const id=e.target.dataset.librarySourceCheck;if(e.target.checked)librarySourceSelected.add(id);else librarySourceSelected.delete(id);const count=document.getElementById("library-source-selection-count");if(count)count.textContent=librarySourceSelected.size+" 件を選択中";const button=document.querySelector("[data-library-source-import]");if(button){button.disabled=librarySourceSelected.size===0;button.textContent="選択した "+librarySourceSelected.size+" 件を取り込む";}}});
-document.addEventListener("change",e=>{if(e.target.matches('[data-toggle="quote-auto-next"]')){if(state.playback.playStyle===0&&e.target.checked){e.target.checked=false;state.playback.quoteAutoNext=false;save();toast("手動モードでは自動次動画を使えません。自動順次または自動ランダムに変更してください。");return;}state.playback.quoteAutoNext=e.target.checked;save();if(e.target.checked&&quotePlayback.active){const active=currentQueueItem();const started=Number(state.player.quoteStartedAt);if(started>0)scheduleQuoteAutoNext(active||{videoId:quotePlayback.videoId,lengthMs:state.player.quoteDurationMs},started);else{quoteAutoMessage="引用再生の開始時刻が不明です。次の動画から自動予約します。";updateQuoteScheduleUi();}}else clearQuoteAutoTimer("引用再生の自動次動画はOFFです。");toast(e.target.checked?"引用再生の自動次動画をONにしました。":"引用再生の自動次動画をOFFにしました。");}if(e.target.id==="comments-filter")renderComments();if(e.target.id==="player-auto-next"){state.player.autoNext=e.target.checked;save();toast(e.target.checked?"自動で次の動画へ切り替えます。":"自動次動画切替をOFFにしました。");}if(e.target.id==="request-from-comments"){state.requestSettings.acceptComments=e.target.checked;save();toast(e.target.checked?"コメントからのリクエスト受付をONにしました。":"コメントからのリクエスト受付をOFFにしました。");}if(e.target.id==="request-max-per-user"){state.requestSettings.maxPerUser=Math.min(50,Math.max(1,Number(e.target.value)||5));save();toast("ユーザー別リクエスト上限を保存しました。");}if(e.target.id==="request-reply-enabled"){state.requestSettings.replyEnabled=e.target.checked;save();toast(e.target.checked?"受付結果の自動返信をONにしました。":"受付結果の自動返信をOFFにしました。");}if(e.target.id==="request-reply-accepted"){state.requestSettings.replyAccepted=Array.from(String(e.target.value||"")).slice(0,80).join("");save();}if(e.target.id==="request-reply-rejected"){state.requestSettings.replyRejected=Array.from(String(e.target.value||"")).slice(0,80).join("");save();}});
+document.addEventListener("change",e=>{if(e.target.id==="bgm-volume"){state.playback.bgmVolume=clampBgmVolume(e.target.value);save();}if(e.target.id==="bgm-repeat"){state.playback.bgmRepeat=e.target.checked;save();toast(e.target.checked?"BGMを最後の曲から先頭へ繰り返します。":"BGMの繰り返しをOFFにしました。");}if(e.target.matches('[data-toggle="quote-auto-next"]')){if(state.playback.playStyle===0&&e.target.checked){e.target.checked=false;state.playback.quoteAutoNext=false;save();toast("手動モードでは自動次動画を使えません。自動順次または自動ランダムに変更してください。");return;}state.playback.quoteAutoNext=e.target.checked;save();if(e.target.checked&&quotePlayback.active){const active=currentQueueItem();const started=Number(state.player.quoteStartedAt);if(started>0)scheduleQuoteAutoNext(active||{videoId:quotePlayback.videoId,lengthMs:state.player.quoteDurationMs},started);else{quoteAutoMessage="引用再生の開始時刻が不明です。次の動画から自動予約します。";updateQuoteScheduleUi();}}else clearQuoteAutoTimer("引用再生の自動次動画はOFFです。");toast(e.target.checked?"引用再生の自動次動画をONにしました。":"引用再生の自動次動画をOFFにしました。");}if(e.target.id==="comments-filter")renderComments();if(e.target.id==="player-auto-next"){state.player.autoNext=e.target.checked;save();toast(e.target.checked?"自動で次の動画へ切り替えます。":"自動次動画切替をOFFにしました。");}if(e.target.id==="request-from-comments"){state.requestSettings.acceptComments=e.target.checked;save();toast(e.target.checked?"コメントからのリクエスト受付をONにしました。":"コメントからのリクエスト受付をOFFにしました。");}if(e.target.id==="request-max-per-user"){state.requestSettings.maxPerUser=Math.min(50,Math.max(1,Number(e.target.value)||5));save();toast("ユーザー別リクエスト上限を保存しました。");}if(e.target.id==="request-reply-enabled"){state.requestSettings.replyEnabled=e.target.checked;save();toast(e.target.checked?"受付結果の自動返信をONにしました。":"受付結果の自動返信をOFFにしました。");}if(e.target.id==="request-reply-accepted"){state.requestSettings.replyAccepted=Array.from(String(e.target.value||"")).slice(0,80).join("");save();}if(e.target.id==="request-reply-rejected"){state.requestSettings.replyRejected=Array.from(String(e.target.value||"")).slice(0,80).join("");save();}});
 document.addEventListener("submit",async e=>{
 e.preventDefault();
 if(e.target.id==="request-form"){
@@ -1430,6 +1535,7 @@ if(window.kananeoApp?.niconico){window.kananeoApp.niconico.getSessionStatus().th
     window.kananeoApp.niconico.onComment(receiveComment);
     window.kananeoApp.niconico.onCommentState(updateCommentConnection);window.kananeoApp.niconico.onVideoState(updateVideoPlayerState);}
 render();
+void refreshBgmLibrary(true);
 void checkForApplicationUpdates(true);
 if(state.lastProgramId){void refreshDashboardStatistics(true);void refreshQuotePlayback({silent:true});}
 setInterval(()=>{updateQuoteScheduleUi();if(page==="dashboard"){updateDashboardStatsUi();if(!dashboardStats.loading&&state.lastProgramId&&Date.now()-(Date.parse(dashboardStats.updatedAt)||0)>30000)void refreshDashboardStatistics(true);}},1000);
