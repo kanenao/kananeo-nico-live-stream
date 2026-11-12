@@ -12,7 +12,7 @@ on:
       - ".github/workflows/windows-build.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: windows-build-${{ github.ref }}
@@ -47,3 +47,57 @@ jobs:
           path: dist/*.exe
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish version-tagged GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/github-script@v9
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const { owner, repo } = context.repo;
+            const tag = process.env.RELEASE_TAG;
+            const files = fs.readdirSync("dist").filter(name => name.toLowerCase().endsWith(".exe")).sort();
+            if (!files.length) throw new Error("Windows installer files were not generated.");
+
+            let release;
+            try {
+              const existing = await github.rest.repos.getReleaseByTag({ owner, repo, tag });
+              release = existing.data;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              const created = await github.rest.repos.createRelease({
+                owner,
+                repo,
+                tag_name: tag,
+                target_commitish: context.sha,
+                name: `kananeo nico live stream ${tag}`,
+                generate_release_notes: true,
+                draft: false,
+                prerelease: tag.includes("-")
+              });
+              release = created.data;
+            }
+
+            for (const name of files) {
+              const oldAsset = (release.assets || []).find(asset => asset.name === name);
+              if (oldAsset) {
+                await github.rest.repos.deleteReleaseAsset({ owner, repo, asset_id: oldAsset.id });
+              }
+              const filePath = path.join("dist", name);
+              const data = fs.readFileSync(filePath);
+              await github.rest.repos.uploadReleaseAsset({
+                owner,
+                repo,
+                release_id: release.id,
+                name,
+                data,
+                headers: {
+                  "content-type": "application/octet-stream",
+                  "content-length": data.length
+                }
+              });
+              core.info(`Uploaded ${name}`);
+            }
