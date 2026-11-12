@@ -1503,11 +1503,14 @@ if(!silent&&updateCheckState.error)toast(updateCheckState.error);
 }
 function go(p){page=p;render();if(p==="dashboard")void refreshDashboardStatistics(true);if(p==="player"){void refreshQuotePlayback();if(!bgmTracks.length&&!bgmLoading)void refreshBgmLibrary(true);}if(p==="comments")renderComments();if(p==="library"){void refreshVideoLibrary();renderVideoLibraryRows();}if(p==="users")renderUserProfileRows();}
 document.getElementById("nav").addEventListener("click",e=>{const b=e.target.closest("[data-page]");if(b)go(b.dataset.page)});
-window.addEventListener("resize",updateLiveVideoBounds,{passive:true});
-document.addEventListener("scroll",updateLiveVideoBounds,true);
+window.addEventListener("resize",()=>{hideBroadcastCommentContextMenu();updateLiveVideoBounds();},{passive:true});
+document.addEventListener("scroll",()=>{hideBroadcastCommentContextMenu();updateLiveVideoBounds();},true);
+document.addEventListener("contextmenu",e=>{const row=e.target.closest("#broadcast-comments-list tr[data-broadcast-comment-index]");if(!row)return;e.preventDefault();const index=Number(row.dataset.broadcastCommentIndex);showBroadcastCommentContextMenu(receivedComments[index],e.clientX,e.clientY);});
 document.addEventListener("click",async e=>{
-const goBtn=e.target.closest("[data-go]");if(goBtn){go(goBtn.dataset.go);return}
+const goBtn=e.target.closest("[data-go]");if(goBtn){hideBroadcastCommentContextMenu();go(goBtn.dataset.go);return}
+if(!e.target.closest("#broadcast-comment-context"))hideBroadcastCommentContextMenu();
 const b=e.target.closest("button");if(!b)return;
+if(b.hasAttribute("data-broadcast-context-action")){void handleBroadcastCommentContextAction(b.dataset.broadcastContextAction);return;}
 if(b.hasAttribute("data-nico-login")){window.kananeoApp.niconico.openLogin().then(()=>toast("ニコニコ公式ログイン画面を開きました"));return;}
 if(b.hasAttribute("data-broadcast-create")){
  const result=await window.kananeoApp.niconico.openBroadcastCreate();
