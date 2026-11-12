@@ -228,6 +228,10 @@ html=hero("APPLICATION SETTINGS","設定","アプリのバージョンとロー�
 panel("アップデート確認","GitHub Releasesに公開されたバージョンを確認します。アプリの更新は自動実行せず、公開ページから配布ファイルを選んでください。",'<div class="row"><div><b>現在のバージョン</b><small>このアプリにインストールされているバージョン</small></div><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>確認状態</b><span id="update-check-status">未確認</span></div><div id="update-release-details"></div><div class="actions"><button class="btn primary" type="button" data-update-check>アップデートを確認</button><button class="btn" type="button" data-update-open-releases>GitHub Releasesを開く</button></div>')+
 panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Beta 23 / GitHub release update check</span></div>');
 }
+if(page==="dashboard"&&updateCheckState.result?.updateAvailable){
+const latest=updateCheckState.result.latestVersion||"新しい版";
+html+='<div class="banner"><i class="led"></i><div><b>アップデートがあります：'+esc(latest)+'</b><small>新しいバージョンがGitHub Releasesで公開されています。内容を確認してください。</small></div><button type="button" data-go="settings">詳細を確認 →</button><button type="button" data-update-open-releases>配布ページ</button></div>';
+}
 if(page==="library"){
 const sources=[...new Set(["manual",...videoLibraryData.items.map(item=>item.source).filter(Boolean)])].sort();
 const options=sources.map(source=>'<option value="'+esc(source)+'" '+(librarySource===source?"selected":"")+'>'+esc(librarySourceLabel(source))+'</option>').join("");
@@ -1133,7 +1137,7 @@ function renderUpdateCheck(){
  const notesHtml=notes?'<div class="muted" style="white-space:normal;line-height:1.8;margin-top:8px">'+esc(notes).replace(/\r?\n/g,"<br>")+'</div>':'<div class="muted">リリースノートはありません。</div>';
  details.innerHTML='<div class="row"><div><b>最新公開版：'+esc(release.version)+'</b><small>'+esc(date)+' / 配布ファイル '+Number(release.assetsCount||0)+' 件</small></div>'+(result.updateAvailable?'<span class="tag">更新あり</span>':'')+'</div><div class="row"><div><b>'+esc(release.name||release.tagName)+'</b>'+notesHtml+'</div></div>';
 }
-async function checkForApplicationUpdates(){
+async function checkForApplicationUpdates(silent=false){
  if(updateCheckState.loading)return;
  updateCheckState={loading:true,result:null,error:""};
  renderUpdateCheck();
@@ -1145,6 +1149,8 @@ async function checkForApplicationUpdates(){
   updateCheckState={loading:false,result:null,error:error?.message||"アップデート情報を確認できませんでした。"};
  }
  renderUpdateCheck();
+if(page==="dashboard"&&updateCheckState.result?.updateAvailable)render();
+if(!silent&&updateCheckState.error)toast(updateCheckState.error);
 }
 function go(p){page=p;render();if(p==="dashboard")void refreshDashboardStatistics(true);if(p==="player")void refreshQuotePlayback();if(p==="comments")renderComments();if(p==="library"){void refreshVideoLibrary();renderVideoLibraryRows();}if(p==="users")renderUserProfileRows();}
 document.getElementById("nav").addEventListener("click",e=>{const b=e.target.closest("[data-page]");if(b)go(b.dataset.page)});
@@ -1417,6 +1423,7 @@ if(window.kananeoApp?.niconico){window.kananeoApp.niconico.getSessionStatus().th
     window.kananeoApp.niconico.onComment(receiveComment);
     window.kananeoApp.niconico.onCommentState(updateCommentConnection);window.kananeoApp.niconico.onVideoState(updateVideoPlayerState);}
 render();
+void checkForApplicationUpdates(true);
 if(state.lastProgramId){void refreshDashboardStatistics(true);void refreshQuotePlayback({silent:true});}
 setInterval(()=>{updateQuoteScheduleUi();if(page==="dashboard"){updateDashboardStatsUi();if(!dashboardStats.loading&&state.lastProgramId&&Date.now()-(Date.parse(dashboardStats.updatedAt)||0)>30000)void refreshDashboardStatistics(true);}},1000);
 })();
