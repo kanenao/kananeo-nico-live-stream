@@ -181,6 +181,8 @@ function updateRemoteControlUi(){
  if(start)start.disabled=remoteControlUi.loading||!!status.running;
  if(stop)stop.disabled=remoteControlUi.loading||!status.running;
  if(open)open.disabled=!status.running;
+ const pairButton=document.querySelector("[data-remote-pair-create]");
+ if(pairButton)pairButton.disabled=remoteControlUi.loading||!status.running;
  if(storage)storage.textContent=status.storageHealthy===false?(status.storageMessage||"保存データを読み取れません。"):"端末情報はこのPC内にハッシュ形式で保存します。";
  if(pairing)pairing.textContent=remoteControlUi.pairingCode||"未発行";
  if(expiry)expiry.textContent=remoteControlUi.pairingExpiresAt?"有効期限："+formatRemoteTimestamp(remoteControlUi.pairingExpiresAt):"ペアリングコードは5分間有効です。";
