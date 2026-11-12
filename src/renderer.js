@@ -35,6 +35,7 @@ const MAX_QUEUE_ITEMS=1000;
 let nicoStatus={authenticated:false,label:"状態を確認中"};
 let dashboardStats={loading:false,watchCount:null,commentCount:null,updatedAt:"",error:""};
 let extensionOptionsState={loading:false,methods:[],updatedAt:"",error:""};
+let updateCheckState={loading:false,result:null,error:""};
 let quotePlayback={active:false,verified:false,programId:"",videoId:"",queueType:"",itemId:"",message:"ニコ生への引用再生は停止中です。"};
 let quoteAutoTimer=null;
 let quoteAutoToken=0;
@@ -224,7 +225,8 @@ html=hero("ACTIVITY & BACKUP","履歴・バックアップ","設定データのJ
 panel("システムログ","操作履歴",state.logs.map(x=>`<div class="row"><i></i><b>${esc(x)}</b></div>`).join("")+'<div class="actions"><button class="btn primary" data-export>設定JSONを書き出す</button><button class="btn" data-clear-logs>ログを消去</button></div>');
 }else{
 html=hero("APPLICATION SETTINGS","設定","アプリのバージョンとローカル設定を管理します。")+
-panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>0.1.0-beta.22</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Beta 22 / speech queue moderation</span></div>');
+panel("アップデート確認","GitHub Releasesに公開されたバージョンを確認します。アプリの更新は自動実行せず、公開ページから配布ファイルを選んでください。",'<div class="row"><div><b>現在のバージョン</b><small>このアプリにインストールされているバージョン</small></div><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>確認状態</b><span id="update-check-status">未確認</span></div><div id="update-release-details"></div><div class="actions"><button class="btn primary" type="button" data-update-check>アップデートを確認</button><button class="btn" type="button" data-update-open-releases>GitHub Releasesを開く</button></div>')+
+panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Beta 23 / GitHub release update check</span></div>');
 }
 if(page==="library"){
 const sources=[...new Set(["manual",...videoLibraryData.items.map(item=>item.source).filter(Boolean)])].sort();
@@ -233,6 +235,7 @@ html=html.replace('<div class="section"><p id="library-count">','<div class="fie
 }
 document.getElementById("content").innerHTML=html;
 if(page==="voice"){renderSpeechVoices();updateSpeechQueueUi();}
+if(page==="settings")renderUpdateCheck();
 if(page==="library")renderLibrarySourcePreview();
 if(page==="users")renderUserProfileRows();
 }
@@ -1112,6 +1115,37 @@ try{const r=await window.kananeoApp.niconico.checkProgram(input);node.replaceChi
 catch{node.textContent="確認中にエラーが発生しました。";}
 finally{if(button)button.disabled=false;}
 }
+function renderUpdateCheck(){
+ const status=document.getElementById("update-check-status");
+ const details=document.getElementById("update-release-details");
+ const button=document.querySelector("[data-update-check]");
+ if(!status||!details)return;
+ if(button)button.disabled=updateCheckState.loading;
+ if(updateCheckState.loading){status.textContent="GitHub Releasesを確認しています…";details.textContent="";return;}
+ if(updateCheckState.error){status.textContent=updateCheckState.error;details.textContent="";return;}
+ const result=updateCheckState.result;
+ if(!result){status.textContent="未確認";details.textContent="";return;}
+ status.textContent=result.message+(result.checkedAt?"（"+new Date(result.checkedAt).toLocaleString("ja-JP")+"）":"");
+ const release=result.release;
+ if(!release){details.innerHTML='<div class="empty">'+esc(result.message||"公開済みのリリースはありません。")+'</div>';return;}
+ const date=release.publishedAt?new Date(release.publishedAt).toLocaleString("ja-JP"):"公開日不明";
+ const notes=String(release.body||"").trim().slice(0,3000);
+ const notesHtml=notes?'<div class="muted" style="white-space:normal;line-height:1.8;margin-top:8px">'+esc(notes).replace(/\r?\n/g,"<br>")+'</div>':'<div class="muted">リリースノートはありません。</div>';
+ details.innerHTML='<div class="row"><div><b>最新公開版：'+esc(release.version)+'</b><small>'+esc(date)+' / 配布ファイル '+Number(release.assetsCount||0)+' 件</small></div>'+(result.updateAvailable?'<span class="tag">更新あり</span>':'')+'</div><div class="row"><div><b>'+esc(release.name||release.tagName)+'</b>'+notesHtml+'</div></div>';
+}
+async function checkForApplicationUpdates(){
+ if(updateCheckState.loading)return;
+ updateCheckState={loading:true,result:null,error:""};
+ renderUpdateCheck();
+ try{
+  const result=await window.kananeoApp.updates.check();
+  if(!result?.ok)throw new Error(result?.message||"アップデート情報を確認できませんでした。");
+  updateCheckState={loading:false,result,error:""};
+ }catch(error){
+  updateCheckState={loading:false,result:null,error:error?.message||"アップデート情報を確認できませんでした。"};
+ }
+ renderUpdateCheck();
+}
 function go(p){page=p;render();if(p==="dashboard")void refreshDashboardStatistics(true);if(p==="player")void refreshQuotePlayback();if(p==="comments")renderComments();if(p==="library"){void refreshVideoLibrary();renderVideoLibraryRows();}if(p==="users")renderUserProfileRows();}
 document.getElementById("nav").addEventListener("click",e=>{const b=e.target.closest("[data-page]");if(b)go(b.dataset.page)});
 document.addEventListener("click",async e=>{
@@ -1123,6 +1157,8 @@ if(b.hasAttribute("data-nico-logout")){if(confirm("このアプリ専用のニ�
 if(b.hasAttribute("data-nico-check")){void checkProgram();return;}
 if(b.hasAttribute("data-dashboard-refresh")){void refreshDashboardStatistics(false);return;}
 if(b.hasAttribute("data-extension-check")){void refreshExtensionOptions();return;}
+if(b.hasAttribute("data-update-check")){void checkForApplicationUpdates();return;}
+if(b.hasAttribute("data-update-open-releases")){const result=await window.kananeoApp.updates.openReleases();toast(result?.ok?"GitHub Releasesを開きました。":result?.message||"GitHub Releasesを開けませんでした。");return;}
 if(b.hasAttribute("data-library-refresh")){void refreshVideoLibrary();return;}if(b.hasAttribute("data-library-browse")){
 const type=document.getElementById("library-import-type")?.value||"";
 const listId=document.getElementById("library-import-id")?.value.trim()||"";
