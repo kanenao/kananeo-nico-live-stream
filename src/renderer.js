@@ -740,17 +740,18 @@ const item=list[selected.index];
 return await playQuotedQueueItem(item,selected.queue,options.skipConfirmation===true);
 }
 async function playQueueItem(item,queueType="request"){
-if(!item)return;
+if(!item)return false;
 try{
 const result=await window.kananeoApp.niconico.openVideo(item.url);
-if(!result?.ok){toast(result?.message||"動画を開けませんでした。");return;}
+if(!result?.ok){toast(result?.message||"動画を開けませんでした。");return false;}
 void recordVideoPlaybackHistory(item,queueType,"preview");
 if(!quotePlayback.active){for(const list of [state.requests,state.stocks])list.forEach(x=>{if(x.id!==item.id&&x.status==="playing")x.status="queued";});item.status="playing";}
 state.player.currentId=item.id;state.player.currentQueueType=queueType;state.player.status="loading";state.player.currentTime=0;state.player.duration=0;state.player.endedFor="";
 state.logs.unshift("動画を再生："+item.title);save();playerState={state:"loading",currentTime:0,duration:0,message:result.message||"動画ページを開きました。"};
 if(page==="requests"||page==="player")render();
 toast(result.message||"動画ページを開きました。");
-}catch{toast("プレイヤーを起動できませんでした。");}
+return true;
+}catch{toast("プレイヤーを起動できませんでした。");return false;}
 }
 async function playNextQueueItem(manual=false){
 const current=currentQueueItem();
@@ -761,7 +762,7 @@ if(!next){
 if(manual&&current)current.status=previousStatus||"playing";
 save();if(page==="requests"||page==="player")render();toast("次に再生できる動画はありません。");return;
 }
-save();await playQueueItem(next);
+save();return await playQueueItem(next);
 }
 function updateVideoPlayerState(status){
 if(!status||typeof status!=="object")return;
