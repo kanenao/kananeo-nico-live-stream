@@ -1,5 +1,5 @@
 (() => {
-const names={dashboard:"ダッシュボード",broadcast:"放送・枠管理",comments:"コメントビューア",requests:"動画リクエスト",stocks:"ストック",library:"動画ライブラリ",poll:"自動アンケート",player:"プレイヤー・BGM",automation:"自動枠取り・延長",external:"OBS・外部ツール",voice:"音声・自動応答",users:"ユーザー・NG管理",logs:"履歴・バックアップ",settings:"設定"};
+const names={remote:"リモート操作",dashboard:"ダッシュボード",broadcast:"放送・枠管理",comments:"コメントビューア",requests:"動画リクエスト",stocks:"ストック",library:"動画ライブラリ",poll:"自動アンケート",player:"プレイヤー・BGM",automation:"自動枠取り・延長",external:"OBS・外部ツール",voice:"音声・自動応答",users:"ユーザー・NG管理",logs:"履歴・バックアップ",settings:"設定"};
 const key="kananeo-beta2";
 const COMMENT_VIEW_STORAGE_KEY=key+"-comment-view";
 const BROADCAST_COMMENT_COLUMNS=[{key:"number",label:"番号"},{key:"time",label:"時刻"},{key:"user",label:"投稿者"},{key:"userId",label:"ユーザーID"},{key:"content",label:"コメント本文"},{key:"type",label:"種別"}];
@@ -58,6 +58,7 @@ let bgmLoading=false;
 let bgmError="";
 let bgmCurrentId="";
 let bgmAudio=null;
+let remoteControlUi={loading:false,status:{running:false,host:"127.0.0.1",port:0,url:"",devices:[],storageHealthy:true,storageMessage:""},pairingCode:"",pairingExpiresAt:null,error:""};
 let quotePlayback={active:false,verified:false,programId:"",videoId:"",queueType:"",itemId:"",message:"ニコ生への引用再生は停止中です。"};
 let quoteAutoTimer=null;
 let quoteAutoToken=0;
@@ -145,6 +146,102 @@ function hero(k,t,d,b=""){return `<div class="hero"><div><div class="eyebrow">${
 function panel(t,d,body){return `<article class="panel"><h2>${t}</h2><p>${d}</p>${body}</article>`}
 function field(label,id,value="",placeholder=""){return `<div class="field"><label>${label}</label><input class="input" id="${id}" value="${esc(value)}" placeholder="${placeholder}"></div>`}
 function toggle(id,title,desc,on){return `<div class="switchrow"><div><b>${title}</b><small>${desc}</small></div><input type="checkbox" data-toggle="${id}" ${on?"checked":""}></div>`}
+function remotePermissionLabel(permission){
+ return ({"status:read":"状態閲覧","comments:read":"コメント閲覧","player:control":"プレビュー操作","bgm:control":"BGM操作"}[permission]||permission);
+}
+function formatRemoteTimestamp(value){
+ if(!value)return "未接続";
+ const date=new Date(value);return Number.isNaN(date.getTime())?"—":date.toLocaleString("ja-JP");
+}
+function renderRemoteDeviceRows(){
+ const host=document.getElementById("remote-device-rows");
+ const count=document.getElementById("remote-device-count");
+ if(!host)return;
+ const devices=remoteControlUi.status.devices||[];
+ if(count)count.textContent=devices.length+"台";
+ host.innerHTML=devices.length?devices.map(device=>{
+  const permissions=(device.permissions||[]).map(remotePermissionLabel).join("・")||"権限なし";
+  const status=device.revokedAt?"失効済み":"有効";
+  return '<article class="remote-device-row"><div class="remote-device-main"><b>'+esc(device.name)+'</b><small>'+esc(status)+' / 登録 '+esc(formatRemoteTimestamp(device.createdAt))+' / 最終接続 '+esc(formatRemoteTimestamp(device.lastSeenAt))+'</small><small>権限：'+esc(permissions)+'</small><small class="muted">'+esc(device.id)+'</small></div><button class="btn danger" type="button" data-remote-revoke="'+esc(device.id)+'" '+(device.revokedAt?"disabled":"")+'>端末を失効</button></article>';
+ }).join(""):'<div class="empty">登録端末はありません。</div>';
+}
+function updateRemoteControlUi(){
+ const status=remoteControlUi.status||{};
+ const serverLabel=document.getElementById("remote-server-state");
+ const url=document.getElementById("remote-server-url");
+ const start=document.querySelector("[data-remote-start]");
+ const stop=document.querySelector("[data-remote-stop]");
+ const open=document.querySelector("[data-remote-open-controller]");
+ const storage=document.getElementById("remote-storage-message");
+ const pairing=document.getElementById("remote-pairing-code");
+ const expiry=document.getElementById("remote-pairing-expiry");
+ const error=document.getElementById("remote-control-error");
+ if(serverLabel)serverLabel.textContent=remoteControlUi.loading?"状態確認中…":status.running?"起動中":"停止中";
+ if(url)url.textContent=status.url||"サーバーを起動するとURLを表示します。";
+ if(start)start.disabled=remoteControlUi.loading||!!status.running;
+ if(stop)stop.disabled=remoteControlUi.loading||!status.running;
+ if(open)open.disabled=!status.running;
+ if(storage)storage.textContent=status.storageHealthy===false?(status.storageMessage||"保存データを読み取れません。"):"端末情報はこのPC内にハッシュ形式で保存します。";
+ if(pairing)pairing.textContent=remoteControlUi.pairingCode||"未発行";
+ if(expiry)expiry.textContent=remoteControlUi.pairingExpiresAt?"有効期限："+formatRemoteTimestamp(remoteControlUi.pairingExpiresAt):"ペアリングコードは5分間有効です。";
+ if(error)error.textContent=remoteControlUi.error||"";
+ renderRemoteDeviceRows();
+}
+async function refreshRemoteControlUi(silent=false){
+ if(remoteControlUi.loading)return;
+ remoteControlUi.loading=true;updateRemoteControlUi();
+ try{
+  const result=await window.kananeoApp.remote.getStatus();
+  if(!result?.ok)throw new Error(result?.message||"リモート操作の状態を取得できませんでした。");
+  remoteControlUi.status=result;remoteControlUi.error="";
+ }catch(error){
+  remoteControlUi.error=error?.message||"状態を取得できませんでした。";
+  if(!silent)toast(remoteControlUi.error);
+ }finally{remoteControlUi.loading=false;if(page==="remote")updateRemoteControlUi();}
+}
+async function startRemoteControlFromUi(){
+ const port=Number(document.getElementById("remote-port")?.value||18240);
+ remoteControlUi.loading=true;remoteControlUi.error="";updateRemoteControlUi();
+ try{
+  const result=await window.kananeoApp.remote.start(port);
+  if(!result?.ok)throw new Error(result?.message||"サーバーを起動できませんでした。");
+  remoteControlUi.status=result.status;remoteControlUi.error="";
+  toast("localhostリモート操作サーバーを起動しました。");
+ }catch(error){remoteControlUi.error=error?.message||"サーバーを起動できませんでした。";}
+ finally{remoteControlUi.loading=false;updateRemoteControlUi();}
+}
+async function stopRemoteControlFromUi(){
+ remoteControlUi.loading=true;updateRemoteControlUi();
+ try{
+  const result=await window.kananeoApp.remote.stop();
+  if(!result?.ok)throw new Error(result?.message||"サーバーを停止できませんでした。");
+  remoteControlUi.status=result.status;remoteControlUi.pairingCode="";remoteControlUi.pairingExpiresAt=null;remoteControlUi.error="";
+  toast("リモート操作サーバーを停止しました。");
+ }catch(error){remoteControlUi.error=error?.message||"サーバーを停止できませんでした。";}
+ finally{remoteControlUi.loading=false;updateRemoteControlUi();}
+}
+async function createRemotePairingFromUi(){
+ const permissions=["status:read"];
+ document.querySelectorAll("[data-remote-permission]:checked").forEach(input=>permissions.push(input.dataset.remotePermission));
+ const result=await window.kananeoApp.remote.createPairing({permissions});
+ if(!result?.ok){toast(result?.message||"ペアリングコードを発行できませんでした。");return;}
+ remoteControlUi.pairingCode=result.code;
+ remoteControlUi.pairingExpiresAt=result.expiresAt;
+ remoteControlUi.error="";
+ await refreshRemoteControlUi(true);
+ updateRemoteControlUi();
+ toast("ワンタイムペアリングコードを発行しました。");
+}
+async function revokeRemoteDeviceFromUi(deviceId){
+ const device=(remoteControlUi.status.devices||[]).find(item=>item.id===deviceId);
+ if(!device||device.revokedAt)return;
+ if(!confirm("「"+device.name+"」の接続権限を失効しますか？\n\n失効後は、この端末のトークンを再利用できません。"))return;
+ const result=await window.kananeoApp.remote.revokeDevice(deviceId);
+ if(!result?.ok){toast(result?.message||"端末を失効できませんでした。");return;}
+ remoteControlUi.pairingCode="";remoteControlUi.pairingExpiresAt=null;
+ await refreshRemoteControlUi(true);
+ toast("端末を失効しました。");
+}
 function render(){
 document.getElementById("crumb").textContent=names[page];
 document.querySelectorAll("[data-page]").forEach(b=>b.classList.toggle("active",b.dataset.page===page));
@@ -157,7 +254,7 @@ html=hero("STREAM CONTROL CENTER","配信コントロールセンター","配信
 '<div class="muted" id="dashboard-stats-error">'+esc(dashboardStats.error||"")+'</div>'+
 '<div class="columns">'+panel("クイック操作","よく使う機能",'<div class="quick">'+[["♫","動画リクエスト","requests"],["◈","自動アンケート","poll"],["⟳","次枠・自動延長","automation"],["▣","OBS・外部ツール","external"]].map(x=>`<button data-go="${x[2]}"><span>${x[0]}</span><b>${x[1]}</b><small>機能を開く</small></button>`).join("")+'</div>')+
 panel("システムログ","ローカルに記録した直近の操作",state.logs.slice(0,5).map(x=>`<div class="row"><i></i><div><b>${esc(x)}</b><small>ローカル記録</small></div></div>`).join(""))+'</div>'+
-'<footer>kananeo nico live stream <span>0.1.0-beta.30 · Beta preview</span></footer>';
+'<footer>kananeo nico live stream <span>0.1.0-beta.31 · Beta preview</span></footer>';
 }else if(page==="requests"){
 const waiting=state.requests.filter(x=>!["completed","skipped","rejected"].includes(x.status)).length;
 const requestRows=state.requests.map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+(x.status==="playing"?"再生中":x.status==="completed"?"再生済み":x.status==="skipped"?"スキップ":x.status==="rejected"?"引用不可":"待機中")+'</td><td>'+esc(x.title)+(x.requestUserId?'<div class="muted">リクエスト者：'+esc(getRequesterDisplayName(x))+'</div>':"")+'</td><td>'+esc(x.videoId||x.url)+'</td><td><button class="btn" data-play="'+esc(x.id)+'">プレビュー</button> <button class="btn primary" data-quote-request="'+esc(x.id)+'">ニコ生へ送る</button> <button class="btn" data-up="'+i+'" '+(i===0?"disabled":"")+'>&uarr;</button> <button class="btn" data-down="'+i+'" '+(i===state.requests.length-1?"disabled":"")+'>&darr;</button> <button class="btn" data-remove="'+esc(x.id)+'">削除</button></td></tr>').join("");
@@ -258,13 +355,19 @@ return '<div class="row"><div><b>'+esc(profile?.nickname||userId)+'</b><small>'+
 html=hero("VOICE & AUTO RESPONSE","音声・自動応答","コメント読み上げをローカル音声合成で行います。読み上げは初期状態OFFで、NGワード・過去コメントは対象外です。")+
 panel("コメント読み上げ","Windows／Chromiumにインストールされた日本語音声を使用します。",'<form id="voice-settings-form"><label class="switchrow"><span><b>コメント読み上げを有効にする</b><small>通常コメントを受信した順に読み上げます。初期状態はOFFです。</small></span><input type="checkbox" id="voice-enabled" '+(state.voice.enabled?"checked":"")+'></label><label class="switchrow"><span><b>読み上げにコテハンを含める</b><small>登録済みコテハン、未登録ならニコニコ表示名を読み上げます。</small></span><input type="checkbox" id="voice-include-name" '+(state.voice.includeName?"checked":"")+'></label><label class="switchrow"><span><b>放送者コメントも読み上げる</b><small>通常コメントとは別に、放送者コメントを読み上げ対象にします。</small></span><input type="checkbox" id="voice-speak-operator" '+(state.voice.speakOperator?"checked":"")+'></label><div class="field"><label>音声</label><select class="input" id="voice-uri"><option value="">システム標準の日本語音声</option></select><small class="muted" id="voice-engine-status">'+(speechAvailable?"利用可能な音声を確認しています…":"この環境では音声合成APIを利用できません。")+'</small></div><div class="grid3"><div class="field"><label>読み上げ速度（0.5〜2）</label><input class="input" id="voice-rate" type="number" min="0.5" max="2" step="0.1" value="'+Number(state.voice.rate||1)+'"></div><div class="field"><label>声の高さ（0〜2）</label><input class="input" id="voice-pitch" type="number" min="0" max="2" step="0.1" value="'+Number(state.voice.pitch??1)+'"></div><div class="field"><label>音量（0〜1）</label><input class="input" id="voice-volume" type="number" min="0" max="1" step="0.1" value="'+Number(state.voice.volume??1)+'"></div></div><div class="actions"><button class="btn primary" type="submit">読み上げ設定を保存</button><button class="btn" type="button" data-voice-test '+(!speechAvailable?"disabled":"")+'>テスト読み上げ</button><button class="btn" type="button" data-voice-pause '+(!speechAvailable?"disabled":"")+'>一時停止</button><button class="btn" type="button" data-voice-resume '+(!speechAvailable?"disabled":"")+'>再開</button><button class="btn" type="button" data-voice-clear>停止・待ち行列クリア</button></div><div class="muted" id="voice-queue-status">待ち行列：'+speechQueue.length+' 件</div><div id="voice-queue-preview" class="queue-preview"></div></form>')+
 panel("個別ユーザーの読み上げ設定","特定ユーザーのコメントを読み上げ対象から除外できます。除外すると、その人の待ち行列内コメントも削除され、読み上げ中なら停止します。コメント欄からも切り替えできます。",'<div class="row"><b>除外中のユーザー</b><span>'+state.voice.mutedUserIds.length+' 人</span></div>'+(mutedSpeechRows||'<div class="empty">個別除外ユーザーは登録されていません。</div>')+'<div class="actions"><button class="btn" type="button" data-voice-clear-muted '+(!state.voice.mutedUserIds.length?"disabled":"")+'>個別除外をすべて解除</button></div><div class="muted">この設定はこのPC内に保存され、NGユーザー設定とは独立しています。解除後に受信したコメントから読み上げを再開します。</div>');
+}else if(page==="remote"){
+html=hero("LOCAL REMOTE CONTROL","リモート操作","ペアリングしたブラウザーから、状態確認・コメント閲覧・動画プレビュー・BGMを操作します。")+
+panel("サーバー設定","サーバーは既定で停止しています。起動操作を行ったときだけ127.0.0.1にHTTP接続を開きます。",'<div class="row"><b>状態</b><span id="remote-server-state">停止中</span></div><div class="grid2"><div class="field"><label>localhostポート（1024〜65535）</label><input class="input" id="remote-port" type="number" min="1024" max="65535" value="'+(remoteControlUi.status.port||18240)+'"></div><div class="field"><label>接続URL</label><div class="remote-url" id="remote-server-url">サーバーを起動するとURLを表示します。</div></div></div><div class="actions"><button class="btn primary" type="button" data-remote-start>サーバーを起動</button><button class="btn" type="button" data-remote-stop '+(!remoteControlUi.status.running?"disabled":"")+'>サーバーを停止</button><button class="btn" type="button" data-remote-open-controller '+(!remoteControlUi.status.running?"disabled":"")+'>ブラウザーで操作画面を開く</button><button class="btn" type="button" data-remote-refresh>状態を更新</button></div><div class="muted" id="remote-storage-message"></div><div class="muted" id="remote-control-error">'+esc(remoteControlUi.error||"")+'</div>')+
+panel("端末ペアリング","操作を許可する端末にだけワンタイムコードを渡してください。コードの有効期限は5分、試行は最大5回です。",'<div class="remote-permissions"><label><input type="checkbox" checked disabled> 状態閲覧（必須）</label><label><input type="checkbox" data-remote-permission="comments:read" checked> コメント閲覧</label><label><input type="checkbox" data-remote-permission="player:control"> 動画プレビュー操作</label><label><input type="checkbox" data-remote-permission="bgm:control"> BGM操作</label></div><div class="actions"><button class="btn primary" type="button" data-remote-pair-create '+(!remoteControlUi.status.running?"disabled":"")+'>ワンタイムコードを発行</button></div><div class="remote-pairing-code" id="remote-pairing-code">'+esc(remoteControlUi.pairingCode||"未発行")+'</div><div class="muted" id="remote-pairing-expiry">ペアリングコードは5分間有効です。</div><div class="muted">コードをブラウザーコントローラーの画面に入力すると端末が登録されます。認証トークンは登録時に一度だけ返し、PC内にはハッシュのみ保存します。</div>')+
+panel("登録済み端末","登録は最大20台。不要になった端末は失効してください。失効後は同じトークンで再接続できません。",'<div class="row"><b>登録端末</b><span id="remote-device-count">0台</span></div><div id="remote-device-rows" class="remote-device-list"><div class="empty">登録端末はありません。</div></div>')+
+'<div class="banner"><i class="led"></i><div><b>接続範囲の制限</b><small>β31は同じPC内からのlocalhost接続だけに対応します。スマートフォンや別PCからのLAN接続、HTTPS／WSS公開は未実装です。LAN公開はTLS・明示的な有効化・追加の安全確認を実装するまで行いません。</small></div></div>';
 }else if(page==="logs"){
 html=hero("ACTIVITY & BACKUP","履歴・バックアップ","設定データのJSON書き出し・読み込み。")+
 panel("システムログ","操作履歴",state.logs.map(x=>`<div class="row"><i></i><b>${esc(x)}</b></div>`).join("")+'<div class="actions"><button class="btn primary" data-export>設定JSONを書き出す</button><button class="btn" data-clear-logs>ログを消去</button></div>');
 }else{
 html=hero("APPLICATION SETTINGS","設定","アプリのバージョンとローカル設定を管理します。")+
 panel("アップデート確認","GitHub Releasesに公開されたバージョンを確認します。アプリの更新は自動実行せず、公開ページから配布ファイルを選んでください。",'<div class="row"><div><b>現在のバージョン</b><small>このアプリにインストールされているバージョン</small></div><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>確認状態</b><span id="update-check-status">未確認</span></div><div id="update-release-details"></div><div class="actions"><button class="btn primary" type="button" data-update-check>アップデートを確認</button><button class="btn" type="button" data-update-open-releases>GitHub Releasesを開く</button></div>')+
-panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Beta 30 / NCV comment display customization</span></div>');
+panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Beta 31 / localhost remote control</span></div>');
 }
 if(page==="dashboard"&&updateCheckState.result?.updateAvailable){
 const latest=updateCheckState.result.latestVersion||"新しい版";
@@ -280,6 +383,7 @@ if(page==="broadcast"){renderBroadcastManageVerification();renderBroadcastCommen
 updateLiveVideoBounds();
 if(page==="voice"){renderSpeechVoices();updateSpeechQueueUi();}
 if(page==="settings")renderUpdateCheck();
+if(page==="remote")updateRemoteControlUi();
 if(page==="library")renderLibrarySourcePreview();
 if(page==="users")renderUserProfileRows();
 }
@@ -1525,6 +1629,60 @@ async function playPreviousBgmTrack(){
  await playBgmTrack(bgmTracks[previousIndex].id);
 }
 function stopBgmPlayback(){if(!bgmAudio)return;bgmAudio.pause();try{bgmAudio.currentTime=0;}catch{}updateBgmPlaybackUi();}
+async function handleRemoteControlRequest(request){
+ if(!request||typeof request.requestId!=="string"||request.requestId.length>64)return;
+ let result={ok:false,code:"INVALID_REMOTE_ACTION",message:"未対応の操作です。"};
+ try{
+  if(request.action==="snapshot"){
+   const current=currentQueueItem(),bgm=getCurrentBgmTrack();
+   const stateLabels={closed:"未起動",loading:"読み込み中",playing:"再生中",paused:"一時停止",ended:"再生終了",error:"エラー"};
+   result={ok:true,status:{
+    authenticated:!!nicoStatus.authenticated,
+    programId:state.lastProgramId||commentConnection.programId||"",
+    comment:{state:commentConnection.state,stateLabel:({disconnected:"未接続",connecting:"接続中",connected:"接続済み",recovering:"再接続中",error:"接続エラー"}[commentConnection.state]||"不明"),count:receivedComments.length},
+    player:{state:playerState.state,stateLabel:stateLabels[playerState.state]||"状態確認中",title:current?.title||playerState.title||"",currentTime:Number(playerState.currentTime)||0,duration:Number(playerState.duration)||0},
+    bgm:{stateLabel:bgmAudio&&!bgmAudio.paused?"再生中":bgmAudio&&bgmAudio.currentTime>0?"一時停止":"停止中",trackName:bgm?.name||"",volume:clampBgmVolume(state.playback.bgmVolume)}
+   }};
+  }else if(request.action==="comments"){
+   const limit=Math.max(1,Math.min(100,Math.floor(Number(request.payload?.limit)||30)));
+   result={ok:true,comments:receivedComments.slice(-limit).map(comment=>{
+    const date=new Date(comment.timestamp);
+    return {userName:getUserDisplayName(comment,"匿名"),time:Number.isNaN(date.getTime())?"":date.toLocaleTimeString("ja-JP",{hour12:false}),content:String(comment.content||"").slice(0,2000),type:String(comment.type||"comment")};
+   })};
+  }else if(request.action==="command"){
+   const command=request.payload?.command,payload=request.payload?.payload||{};
+   if(command==="player:pause"){
+    result=await window.kananeoApp.niconico.pauseVideo();
+   }else if(command==="player:next"){
+    if(quotePlayback.active)result={ok:false,code:"QUOTATION_ACTIVE",message:"引用再生中はリモートからプレビューの次動画へ進めません。"};
+    else if(await playNextQueueItem(true))result={ok:true,message:"次のプレビューを開きました。"};
+    else result={ok:false,code:"NO_NEXT_VIDEO",message:"次のプレビュー動画がありません。"};
+   }else if(command==="player:stop"){
+    const closed=await window.kananeoApp.niconico.closeVideo();
+    playerState={state:"closed",message:closed?.message||"プレビューを閉じました。"};
+    updateVideoPlayerState(playerState);
+    result=closed?.ok===false?closed:{ok:true,message:"動画プレビューを閉じました。"};
+   }else if(command==="bgm:play"){
+    if(!bgmTracks.length&&!bgmLoading)await refreshBgmLibrary(true);
+    const track=bgmTracks.find(item=>item.id===bgmCurrentId)||bgmTracks[0];
+    if(!track)result={ok:false,code:"NO_BGM",message:"BGMが登録されていません。"};
+    else{await playBgmTrack(track.id);result=bgmError?{ok:false,code:"BGM_PLAY_FAILED",message:bgmError}:{ok:true,message:"BGMを再生しました。"};}
+   }else if(command==="bgm:pause"){
+    if(!bgmAudio||bgmAudio.paused)result={ok:false,code:"BGM_NOT_PLAYING",message:"BGMは再生中ではありません。"};
+    else{bgmAudio.pause();updateBgmPlaybackUi();result={ok:true,message:"BGMを一時停止しました。"};}
+   }else if(command==="bgm:next"){
+    if(!bgmTracks.length&&!bgmLoading)await refreshBgmLibrary(true);
+    if(!bgmTracks.length)result={ok:false,code:"NO_BGM",message:"BGMが登録されていません。"};
+    else{await playNextBgmTrack(false);result=bgmError?{ok:false,code:"BGM_NEXT_FAILED",message:bgmError}:{ok:true,message:"次のBGMへ切り替えました。"};}
+   }else if(command==="bgm:volume"){
+    const value=payload.value;
+    if(typeof value!=="number"||!Number.isFinite(value)||value<0||value>1)result={ok:false,code:"INVALID_VOLUME",message:"BGM音量は0〜1で指定してください。"};
+    else{state.playback.bgmVolume=value;if(bgmAudio)bgmAudio.volume=value;save();updateBgmPlaybackUi();result={ok:true,message:"BGM音量を"+Math.round(value*100)+"%に変更しました。"};}
+   }else result={ok:false,code:"COMMAND_NOT_ALLOWED",message:"許可されていない操作です。"};
+  }
+ }catch(error){result={ok:false,code:"REMOTE_ACTION_FAILED",message:error?.message||"操作を実行できませんでした。"};}
+ window.kananeoApp.remote.resolveRequest(request.requestId,result);
+}
 function renderUpdateCheck(){
  const status=document.getElementById("update-check-status");
  const details=document.getElementById("update-release-details");
@@ -1558,7 +1716,7 @@ async function checkForApplicationUpdates(silent=false){
 if(page==="dashboard"&&updateCheckState.result?.updateAvailable)render();
 if(!silent&&updateCheckState.error)toast(updateCheckState.error);
 }
-function go(p){if(p!=="broadcast")hideBroadcastCommentContextMenu();page=p;render();if(p==="dashboard")void refreshDashboardStatistics(true);if(p==="player"){void refreshQuotePlayback();if(!bgmTracks.length&&!bgmLoading)void refreshBgmLibrary(true);}if(p==="comments")renderComments();if(p==="library"){void refreshVideoLibrary();renderVideoLibraryRows();}if(p==="users")renderUserProfileRows();}
+function go(p){if(p!=="broadcast")hideBroadcastCommentContextMenu();page=p;render();if(p==="dashboard")void refreshDashboardStatistics(true);if(p==="player"){void refreshQuotePlayback();if(!bgmTracks.length&&!bgmLoading)void refreshBgmLibrary(true);}if(p==="comments")renderComments();if(p==="library"){void refreshVideoLibrary();renderVideoLibraryRows();}if(p==="users")renderUserProfileRows();if(p==="remote")void refreshRemoteControlUi(true);}
 document.getElementById("nav").addEventListener("click",e=>{const b=e.target.closest("[data-page]");if(b)go(b.dataset.page)});
 window.addEventListener("resize",()=>{hideBroadcastCommentContextMenu();updateLiveVideoBounds();},{passive:true});
 document.addEventListener("scroll",()=>{hideBroadcastCommentContextMenu();updateLiveVideoBounds();},true);
@@ -1578,6 +1736,13 @@ if(b.hasAttribute("data-ncv-order-move")){
 }
 if(b.hasAttribute("data-ncv-display-save")){saveBroadcastCommentViewSettings();return;}
 if(b.hasAttribute("data-ncv-display-reset")){resetBroadcastCommentViewSettings();return;}
+if(b.hasAttribute("data-remote-start")){void startRemoteControlFromUi();return;}
+if(b.hasAttribute("data-remote-stop")){void stopRemoteControlFromUi();return;}
+if(b.hasAttribute("data-remote-refresh")){void refreshRemoteControlUi();return;}
+if(b.hasAttribute("data-remote-pair-create")){void createRemotePairingFromUi();return;}
+if(b.hasAttribute("data-remote-open-controller")){const result=await window.kananeoApp.remote.openController();if(!result?.ok)toast(result?.message||"操作画面を開けませんでした。");return;}
+if(b.hasAttribute("data-remote-revoke")){void revokeRemoteDeviceFromUi(b.dataset.remoteRevoke);return;}
+if(b.hasAttribute("data-remote-copy-url")){const url=remoteControlUi.status.url;if(url){const result=await window.kananeoApp.niconico.copyText(url);toast(result?.ok?"URLをコピーしました。":"URLをコピーできませんでした。");}return;}
 if(b.hasAttribute("data-broadcast-context-action")){void handleBroadcastCommentContextAction(b.dataset.broadcastContextAction);return;}
 if(b.hasAttribute("data-nico-login")){window.kananeoApp.niconico.openLogin().then(()=>toast("ニコニコ公式ログイン画面を開きました"));return;}
 if(b.hasAttribute("data-broadcast-create")){
@@ -1948,6 +2113,7 @@ if(window.kananeoApp?.niconico){window.kananeoApp.niconico.getSessionStatus().th
 render();
 void refreshBgmLibrary(true);
 void checkForApplicationUpdates(true);
+if(window.kananeoApp?.remote){window.kananeoApp.remote.onRequest(request=>{void handleRemoteControlRequest(request);});}
 if(state.lastProgramId){void refreshDashboardStatistics(true);void refreshQuotePlayback({silent:true});}
 setInterval(()=>{updateQuoteScheduleUi();if(page==="broadcast"){renderBroadcastManageVerification();updateLiveVideoBounds();}if(page==="dashboard"){updateDashboardStatsUi();if(!dashboardStats.loading&&state.lastProgramId&&Date.now()-(Date.parse(dashboardStats.updatedAt)||0)>30000)void refreshDashboardStatistics(true);}},1000);
 })();
