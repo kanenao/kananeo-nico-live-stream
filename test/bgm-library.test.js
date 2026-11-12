@@ -85,3 +85,22 @@ test("enforces the total local audio library size limit",()=>{
   const next=track({id:"123e4567-e89b-42d3-a456-999999999999",size:1});
   assert.equal(addBgmTrack(library,next).code,"LIBRARY_SIZE_LIMIT");
 });
+
+
+test("moves BGM tracks up and down while preserving the source library",()=>{
+  const first=track();
+  const second=track({id:"123e4567-e89b-42d3-a456-426614174001",name:"second"});
+  const third=track({id:"123e4567-e89b-42d3-a456-426614174002",name:"third"});
+  const original=normalizeBgmLibrary({tracks:[first,second,third]});
+  const movedUp=moveBgmTrack(original,third.id,"up");
+  assert.equal(movedUp.ok,true);
+  assert.deepEqual(movedUp.library.tracks.map(item=>item.id),[first.id,third.id,second.id]);
+  const movedDown=moveBgmTrack(movedUp.library,third.id,"down");
+  assert.deepEqual(movedDown.library.tracks.map(item=>item.id),[first.id,second.id,third.id]);
+  assert.deepEqual(original.tracks.map(item=>item.id),[first.id,second.id,third.id]);
+  assert.equal(moveBgmTrack(original,first.id,"up").code,"BOUNDARY");
+  assert.equal(moveBgmTrack(original,third.id,"down").code,"BOUNDARY");
+  assert.equal(moveBgmTrack(original,"bad","up").code,"INVALID_ID");
+  assert.equal(moveBgmTrack(original,first.id,"sideways").code,"INVALID_DIRECTION");
+  assert.equal(moveBgmTrack(original,"123e4567-e89b-42d3-a456-426614174099","up").code,"NOT_FOUND");
+});
