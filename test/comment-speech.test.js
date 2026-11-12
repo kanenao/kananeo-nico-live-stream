@@ -4,6 +4,9 @@ const test=require("node:test");
 const assert=require("node:assert/strict");
 const {
   normalizeCommentSpeechSettings,
+  normalizeMutedUserIds,
+  isUserSpeechMuted,
+  setUserSpeechMuted,
   selectSpeechVoice,
   createCommentSpeechText,
   appendSpeechQueue
@@ -28,6 +31,30 @@ test("prefers a Japanese voice unless a saved voice is explicitly selected",()=>
   assert.equal(selectSpeechVoice(voices).voiceURI,"japanese");
   assert.equal(selectSpeechVoice(voices,"english").voiceURI,"english");
   assert.equal(selectSpeechVoice([]),null);
+});
+
+test("normalizes per-user mute IDs and toggles one user at a time",()=>{
+  const base=normalizeCommentSpeechSettings({mutedUserIds:[" 123 ","123","456","","789"]});
+  assert.deepEqual(base.mutedUserIds,["123","456","789"]);
+  assert.equal(isUserSpeechMuted(base,"123"),true);
+  const unmuted=setUserSpeechMuted(base,"123",false);
+  assert.equal(unmuted.ok,true);
+  assert.equal(unmuted.muted,false);
+  assert.deepEqual(unmuted.settings.mutedUserIds,["456","789"]);
+  const toggled=setUserSpeechMuted(unmuted.settings,"321");
+  assert.equal(toggled.muted,true);
+  assert.equal(isUserSpeechMuted(toggled.settings,"321"),true);
+  assert.equal(setUserSpeechMuted(base,"").code,"INVALID_USER_ID");
+});
+
+test("skips comments from individually muted users",()=>{
+  const result=createCommentSpeechText(
+    {type:"comment",userId:"999",content:"This should not be read"},
+    null,
+    {enabled:true,mutedUserIds:["999"]}
+  );
+  assert.equal(result.ok,false);
+  assert.equal(result.code,"USER_MUTED");
 });
 
 test("builds a Japanese speech line using a registered nickname",()=>{
