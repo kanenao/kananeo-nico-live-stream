@@ -1178,6 +1178,21 @@ async function removeBgmTrackFromLibrary(idInput) {
   });
 }
 
+async function moveBgmTrackInLibrary(idInput,directionInput) {
+  return withBgmLibraryLock(async()=>{
+    const current=await readBgmLibraryUnlocked();
+    if(!current.ok)return current;
+    const result=moveBgmTrack(current.library,idInput,directionInput);
+    if(!result.ok) {
+      const messages={INVALID_ID:"BGM IDを確認してください。",INVALID_DIRECTION:"移動方向を確認してください。",NOT_FOUND:"登録したBGMが見つかりません。",BOUNDARY:"これ以上その方向へ移動できません。"};
+      return {ok:false,code:result.code,message:messages[result.code]||"BGMの順番を変更できませんでした。"};
+    }
+    const saved=await persistBgmLibraryUnlocked(result.library);
+    if(!saved.ok)return saved;
+    return buildBgmLibraryResponse(saved.library);
+  });
+}
+
 const VIDEO_LIBRARY_FILE_NAME = "video-library.json";
 const VIDEO_LIBRARY_IMPORT_TIMEOUT_MS = 20000;
 let videoLibraryCache = null;
@@ -1508,6 +1523,10 @@ function registerIpcHandlers() {
   ipcMain.handle("app:bgm-remove",async(event,id)=>{
     if(event.sender!==mainWindow?.webContents||typeof id!=="string"||id.length>64) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     return removeBgmTrackFromLibrary(id);
+  });
+  ipcMain.handle("app:bgm-move",async(event,id,direction)=>{
+    if(event.sender!==mainWindow?.webContents||typeof id!=="string"||id.length>64||typeof direction!=="string") return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    return moveBgmTrackInLibrary(id,direction);
   });
   ipcMain.handle("app:video-library-get",async event=>{
     if(!isVideoLibrarySender(event)) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
