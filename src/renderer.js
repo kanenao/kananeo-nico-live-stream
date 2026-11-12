@@ -896,6 +896,17 @@ function persistBroadcastCommentViewSettings(nextSettings){
  renderBroadcastCommentSettingsControls();renderBroadcastComments();
  return true;
 }
+function readBroadcastCommentViewDraftFromControls(){
+ const host=document.getElementById("broadcast-comment-settings-controls");
+ if(!host)return broadcastCommentViewDraft;
+ const columns={...broadcastCommentViewDraft.columns},colors={...broadcastCommentViewDraft.colors};
+ host.querySelectorAll("[data-ncv-column-visible]").forEach(input=>{columns[input.dataset.ncvColumnVisible]=input.checked;});
+ host.querySelectorAll("[data-ncv-type-color]").forEach(input=>{colors[input.dataset.ncvTypeColor]=input.value;});
+ return window.KananeoCommentViewSettings.normalizeCommentViewSettings({
+  fontSize:Number(host.querySelector("#ncv-comment-font-size")?.value??broadcastCommentViewDraft.fontSize),
+  columns,colors,order:broadcastCommentViewDraft.order
+ });
+}
 function saveBroadcastCommentViewSettings(){
  const host=document.getElementById("broadcast-comment-settings-controls");if(!host)return;
  const columns={},colors={};
@@ -1557,6 +1568,7 @@ const goBtn=e.target.closest("[data-go]");if(goBtn){hideBroadcastCommentContextM
 if(!e.target.closest("#broadcast-comment-context"))hideBroadcastCommentContextMenu();
 const b=e.target.closest("button");if(!b)return;
 if(b.hasAttribute("data-ncv-order-move")){
+ broadcastCommentViewDraft=readBroadcastCommentViewDraftFromControls();
  const key=b.dataset.ncvColumnOrder,direction=b.dataset.ncvOrderMove,index=broadcastCommentViewDraft.order.indexOf(key),nextIndex=index+(direction==="up"?-1:1);
  if(index>=0&&nextIndex>=0&&nextIndex<broadcastCommentViewDraft.order.length){
   const order=[...broadcastCommentViewDraft.order];[order[index],order[nextIndex]]=[order[nextIndex],order[index]];
