@@ -1073,6 +1073,18 @@ if(side&&!active)side.textContent=nicoStatus.authenticated?"ニコ生ログイ�
 async function startComments(programIdOverride=""){
 const id=String(programIdOverride||document.getElementById("comments-program-id")?.value||document.getElementById("broadcast-watch-id")?.value||"").trim();
 if(!id){toast("放送IDまたは番組URLを入力してください。");return;}
+const normalizedId=id.trim().toLowerCase();
+if(commentConnection.programId.trim().toLowerCase()!==normalizedId||commentConnection.state==="disconnected"){
+ receivedComments=[];
+ broadcastReadThroughIndex=-1;
+ broadcastCommentSearch="";
+ broadcastCommentType="all";
+ broadcastCommentUserId="";
+ renderComments();
+ renderBroadcastComments();
+ const search=document.getElementById("broadcast-comment-search");if(search)search.value="";
+ const type=document.getElementById("broadcast-comment-type");if(type)type.value="all";
+}
 state.lastProgramId=id;save();
 updateCommentConnection({state:"connecting",message:"コメント接続を開始しています。",programId:id});
 try{
@@ -1419,6 +1431,8 @@ if(!silent&&updateCheckState.error)toast(updateCheckState.error);
 }
 function go(p){page=p;render();if(p==="dashboard")void refreshDashboardStatistics(true);if(p==="player"){void refreshQuotePlayback();if(!bgmTracks.length&&!bgmLoading)void refreshBgmLibrary(true);}if(p==="comments")renderComments();if(p==="library"){void refreshVideoLibrary();renderVideoLibraryRows();}if(p==="users")renderUserProfileRows();}
 document.getElementById("nav").addEventListener("click",e=>{const b=e.target.closest("[data-page]");if(b)go(b.dataset.page)});
+window.addEventListener("resize",updateLiveVideoBounds,{passive:true});
+document.addEventListener("scroll",updateLiveVideoBounds,true);
 document.addEventListener("click",async e=>{
 const goBtn=e.target.closest("[data-go]");if(goBtn){go(goBtn.dataset.go);return}
 const b=e.target.closest("button");if(!b)return;
