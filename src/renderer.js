@@ -950,6 +950,76 @@ function updateLiveVideoBounds(){
  lastLiveVideoBoundsKey=key;
  api(bounds);
 }
+function hideBroadcastCommentContextMenu(){
+ const menu=document.getElementById("broadcast-comment-context");
+ if(menu)menu.hidden=true;
+ broadcastContextMenuComment=null;
+}
+function showBroadcastCommentContextMenu(comment,x,y){
+ const menu=document.getElementById("broadcast-comment-context");
+ if(!menu||!comment)return;
+ broadcastContextMenuComment=comment;
+ const userId=String(comment.userId||"");
+ const userName=String(comment.userName||"");
+ const body=String(comment.content||"");
+ menu.innerHTML=
+  '<button type="button" data-broadcast-context-action="copy-comment">コメントをコピー</button>'+
+  (userId?'<button type="button" data-broadcast-context-action="copy-user-id">ユーザーIDをコピー</button>':"")+
+  (userId?'<button type="button" data-broadcast-context-action="filter-user">このユーザーで絞り込む</button>':"")+
+  (userId?'<button type="button" data-broadcast-context-action="add-ng-user">NGユーザーに追加</button>':"")+
+  (body?'<button type="button" data-broadcast-context-action="add-ng-word">コメント本文をNGワードに追加</button>':"")+
+  (userId?'<button type="button" data-user-profile-from-comment="'+esc(userId)+'" data-user-name="'+esc(userName)+'">コテハンを登録・編集</button>':"");
+ menu.hidden=false;
+ const rect=menu.getBoundingClientRect();
+ menu.style.left=Math.max(8,Math.min(Number(x)||0,window.innerWidth-rect.width-8))+"px";
+ menu.style.top=Math.max(8,Math.min(Number(y)||0,window.innerHeight-rect.height-8))+"px";
+}
+async function handleBroadcastCommentContextAction(action){
+ const comment=broadcastContextMenuComment;
+ hideBroadcastCommentContextMenu();
+ if(!comment)return;
+ const userId=String(comment.userId||"").trim();
+ const body=String(comment.content||"").trim();
+ if(action==="copy-comment"){
+  const date=new Date(comment.timestamp);
+  const stamp=Number.isNaN(date.getTime())?"":date.toLocaleString("ja-JP");
+  const value="["+stamp+"] "+(comment.commentNo?"#"+comment.commentNo+" ":"")+(comment.userName||"匿名")+": "+body;
+  const result=await window.kananeoApp.niconico.copyText(value);
+  toast(result?.ok?"コメントをコピーしました。":"コメントをコピーできませんでした。");
+  return;
+ }
+ if(action==="copy-user-id"){
+  if(!userId)return;
+  const result=await window.kananeoApp.niconico.copyText(userId);
+  toast(result?.ok?"ユーザーIDをコピーしました。":"ユーザーIDをコピーできませんでした。");
+  return;
+ }
+ if(action==="filter-user"){
+  if(!userId)return;
+  broadcastCommentUserId=userId;
+  renderBroadcastComments();
+  return;
+ }
+ if(action==="add-ng-user"){
+  if(!userId)return;
+  const exists=state.ngUsers.some(value=>String(value||"").trim().toLocaleLowerCase("ja-JP")===userId.toLocaleLowerCase("ja-JP"));
+  if(exists){toast("このユーザーは既にNG登録されています。");return;}
+  state.ngUsers.push(userId);
+  state.logs.unshift("コメント一覧からNGユーザーを追加："+userId);
+  save();
+  toast("NGユーザーに追加しました。");
+  return;
+ }
+ if(action==="add-ng-word"){
+  if(!body)return;
+  const exists=state.ngWords.some(value=>String(value||"").trim().toLocaleLowerCase("ja-JP")===body.toLocaleLowerCase("ja-JP"));
+  if(exists){toast("このコメント本文は既にNGワードに登録されています。");return;}
+  state.ngWords.push(body);
+  state.logs.unshift("コメント一覧からNGワードを追加："+body.slice(0,60));
+  save();
+  toast("コメント本文をNGワードに追加しました。");
+ }
+}
 function requestReplyReason(code){
 return ({NG_USER:"受付対象外",NG_WORD:"受付対象外",DUPLICATE:"既に登録済み",DUPLICATE_PENDING:"受付処理中",QUEUE_FULL:"キュー上限",USER_LIMIT:"ユーザー別上限"})[code]||"受付条件に一致しません";
 }
