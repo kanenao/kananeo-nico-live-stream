@@ -28,6 +28,7 @@ const {
 } = require("./quotation-api");
 const { selectNextPlaybackCandidate } = require("./playback-scheduler");
 const { buildBroadcasterCommentRequest, parseBroadcasterCommentResponse } = require("./broadcaster-comment-api");
+const { buildUpdateCheckResult } = require("./update-checker");
 
 const NICONICO_HOME = "https://live.nicovideo.jp/";
 const NICONICO_WATCH_BASE = "https://live2.nicovideo.jp/watch/";
@@ -1180,6 +1181,53 @@ async function fetchNiconicoLibraryVideos(input = {}) {
   }
 }
 
+const UPDATE_RELEASES_API_URL = "https://api.github.com/repos/kanenao/kananeo-nico-live-stream/releases?per_page=20";
+const UPDATE_RELEASES_PAGE_URL = "https://github.com/kanenao/kananeo-nico-live-stream/releases";
+
+async function checkApplicationUpdates() {
+  const currentVersion=app.getVersion();
+  try {
+    const response=await fetch(UPDATE_RELEASES_API_URL,{
+      method:"GET",
+      redirect:"error",
+      headers:{
+        Accept:"application/vnd.github+json",
+        "X-GitHub-Api-Version":"2022-11-28",
+        "User-Agent":"kananeo-nico-live-stream"
+      },
+      signal:AbortSignal.timeout(12000)
+    });
+    if(!response.ok) {
+      const rateLimited=response.status===403&&response.headers.get("x-ratelimit-remaining")==="0";
+      return {
+        ok:false,currentVersion,code:rateLimited?"RATE_LIMITED":"HTTP_ERROR",
+        message:rateLimited
+          ?"GitHub APIの確認回数上限に達しました。時間をおいて再確認してください。"
+          :"GitHubのリリース情報を取得できませんでした。（HTTP "+response.status+"）",
+        checkedAt:new Date().toISOString()
+      };
+    }
+    const body=await response.text();
+    if(body.length>2*1024*1024) {
+      return {ok:false,currentVersion,code:"RESPONSE_TOO_LARGE",message:"リリース情報が大きすぎるため確認を中止しました。",checkedAt:new Date().toISOString()};
+    }
+    let releases;
+    try { releases=JSON.parse(body); }
+    catch { return {ok:false,currentVersion,code:"INVALID_JSON",message:"GitHubから受け取った情報を解析できませんでした。",checkedAt:new Date().toISOString()}; }
+    const result=buildUpdateCheckResult(currentVersion,releases);
+    return {...result,checkedAt:new Date().toISOString()};
+  } catch(error) {
+    const timeout=error?.name==="TimeoutError"||error?.name==="AbortError";
+    return {
+      ok:false,currentVersion,code:timeout?"TIMEOUT":"NETWORK_ERROR",
+      message:timeout
+        ?"GitHubへの接続がタイムアウトしました。ネットワークを確認してください。"
+        :"GitHubに接続できませんでした。ネットワーク接続を確認してください。",
+      checkedAt:new Date().toISOString()
+    };
+  }
+}
+
 function registerIpcHandlers() {
   ipcMain.handle("niconico:open-login",()=>openNiconicoLoginWindow());
   ipcMain.handle("niconico:get-extension-options",(event,input)=>{
@@ -1385,6 +1433,19 @@ function registerIpcHandlers() {
   ipcMain.handle("app:video-library-clear-history",async event=>{
     if(!isVideoLibrarySender(event)) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     return updateVideoLibrary(library=>({ok:true,library:clearVideoHistory(library)}));
+  });
+  ipcMain.handle("app:check-updates",event=>{
+    if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    return checkApplicationUpdates();
+  });
+  ipcMain.handle("app:open-releases",async event=>{
+    if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    try {
+      await shell.openExternal(UPDATE_RELEASES_PAGE_URL);
+      return {ok:true};
+    } catch {
+      return {ok:false,code:"OPEN_FAILED",message:"GitHub Releasesのページを開けませんでした。"};
+    }
   });
   ipcMain.handle("app:copy-text",(event,value)=>{
     if(event.sender!==mainWindow?.webContents||typeof value!=="string"||value.length>500000) return {ok:false};
