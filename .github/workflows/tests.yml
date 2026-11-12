@@ -18,6 +18,7 @@ jobs:
         run: |
           node --check src/main.js
           node --check src/preload.js
+          node --check src/remote-control-security.js
           node --check src/renderer.js
           node --check src/comment-normalizer.js
           node --check src/ndgr-security.js
