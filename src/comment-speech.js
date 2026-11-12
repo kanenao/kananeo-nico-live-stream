@@ -37,7 +37,7 @@ function normalizeMutedUserIds(input) {
   const result = [];
   const seen = new Set();
   for (const raw of input) {
-    const userId = String(raw ?? "").replace(/\\s+/g, "").slice(0,128);
+    const userId = String(raw ?? "").replace(/\s+/g, "").slice(0,128);
     if (!userId || seen.has(userId)) continue;
     seen.add(userId);
     result.push(userId);
@@ -47,14 +47,14 @@ function normalizeMutedUserIds(input) {
 }
 
 function isUserSpeechMuted(settingsInput, userIdInput) {
-  const userId = String(userIdInput ?? "").replace(/\\s+/g, "").slice(0,128);
+  const userId = String(userIdInput ?? "").replace(/\s+/g, "").slice(0,128);
   if (!userId) return false;
   return normalizeCommentSpeechSettings(settingsInput).mutedUserIds.includes(userId);
 }
 
 function setUserSpeechMuted(settingsInput, userIdInput, mutedInput) {
   const settings = normalizeCommentSpeechSettings(settingsInput);
-  const userId = String(userIdInput ?? "").replace(/\\s+/g, "").slice(0,128);
+  const userId = String(userIdInput ?? "").replace(/\s+/g, "").slice(0,128);
   if (!userId) return {ok:false,code:"INVALID_USER_ID",settings};
   const muted = typeof mutedInput === "boolean"
     ? mutedInput : !settings.mutedUserIds.includes(userId);
