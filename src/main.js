@@ -1,8 +1,10 @@
 "use strict";
 
-const { app, BrowserWindow, shell, session, ipcMain, clipboard } = require("electron");
+const { app, BrowserWindow, shell, session, ipcMain, clipboard, dialog } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs/promises");
+const { randomUUID } = require("node:crypto");
+const { pathToFileURL } = require("node:url");
 const {
   createEmptyVideoLibrary, normalizeVideoLibrary, normalizeVideoEntry,
   mergeVideoEntries, mergeVideoHistory, prepareSelectedVideoEntries, addPlaybackHistory, removeVideoEntry, updateVideoEntry, clearVideoHistory,
@@ -29,6 +31,10 @@ const {
 const { selectNextPlaybackCandidate } = require("./playback-scheduler");
 const { buildBroadcasterCommentRequest, parseBroadcasterCommentResponse } = require("./broadcaster-comment-api");
 const { buildUpdateCheckResult } = require("./update-checker");
+const {
+  ALLOWED_BGM_EXTENSIONS, MAX_BGM_TRACK_BYTES, MAX_BGM_TRACKS,
+  createEmptyBgmLibrary, normalizeBgmLibrary, addBgmTrack, removeBgmTrack
+} = require("./bgm-library");
 
 const NICONICO_HOME = "https://live.nicovideo.jp/";
 const NICONICO_WATCH_BASE = "https://live2.nicovideo.jp/watch/";
@@ -1027,6 +1033,151 @@ async function callEnqueteApi(action, input = {}) {
 }
 
 
+const BGM_LIBRARY_FILE_NAME = "bgm-library.json";
+const BGM_DIRECTORY_NAME = "bgm";
+const BGM_IMPORT_MAX_FILES = 50;
+let bgmLibraryCache = null;
+let bgmLibraryQueue = Promise.resolve();
+
+function getBgmLibraryFilePath() {
+  return path.join(app.getPath("userData"),BGM_LIBRARY_FILE_NAME);
+}
+
+function getBgmDirectoryPath() {
+  return path.join(app.getPath("userData"),BGM_DIRECTORY_NAME);
+}
+
+async function readBgmLibraryUnlocked() {
+  if (bgmLibraryCache) return {ok:true,library:bgmLibraryCache};
+  try {
+    const content=await fs.readFile(getBgmLibraryFilePath(),"utf8");
+    bgmLibraryCache=normalizeBgmLibrary(JSON.parse(content));
+    return {ok:true,library:bgmLibraryCache};
+  } catch(error) {
+    if(error?.code==="ENOENT") {
+      bgmLibraryCache=createEmptyBgmLibrary();
+      return {ok:true,library:bgmLibraryCache};
+    }
+    return {ok:false,code:"BGM_LIBRARY_READ_ERROR",message:"BGMライブラリを読み取れませんでした。元データ保護のため上書きしていません。"};
+  }
+}
+
+async function persistBgmLibraryUnlocked(input) {
+  const library=normalizeBgmLibrary(input);
+  const filePath=getBgmLibraryFilePath();
+  const tempPath=filePath+".tmp";
+  await fs.mkdir(app.getPath("userData"),{recursive:true,mode:0o700});
+  try {
+    await fs.writeFile(tempPath,JSON.stringify(library,null,2),{encoding:"utf8",mode:0o600});
+    await fs.rename(tempPath,filePath);
+    bgmLibraryCache=library;
+    return {ok:true,library};
+  } catch {
+    try { await fs.rm(tempPath,{force:true}); } catch {}
+    return {ok:false,code:"BGM_LIBRARY_WRITE_ERROR",message:"BGMライブラリを保存できませんでした。ディスク容量とアクセス権を確認してください。"};
+  }
+}
+
+function withBgmLibraryLock(work) {
+  const task=bgmLibraryQueue.then(work,work);
+  bgmLibraryQueue=task.then(()=>undefined,()=>undefined);
+  return task;
+}
+
+async function buildBgmLibraryResponse(library) {
+  const tracks=[];
+  for(const track of library.tracks) {
+    const filePath=path.join(getBgmDirectoryPath(),track.id+track.extension);
+    try {
+      await fs.access(filePath);
+      tracks.push({...track,url:pathToFileURL(filePath).href});
+    } catch {}
+  }
+  return {ok:true,tracks,updatedAt:library.updatedAt};
+}
+
+async function getBgmLibraryForRenderer() {
+  return withBgmLibraryLock(async()=>{
+    const current=await readBgmLibraryUnlocked();
+    if(!current.ok)return current;
+    return buildBgmLibraryResponse(current.library);
+  });
+}
+
+async function importBgmFilesFromDialog() {
+  if(!mainWindow||mainWindow.isDestroyed()) return {ok:false,code:"WINDOW_UNAVAILABLE",message:"メイン画面を確認できません。"};
+  const picked=await dialog.showOpenDialog(mainWindow,{
+    title:"BGMに追加する音源ファイルを選択",
+    properties:["openFile","multiSelections"],
+    filters:[{name:"音声ファイル",extensions:ALLOWED_BGM_EXTENSIONS.map(item=>item.slice(1))}]
+  });
+  if(picked.canceled||!picked.filePaths.length) return {ok:true,canceled:true,added:0,skipped:0,tracks:[]};
+  const selected=picked.filePaths.slice(0,BGM_IMPORT_MAX_FILES);
+  let added=0,skipped=Math.max(0,picked.filePaths.length-selected.length);
+  return withBgmLibraryLock(async()=>{
+    const current=await readBgmLibraryUnlocked();
+    if(!current.ok)return current;
+    let library=current.library;
+    await fs.mkdir(getBgmDirectoryPath(),{recursive:true,mode:0o700});
+    const copiedPaths=[];
+    for(const sourcePath of selected) {
+      try {
+        const extension=path.extname(sourcePath).toLowerCase();
+        if(!ALLOWED_BGM_EXTENSIONS.includes(extension)) { skipped++; continue; }
+        const stat=await fs.stat(sourcePath);
+        if(!stat.isFile()||stat.size<1||stat.size>MAX_BGM_TRACK_BYTES) { skipped++; continue; }
+        if(library.tracks.length>=MAX_BGM_TRACKS) { skipped++; continue; }
+        const id=randomUUID();
+        const destination=path.join(getBgmDirectoryPath(),id+extension);
+        await fs.copyFile(sourcePath,destination);
+        copiedPaths.push(destination);
+        const candidate={
+          id,
+          name:path.basename(sourcePath,path.extname(sourcePath)).replace(/[\\/\\\\\u0000-\u001f\u007f]/g," ").slice(0,160)||"名称未設定",
+          extension,
+          size:stat.size,
+          addedAt:new Date().toISOString()
+        };
+        const result=addBgmTrack(library,candidate);
+        if(!result.ok) {
+          await fs.rm(destination,{force:true});
+          copiedPaths.pop();
+          skipped++;
+          continue;
+        }
+        library=result.library;
+        added++;
+      } catch {
+        skipped++;
+      }
+    }
+    if(added) {
+      const saved=await persistBgmLibraryUnlocked(library);
+      if(!saved.ok) {
+        await Promise.all(copiedPaths.map(filePath=>fs.rm(filePath,{force:true}).catch(()=>{})));
+        return saved;
+      }
+      library=saved.library;
+    }
+    const response=await buildBgmLibraryResponse(library);
+    return {...response,added,skipped,canceled:false};
+  });
+}
+
+async function removeBgmTrackFromLibrary(idInput) {
+  return withBgmLibraryLock(async()=>{
+    const current=await readBgmLibraryUnlocked();
+    if(!current.ok)return current;
+    const result=removeBgmTrack(current.library,idInput);
+    if(!result.ok)return {ok:false,code:result.code,message:result.code==="NOT_FOUND"?"登録したBGMが見つかりません。":"BGM IDを確認してください。"};
+    const saved=await persistBgmLibraryUnlocked(result.library);
+    if(!saved.ok)return saved;
+    const filePath=path.join(getBgmDirectoryPath(),result.track.id+result.track.extension);
+    await fs.rm(filePath,{force:true}).catch(()=>{});
+    return buildBgmLibraryResponse(saved.library);
+  });
+}
+
 const VIDEO_LIBRARY_FILE_NAME = "video-library.json";
 const VIDEO_LIBRARY_IMPORT_TIMEOUT_MS = 20000;
 let videoLibraryCache = null;
@@ -1345,6 +1496,19 @@ function registerIpcHandlers() {
     }
   });
 
+  ipcMain.handle("app:bgm-get",async event=>{
+    if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    return getBgmLibraryForRenderer();
+  });
+  ipcMain.handle("app:bgm-add-files",async event=>{
+    if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    try { return await importBgmFilesFromDialog(); }
+    catch { return {ok:false,code:"BGM_IMPORT_FAILED",message:"音源ファイルを追加できませんでした。"}; }
+  });
+  ipcMain.handle("app:bgm-remove",async(event,id)=>{
+    if(event.sender!==mainWindow?.webContents||typeof id!=="string"||id.length>64) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    return removeBgmTrackFromLibrary(id);
+  });
   ipcMain.handle("app:video-library-get",async event=>{
     if(!isVideoLibrarySender(event)) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     return withVideoLibraryLock(()=>readVideoLibraryUnlocked());
