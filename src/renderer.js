@@ -40,6 +40,7 @@ let broadcastCommentSearch="";
 let broadcastCommentType="all";
 let broadcastCommentUserId="";
 let broadcastReadThroughIndex=-1;
+let broadcastContextMenuComment=null;
 let dashboardStats={loading:false,watchCount:null,commentCount:null,updatedAt:"",error:""};
 let extensionOptionsState={loading:false,methods:[],updatedAt:"",error:""};
 let updateCheckState={loading:false,result:null,error:""};
@@ -234,7 +235,7 @@ panel("番組枠の作成・終了","公式の番組作成・管理画面を利�
 '<section class="panel broadcast-comments-panel"><div class="broadcast-panel-heading"><div><h2>コメント一覧</h2><p>NCV風の一覧表示・投稿者別絞り込み</p></div><span class="live-state-pill" id="broadcast-comment-status">'+esc(commentConnection.state==="connected"?"接続済み":commentConnection.state==="connecting"?"接続中":commentConnection.state==="recovering"?"再接続中":"未接続")+'</span></div>'+
 '<div class="broadcast-comment-toolbar"><input class="input" id="broadcast-comment-search" value="'+esc(broadcastCommentSearch)+'" placeholder="コメント・名前・ユーザーIDで検索"><select class="input" id="broadcast-comment-type"><option value="all" '+(broadcastCommentType==="all"?"selected":"")+'>すべて</option><option value="comment" '+(broadcastCommentType==="comment"?"selected":"")+'>通常コメント</option><option value="operatorComment" '+(broadcastCommentType==="operatorComment"?"selected":"")+'>放送者</option><option value="gift" '+(broadcastCommentType==="gift"?"selected":"")+'>ギフト</option><option value="emotion" '+(broadcastCommentType==="emotion"?"selected":"")+'>エモーション</option><option value="notification" '+(broadcastCommentType==="notification"?"selected":"")+'>通知</option></select></div>'+
 '<div class="broadcast-comment-actions"><span id="broadcast-comment-count">0件</span><span id="broadcast-comment-user-filter">'+(broadcastCommentUserId?"ユーザーで絞り込み中":"全ユーザー")+'</span><button class="btn" data-broadcast-comment-clear-user '+(!broadcastCommentUserId?"disabled":"")+'>絞り込み解除</button><button class="btn" data-broadcast-comments-copy>表示分をコピー</button></div>'+
-'<div id="broadcast-comments-list" class="ncv-comment-list"><div class="empty">コメント受信を開始すると、ここに一覧表示します。</div></div>'+
+'<div id="broadcast-comments-list" class="ncv-comment-list"><div class="empty">コメント受信を開始すると、ここに一覧表示します。</div></div><div id="broadcast-comment-context" class="ncv-context-menu" hidden></div>'+
 '<div class="muted">コメント番号をクリックすると既読位置を記録、ダブルクリックで解除できます。投稿者名をクリックすると、そのユーザーのコメントだけを表示します。</div></section>'+
 '</div>'+
 '<div class="banner"><i class="led"></i><div><b>表示について</b><small>放送映像はニコニコ公式視聴ページを専用セッションで表示します。コメント一覧はこのアプリが受信したNDGRコメントを表示します。配信ページの仕様や視聴権限により映像が表示できない場合があります。</small></div></div>';
@@ -891,7 +892,7 @@ function renderBroadcastComments(){
    ?'<button class="ncv-user-button" data-broadcast-user="'+esc(comment.userId)+'" title="このユーザーで絞り込み">'+esc(name)+'</button>'
    :esc(name);
   const userIdButton=comment.userId?'<button class="ncv-user-id-button" data-broadcast-user="'+esc(comment.userId)+'" title="このユーザーのコメントだけ表示">'+esc(comment.userId)+'</button>':"—";
-  return '<tr class="'+(first?"ncv-first-post ":"")+(read?"ncv-read-marked":"")+'"><td class="ncv-number-cell"><button class="ncv-number-button" data-broadcast-read-through="'+index+'" title="ここまでを既読にする">'+esc(comment.commentNo||"—")+'</button></td><td class="ncv-time-cell">'+esc(time)+'</td><td class="ncv-user-cell">'+userButton+'</td><td class="ncv-id-cell">'+userIdButton+'</td><td class="ncv-body-cell">'+esc(comment.content||"")+'</td><td class="ncv-kind-cell">'+esc(kind)+'</td></tr>';
+  return '<tr data-broadcast-comment-index="'+index+'" class="'+(first?"ncv-first-post ":"")+(read?"ncv-read-marked":"")+'"><td class="ncv-number-cell"><button class="ncv-number-button" data-broadcast-read-through="'+index+'" title="ここまでを既読にする">'+esc(comment.commentNo||"—")+'</button></td><td class="ncv-time-cell">'+esc(time)+'</td><td class="ncv-user-cell">'+userButton+'</td><td class="ncv-id-cell">'+userIdButton+'</td><td class="ncv-body-cell">'+esc(comment.content||"")+'</td><td class="ncv-kind-cell">'+esc(kind)+'</td></tr>';
  }).join("");
  list.innerHTML='<table class="ncv-comment-table"><thead><tr><th>番号</th><th>時刻</th><th>投稿者</th><th>ID</th><th>コメント</th><th>種別</th></tr></thead><tbody>'+rows+'</tbody></table>';
  if(wasAtBottom)list.scrollTop=list.scrollHeight;
