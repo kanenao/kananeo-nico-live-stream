@@ -1045,7 +1045,7 @@ if(!comment||typeof comment!=="object")return;
 receivedComments.push(comment);
 queueCommentSpeech(comment);
 void maybeAddCommentRequest(comment);
-if(receivedComments.length>MAX_DISPLAY_COMMENTS)receivedComments.splice(0,receivedComments.length-MAX_DISPLAY_COMMENTS);
+if(receivedComments.length>MAX_DISPLAY_COMMENTS){const overflow=receivedComments.length-MAX_DISPLAY_COMMENTS;receivedComments.splice(0,overflow);broadcastReadThroughIndex=Math.max(-1,broadcastReadThroughIndex-overflow);}
 renderComments();
 renderBroadcastComments();
 }
