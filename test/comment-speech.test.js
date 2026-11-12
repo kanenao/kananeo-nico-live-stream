@@ -47,6 +47,14 @@ test("normalizes per-user mute IDs and toggles one user at a time",()=>{
   assert.equal(setUserSpeechMuted(base,"").code,"INVALID_USER_ID");
 });
 
+test("caps muted users and refuses additions beyond the limit",()=>{
+  const ids=Array.from({length:2000},(_,index)=>String(index+1));
+  const settings=normalizeCommentSpeechSettings({mutedUserIds:ids});
+  assert.equal(settings.mutedUserIds.length,2000);
+  assert.equal(setUserSpeechMuted(settings,"2001").code,"MUTE_LIMIT");
+  assert.equal(setUserSpeechMuted(settings,"1",false).ok,true);
+});
+
 test("skips comments from individually muted users",()=>{
   const result=createCommentSpeechText(
     {type:"comment",userId:"999",content:"This should not be read"},
