@@ -4,9 +4,27 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
-  version:"0.1.0-beta.30",
+  version:"0.1.0-beta.31",
   platform:process.platform,
-  stage:"ncv-comment-display-settings",
+  stage:"localhost-remote-control",
+  remote:Object.freeze({
+    getStatus:()=>ipcRenderer.invoke("remote:get-status"),
+    start:port=>ipcRenderer.invoke("remote:start",port),
+    stop:()=>ipcRenderer.invoke("remote:stop"),
+    createPairing:input=>ipcRenderer.invoke("remote:create-pairing",input),
+    revokeDevice:id=>ipcRenderer.invoke("remote:revoke-device",id),
+    openController:()=>ipcRenderer.invoke("remote:open-controller"),
+    onRequest:callback=>{
+      if(typeof callback!=="function")return ()=>{};
+      const listener=(_event,request)=>callback(request);
+      ipcRenderer.on("remote-control:request",listener);
+      return ()=>ipcRenderer.removeListener("remote-control:request",listener);
+    },
+    resolveRequest:(requestId,result)=>{
+      if(typeof requestId!=="string"||requestId.length>64)return;
+      ipcRenderer.send("remote-control:response",{requestId,result});
+    }
+  }),
   updates:Object.freeze({
     check:()=>ipcRenderer.invoke("app:check-updates"),
     openReleases:()=>ipcRenderer.invoke("app:open-releases")
@@ -49,6 +67,7 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
     playQuotedVideo:input=>ipcRenderer.invoke("niconico:play-quoted-video",input),
     stopQuotedVideo:input=>ipcRenderer.invoke("niconico:stop-quoted-video",input),
     openVideo:input=>ipcRenderer.invoke("niconico:open-video",input),
+    pauseVideo:()=>ipcRenderer.invoke("niconico:pause-video"),
     focusVideo:()=>ipcRenderer.invoke("niconico:focus-video"),
     closeVideo:()=>ipcRenderer.invoke("niconico:close-video"),
     getExtensionOptions:input=>ipcRenderer.invoke("niconico:get-extension-options",input),
