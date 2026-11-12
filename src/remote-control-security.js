@@ -272,6 +272,8 @@ module.exports = {
   MAX_PAIRING_ATTEMPTS,
   DEVICE_PERMISSIONS,
   REMOTE_COMMAND_PERMISSIONS,
+  normalizeDeviceName,
+  normalizeDevicePermissions,
   createPairingChallenge,
   verifyPairingCode,
   createDeviceCredential,
