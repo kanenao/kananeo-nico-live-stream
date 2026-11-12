@@ -8,7 +8,8 @@ const DEFAULT_COMMENT_SPEECH_SETTINGS = Object.freeze({
   pitch:1,
   volume:1,
   voiceURI:"",
-  maxQueue:100
+  maxQueue:100,
+  mutedUserIds:[]
 });
 
 function clampNumber(value, min, max, fallback) {
@@ -26,8 +27,42 @@ function normalizeCommentSpeechSettings(input = {}) {
     pitch:clampNumber(source.pitch,0,2,DEFAULT_COMMENT_SPEECH_SETTINGS.pitch),
     volume:clampNumber(source.volume,0,1,DEFAULT_COMMENT_SPEECH_SETTINGS.volume),
     voiceURI:typeof source.voiceURI === "string" ? source.voiceURI.slice(0,512) : "",
-    maxQueue:Math.floor(clampNumber(source.maxQueue,10,200,DEFAULT_COMMENT_SPEECH_SETTINGS.maxQueue))
+    maxQueue:Math.floor(clampNumber(source.maxQueue,10,200,DEFAULT_COMMENT_SPEECH_SETTINGS.maxQueue)),
+    mutedUserIds:normalizeMutedUserIds(source.mutedUserIds)
   };
+}
+
+function normalizeMutedUserIds(input) {
+  if (!Array.isArray(input)) return [];
+  const result = [];
+  const seen = new Set();
+  for (const raw of input) {
+    const userId = String(raw ?? "").replace(/\\s+/g, "").slice(0,128);
+    if (!userId || seen.has(userId)) continue;
+    seen.add(userId);
+    result.push(userId);
+    if (result.length >= 2000) break;
+  }
+  return result;
+}
+
+function isUserSpeechMuted(settingsInput, userIdInput) {
+  const userId = String(userIdInput ?? "").replace(/\\s+/g, "").slice(0,128);
+  if (!userId) return false;
+  return normalizeCommentSpeechSettings(settingsInput).mutedUserIds.includes(userId);
+}
+
+function setUserSpeechMuted(settingsInput, userIdInput, mutedInput) {
+  const settings = normalizeCommentSpeechSettings(settingsInput);
+  const userId = String(userIdInput ?? "").replace(/\\s+/g, "").slice(0,128);
+  if (!userId) return {ok:false,code:"INVALID_USER_ID",settings};
+  const muted = typeof mutedInput === "boolean"
+    ? mutedInput : !settings.mutedUserIds.includes(userId);
+  const next = new Set(settings.mutedUserIds);
+  if (muted) next.add(userId);
+  else next.delete(userId);
+  settings.mutedUserIds = [...next].slice(0,2000);
+  return {ok:true,muted,userId,settings};
 }
 
 function selectSpeechVoice(voicesInput, preferredURI = "") {
@@ -48,6 +83,7 @@ function createCommentSpeechText(comment, profile, settingsInput = {}, ngWordsIn
   if (!settings.enabled) return {ok:false,code:"DISABLED"};
   if (!comment || typeof comment !== "object" || Array.isArray(comment)) return {ok:false,code:"INVALID_COMMENT"};
   if (comment.isHistory === true || comment.isBacklog === true) return {ok:false,code:"HISTORY"};
+  if (isUserSpeechMuted(settings,comment.userId)) return {ok:false,code:"USER_MUTED"};
   const type = String(comment.type || "");
   if (type !== "comment" && !(type === "operatorComment" && settings.speakOperator)) {
     return {ok:false,code:"UNSUPPORTED_TYPE"};
@@ -83,6 +119,9 @@ function appendSpeechQueue(queueInput, speechItem, maxQueue = 100) {
 const api = Object.freeze({
   DEFAULT_COMMENT_SPEECH_SETTINGS,
   normalizeCommentSpeechSettings,
+  normalizeMutedUserIds,
+  isUserSpeechMuted,
+  setUserSpeechMuted,
   selectSpeechVoice,
   createCommentSpeechText,
   appendSpeechQueue
