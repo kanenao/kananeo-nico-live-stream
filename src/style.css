@@ -111,3 +111,6 @@ input[type="range"]{accent-color:#8c7cff;cursor:pointer}
 .ncv-comment-table .ncv-kind-cell{color:var(--ncv-kind-color,#8795ae);font-weight:800}
 @media(max-width:1050px){.ncv-settings-grid{grid-template-columns:1fr}}
 @media(max-width:650px){.ncv-column-order,.ncv-color-grid{grid-template-columns:1fr}.ncv-settings-actions .muted{width:100%;margin-left:0}}
+
+.ncv-comment-table .ncv-body-cell{color:var(--ncv-kind-color,#d8dfed)}
+.ncv-comment-table tbody tr.ncv-read-marked .ncv-body-cell{color:#6f7c95}
