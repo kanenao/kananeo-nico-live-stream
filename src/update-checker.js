@@ -10,10 +10,9 @@ function parseVersion(input) {
   const minor = Number(match[2]);
   const patch = Number(match[3]);
   if (![major,minor,patch].every(Number.isSafeInteger)) return null;
-  return {
-    major,minor,patch,
-    prerelease:match[4] ? match[4].split(".") : []
-  };
+  const prerelease=match[4] ? match[4].split(".") : [];
+  if(prerelease.some(identifier=>/^\d+$/.test(identifier)&&identifier.length>1&&identifier.startsWith("0"))) return null;
+  return {major,minor,patch,prerelease};
 }
 
 function comparePrerelease(left, right) {
@@ -28,8 +27,8 @@ function comparePrerelease(left, right) {
     const leftNumeric = /^\d+$/.test(left[i]);
     const rightNumeric = /^\d+$/.test(right[i]);
     if (leftNumeric && rightNumeric) {
-      const a = Number(left[i]), b = Number(right[i]);
-      if (a !== b) return a < b ? -1 : 1;
+      if (left[i].length !== right[i].length) return left[i].length < right[i].length ? -1 : 1;
+      if (left[i] !== right[i]) return left[i] < right[i] ? -1 : 1;
     } else if (leftNumeric !== rightNumeric) {
       return leftNumeric ? -1 : 1;
     } else {
