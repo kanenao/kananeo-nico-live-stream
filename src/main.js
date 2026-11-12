@@ -1774,8 +1774,16 @@ function createRemoteControlHttpServer() {
     staticDirectory:__dirname,
     onPair:completeRemotePairing,
     resolveDevice:resolveRemoteDevice,
-    onSnapshot:()=>requestRendererRemoteAction("snapshot"),
-    onComments:(_device,limit)=>requestRendererRemoteAction("comments",{limit}),
+    onSnapshot:async()=>{
+      const result=await requestRendererRemoteAction("snapshot");
+      if(!result?.ok)throw new Error(result?.message||"状態を取得できません。");
+      return result.status||{};
+    },
+    onComments:async(_device,limit)=>{
+      const result=await requestRendererRemoteAction("comments",{limit});
+      if(!result?.ok)throw new Error(result?.message||"コメントを取得できません。");
+      return Array.isArray(result.comments)?result.comments:[];
+    },
     onCommand:(_device,command,payload)=>requestRendererRemoteAction("command",{command,payload})
   });
   return remoteControlServer;
