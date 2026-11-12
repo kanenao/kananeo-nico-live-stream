@@ -117,7 +117,8 @@ function createRemoteControlServer({
   resolveDevice,
   onSnapshot,
   onComments,
-  onCommand
+  onCommand,
+  onAudit = () => {}
 } = {}) {
   if (typeof staticDirectory !== "string" || !staticDirectory) {
     throw new TypeError("A static directory is required");
@@ -137,15 +138,17 @@ function createRemoteControlServer({
   const pairingLimiter = new RemoteRateLimiter({windowMs:DEVICE_RATE_WINDOW_MS,maxRequests:PAIR_RATE_LIMIT,maxKeys:32});
   const deviceLimiter = new RemoteRateLimiter({windowMs:DEVICE_RATE_WINDOW_MS,maxRequests:DEVICE_RATE_LIMIT,maxKeys:64});
 
+  function audit(type,request,extra={}) { try { onAudit({type,ip:String(request.socket?.remoteAddress||"").replace(/^::ffff:/,""),method:request.method,path:new URL(request.url||"/","http://127.0.0.1").pathname,...extra}); } catch {} }
+
   async function authorize(request, permission) {
     const authorization = request.headers.authorization;
-    if (typeof authorization !== "string" || !authorization.startsWith("Bearer ")) return null;
+    if (typeof authorization !== "string" || !authorization.startsWith("Bearer ")) { audit("auth_failed",request); return null; }
     const token = authorization.slice(7).trim();
-    if (token.length < 40 || token.length > 64) return null;
+    if (token.length < 40 || token.length > 64) { audit("auth_failed",request); return null; }
     const device = await resolveDevice(token);
-    if (!device || device.revokedAt !== null || !canExecuteRemoteCommand(device, permission)) return null;
+    if (!device || device.revokedAt !== null || !canExecuteRemoteCommand(device, permission)) { audit("auth_failed",request); return null; }
     const limited = deviceLimiter.consume(device.id);
-    if (!limited.allowed) return {rateLimited:true,retryAfterMs:limited.retryAfterMs};
+    if (!limited.allowed) { audit("device_rate_limited",request); return {rateLimited:true,retryAfterMs:limited.retryAfterMs}; }
     return device;
   }
 
@@ -154,22 +157,26 @@ function createRemoteControlServer({
     const peerAddress = String(ip).toLowerCase().replace(/^::ffff:/, "");
     const peerAllowed = serverMode === "localhost" ? isLoopbackRemoteAddress(ip) : isPrivateLanIpv4(peerAddress) && !isLoopbackRemoteAddress(ip);
     if (!peerAllowed) {
+      audit("peer_rejected",request);
       sendJson(response,403,{ok:false,code:serverMode === "localhost" ? "LOOPBACK_ONLY" : "PRIVATE_LAN_ONLY",message:serverMode === "localhost" ? "localhostからの接続だけ利用できます。" : "プライベートLANからの接続だけ利用できます。"});
       return;
     }
     const hostAllowed = serverMode === "localhost" ? parseLoopbackHostHeader(request.headers.host,boundPort) : parseBoundHostHeader(request.headers.host,boundHost,boundPort,boundProtocol);
-    if (!hostAllowed) {sendJson(response,403,{ok:false,code:"INVALID_HOST",message:"許可されていない接続先です。"});return;}
+    if (!hostAllowed) {audit("host_rejected",request);sendJson(response,403,{ok:false,code:"INVALID_HOST",message:"許可されていない接続先です。"});return;}
     const origin = request.headers.origin;
     const originAllowed = serverMode === "localhost" ? isSameLoopbackOrigin(origin,boundPort) : isSameBoundOrigin(origin,boundHost,boundPort,boundProtocol);
     if ((origin && !originAllowed) || (serverMode === "lan" && ["POST","PUT","PATCH","DELETE"].includes(request.method) && !origin)) {
+      audit("origin_rejected",request);
       sendJson(response,403,{ok:false,code:"INVALID_ORIGIN",message:"異なる接続元からの要求は拒否しました。"});return;
     }
     const fetchSite = request.headers["sec-fetch-site"];
     if (fetchSite && fetchSite !== "same-origin" && fetchSite !== "none") {
+      audit("cross_site_rejected",request);
       sendJson(response,403,{ok:false,code:"CROSS_SITE_BLOCKED",message:"別サイトからの要求は拒否しました。"});return;
     }
     const ipLimit = ipLimiter.consume(ip);
     if (!ipLimit.allowed) {
+      audit("ip_rate_limited",request);
       sendJson(response,429,{ok:false,code:"RATE_LIMITED",message:"要求回数の上限に達しました。"});
       return;
     }
@@ -205,6 +212,7 @@ function createRemoteControlServer({
     if (request.method === "POST" && pathname === "/api/pair") {
       const pairLimit = pairingLimiter.consume(ip);
       if (!pairLimit.allowed) {
+        audit("pair_rate_limited",request);
         sendJson(response,429,{ok:false,code:"PAIR_RATE_LIMITED",message:"ペアリング試行回数の上限に達しました。"});
         return;
       }
@@ -215,6 +223,7 @@ function createRemoteControlServer({
         return;
       }
       const result = await onPair(input);
+      audit(result?.ok?"pair_succeeded":"pair_failed",request);
       sendJson(response,result?.ok?200:result?.code==="PAIR_RATE_LIMITED"?429:400,result||{ok:false,code:"PAIR_FAILED"});
       return;
     }
@@ -257,6 +266,7 @@ function createRemoteControlServer({
       const payload = input.payload && typeof input.payload === "object" && !Array.isArray(input.payload) ? input.payload : {};
       try {
         const result = await onCommand(device,input.command,payload);
+        audit(result?.ok===false?"command_failed":"command_succeeded",request,{command:input.command});
         sendJson(response,result?.ok===false?409:200,result||{ok:true});
       } catch {
         sendJson(response,503,{ok:false,code:"COMMAND_FAILED",message:"操作を実行できませんでした。"});

@@ -11,6 +11,7 @@ const {
   normalizeDeviceName, normalizeDevicePermissions, DEVICE_PERMISSIONS
 } = require("./remote-control-security");
 const { createRemoteControlServer } = require("./remote-control-server");
+const { createRemoteAuditLog } = require("./remote-control-audit");
 const { isPrivateLanIpv4, validateLanTlsMaterial } = require("./remote-control-tls");
 const { pathToFileURL } = require("node:url");
 const {
@@ -81,6 +82,7 @@ let remoteControlStoreHealthy = true;
 let remoteControlStoreError = "";
 let remoteControlStoreQueue = Promise.resolve();
 let remoteControlServer = null;
+const remoteControlAudit = createRemoteAuditLog({limit:500});
 let remoteControlPairing = null;
 let remoteTlsFilePaths = {certificate:"",privateKey:""};
 const pendingRemoteRendererRequests = new Map();
@@ -1805,6 +1807,11 @@ function createRemoteControlHttpServer() {
   remoteControlServer = createRemoteControlServer({
     staticDirectory:__dirname,
     onPair:completeRemotePairing,
+    onAudit:event=>{
+      const entry=remoteControlAudit.record(event);
+      const auditPath=path.join(app.getPath("userData"),"remote-control-audit.jsonl");
+      remoteControlStoreQueue=remoteControlStoreQueue.then(()=>fs.appendFile(auditPath,JSON.stringify(entry)+"\n","utf8")).catch(()=>{});
+    },
     resolveDevice:resolveRemoteDevice,
     onSnapshot:async()=>{
       const result=await requestRendererRemoteAction("snapshot");

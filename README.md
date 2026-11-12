@@ -425,3 +425,8 @@ GitHub Actionsの「Windows Build」はActionsタブから手動実行できま�
 参考プロジェクトの画面・画像・実行ファイルを複製していません。利用ライブラリは各ライセンスに従います。
 
 詳細：`docs/NICONICO_CONNECTION.md`, `docs/ENQUETE_API.md`, `docs/NDGR_COMMENTS.md`, `docs/REFERENCE_ANALYSIS.md`, `docs/ARCHITECTURE_REFERENCE.md`, `docs/ROADMAP.md`, `THIRD_PARTY_NOTICES.md`
+
+
+## リモート接続監査ログ（β33）
+
+リモートコントローラーの認証失敗、接続拒否、レート制限、ペアリング、操作結果を `remote-control-audit.jsonl` に記録します。時刻・イベント種別・接続元IP・HTTPメソッド・APIパス・許可された操作名のみを保存し、Bearerトークン、ペアリングコード、リクエスト本文、コメント内容は記録しません。ログはElectronのユーザーデータフォルダーに保存されます。
