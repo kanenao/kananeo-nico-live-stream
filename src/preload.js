@@ -11,6 +11,11 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
     check:()=>ipcRenderer.invoke("app:check-updates"),
     openReleases:()=>ipcRenderer.invoke("app:open-releases")
   }),
+  bgm:Object.freeze({
+    get:()=>ipcRenderer.invoke("app:bgm-get"),
+    addFiles:()=>ipcRenderer.invoke("app:bgm-add-files"),
+    remove:id=>ipcRenderer.invoke("app:bgm-remove",id)
+  }),
   videoLibrary:Object.freeze({
     get:()=>ipcRenderer.invoke("app:video-library-get"),
     add:input=>ipcRenderer.invoke("app:video-library-add",input),
