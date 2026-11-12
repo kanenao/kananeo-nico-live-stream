@@ -1147,6 +1147,7 @@ const id=String(programIdOverride||document.getElementById("comments-program-id"
 if(!id){toast("放送IDまたは番組URLを入力してください。");return;}
 const normalizedId=id.trim().toLowerCase();
 if(commentConnection.programId.trim().toLowerCase()!==normalizedId||commentConnection.state==="disconnected"){
+ hideBroadcastCommentContextMenu();
  receivedComments=[];
  broadcastReadThroughIndex=-1;
  broadcastCommentSearch="";
