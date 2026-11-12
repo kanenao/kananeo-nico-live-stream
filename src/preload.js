@@ -32,6 +32,9 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
     openLogin:()=>ipcRenderer.invoke("niconico:open-login"),
     openBroadcastCreate:()=>ipcRenderer.invoke("niconico:open-broadcast-create"),
     openBroadcastManage:programId=>ipcRenderer.invoke("niconico:open-broadcast-manage",programId),
+    openLiveVideo:programId=>ipcRenderer.invoke("niconico:live-view-open",programId),
+    setLiveVideoBounds:bounds=>ipcRenderer.send("niconico:live-view-bounds",bounds),
+    closeLiveVideo:()=>ipcRenderer.invoke("niconico:live-view-close"),
     validateVideo:input=>ipcRenderer.invoke("niconico:validate-video",input),
     startEnquete:input=>ipcRenderer.invoke("niconico:start-enquete",input),
     showEnqueteResult:input=>ipcRenderer.invoke("niconico:show-enquete-result",input),
@@ -62,6 +65,12 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
       const listener=(_event,state)=>callback(state);
       ipcRenderer.on("niconico:player-state",listener);
       return ()=>ipcRenderer.removeListener("niconico:player-state",listener);
+    },
+    onLiveVideoState:callback=>{
+      if(typeof callback!=="function") return ()=>{};
+      const listener=(_event,state)=>callback(state);
+      ipcRenderer.on("niconico:live-video-state",listener);
+      return ()=>ipcRenderer.removeListener("niconico:live-video-state",listener);
     },
     onComment:callback=>{
       if(typeof callback!=="function") return ()=>{};
