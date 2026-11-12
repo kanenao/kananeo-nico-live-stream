@@ -4,9 +4,9 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
-  version:"0.1.0-beta.28",
+  version:"0.1.0-beta.29",
   platform:process.platform,
-  stage:"broadcast-management-preflight",
+  stage:"side-by-side-live-comments",
   updates:Object.freeze({
     check:()=>ipcRenderer.invoke("app:check-updates"),
     openReleases:()=>ipcRenderer.invoke("app:open-releases")
