@@ -50,7 +50,7 @@ input[type="range"]{accent-color:#8c7cff;cursor:pointer}
 .ncv-comment-table th:nth-child(1),.ncv-comment-table td:nth-child(1){width:48px;text-align:right}
 .ncv-comment-table th:nth-child(2),.ncv-comment-table td:nth-child(2){width:67px}
 .ncv-comment-table th:nth-child(3),.ncv-comment-table td:nth-child(3){width:92px}
-.ncv-comment-table th:nth-child(5),.ncv-comment-table td:nth-child(5){width:58px}
+.ncv-comment-table th:nth-child(6),.ncv-comment-table td:nth-child(6){width:58px}
 .ncv-comment-table tbody tr:hover{background:#17243a}
 .ncv-comment-table tbody tr.ncv-first-post .ncv-body-cell,.ncv-comment-table tbody tr.ncv-first-post .ncv-user-cell{font-weight:800;color:#fff}
 .ncv-comment-table tbody tr.ncv-read-marked{background:#171f30}
