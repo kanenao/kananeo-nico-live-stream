@@ -1,6 +1,6 @@
 "use strict";
 
-const { app, BrowserWindow, shell, session, ipcMain, clipboard, dialog } = require("electron");
+const { app, BrowserWindow, WebContentsView, shell, session, ipcMain, clipboard, dialog } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs/promises");
 const { randomUUID } = require("node:crypto");
@@ -19,6 +19,7 @@ const { normalizeComment, normalizeOperatorComment, normalizeNotification } = re
 const { isTrustedNdgrUri } = require("./ndgr-security");
 const { CommentRecorder } = require("./comment-recorder");
 const { normalizeNiconicoVideoUrl, extractRequestCandidate, findNextQueueItem } = require("./video-queue");
+const { normalizeLiveViewBounds } = require("./live-view-layout");
 const { evaluateCommentRequest } = require("./request-policy");
 const { decideEnqueteResult } = require("./poll-engine");
 const { buildEnqueteRequest, mapEnqueteHttpError, parseEnqueteResultResponse } = require("./enquete-api");
@@ -45,6 +46,8 @@ let lastBroadcasterCommentAttemptAt = 0;
 let mainWindow = null;
 let loginWindow = null;
 let broadcastWindow = null;
+let liveVideoView = null;
+let liveVideoProgramId = "";
 let niconicoSession = null;
 let commentProvider = null;
 let commentProgramId = "";
@@ -151,6 +154,123 @@ function openNiconicoBroadcastWindow(mode, input = "") {
     if(broadcastWindow&&!broadcastWindow.isDestroyed())broadcastWindow.close();
   });
   return {ok:true,reused:false,mode};
+}
+
+function notifyLiveVideoState(state) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("niconico:live-video-state", state);
+  }
+}
+
+function closeNiconicoLiveVideoView() {
+  const view = liveVideoView;
+  if (!view) return {ok:true,closed:false};
+  liveVideoView = null;
+  liveVideoProgramId = "";
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.contentView.removeChildView(view);
+  } catch {}
+  try {
+    if (view.webContents && !view.webContents.isDestroyed()) view.webContents.close();
+  } catch {}
+  notifyLiveVideoState({status:"closed",programId:"",message:"放送画面を閉じました。"});
+  return {ok:true,closed:true};
+}
+
+function setNiconicoLiveVideoBounds(input) {
+  if (!liveVideoView || !mainWindow || mainWindow.isDestroyed()) return {ok:false,code:"VIEW_NOT_OPEN"};
+  const bounds = normalizeLiveViewBounds(input, mainWindow.getContentBounds());
+  if (!bounds) return {ok:false,code:"INVALID_BOUNDS"};
+  if (!bounds.visible) {
+    liveVideoView.setVisible(false);
+    return {ok:true,visible:false};
+  }
+  liveVideoView.setBounds({x:bounds.x,y:bounds.y,width:bounds.width,height:bounds.height});
+  liveVideoView.setVisible(true);
+  return {ok:true,visible:true};
+}
+
+function openNiconicoLiveVideoView(input) {
+  let programId;
+  try { programId = normalizeProgramId(input); }
+  catch (error) {
+    return {ok:false,code:error.code || "INVALID_PROGRAM_ID",message:error.message || "放送IDを確認してください。"};
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return {ok:false,code:"WINDOW_CLOSED",message:"アプリのメイン画面を確認できません。"};
+  }
+
+  const targetUrl = NICONICO_WATCH_BASE + encodeURIComponent(programId);
+  if (!liveVideoView) {
+    try {
+      liveVideoView = new WebContentsView({
+        webPreferences:{
+          session:niconicoSession,
+          contextIsolation:true,
+          nodeIntegration:false,
+          sandbox:true,
+          webSecurity:true
+        }
+      });
+      liveVideoView.setBackgroundColor("#070b14");
+      mainWindow.contentView.addChildView(liveVideoView);
+      liveVideoView.setBounds({x:0,y:0,width:1,height:1});
+      liveVideoView.setVisible(false);
+
+      const contents = liveVideoView.webContents;
+      contents.setWindowOpenHandler(({url}) => {
+        if (isTrustedNiconicoUrl(url)) return {action:"allow"};
+        try { if (new URL(url).protocol === "https:") shell.openExternal(url); } catch {}
+        return {action:"deny"};
+      });
+      contents.on("will-navigate",(event,url) => {
+        if (!isTrustedNiconicoUrl(url)) {
+          event.preventDefault();
+          try { if (new URL(url).protocol === "https:") shell.openExternal(url); } catch {}
+        }
+      });
+      contents.on("did-fail-load",(_event,errorCode,errorDescription,validatedURL,isMainFrame) => {
+        if (isMainFrame && errorCode !== -3 && liveVideoView?.webContents === contents) {
+          notifyLiveVideoState({
+            status:"error",programId:liveVideoProgramId,
+            message:"放送画面を読み込めませんでした："+String(errorDescription || errorCode).slice(0,160)
+          });
+        }
+      });
+      contents.on("did-finish-load",() => {
+        if (liveVideoView?.webContents === contents) {
+          notifyLiveVideoState({
+            status:"ready",programId:liveVideoProgramId,
+            url:contents.getURL(),title:contents.getTitle() || "ニコニコ生放送"
+          });
+        }
+      });
+      contents.on("destroyed",() => {
+        if (liveVideoView?.webContents === contents) {
+          liveVideoView = null;
+          liveVideoProgramId = "";
+        }
+      });
+    } catch {
+      liveVideoView = null;
+      liveVideoProgramId = "";
+      return {ok:false,code:"VIEW_CREATE_FAILED",message:"放送画面の表示領域を作成できませんでした。"};
+    }
+  }
+
+  if (liveVideoProgramId !== programId || liveVideoView.webContents.getURL() !== targetUrl) {
+    liveVideoProgramId = programId;
+    notifyLiveVideoState({status:"loading",programId,message:"ニコニコ生放送の映像ページを読み込んでいます。"});
+    liveVideoView.webContents.loadURL(targetUrl).catch(error => {
+      if (liveVideoView && liveVideoProgramId === programId) {
+        notifyLiveVideoState({
+          status:"error",programId,
+          message:"放送画面を開けませんでした："+String(error?.message || "通信エラー").slice(0,160)
+        });
+      }
+    });
+  }
+  return {ok:true,programId,status:"loading",message:"放送画面を表示します。"};
 }
 
 async function checkNiconicoProgram(input) {
@@ -1525,10 +1645,24 @@ function registerIpcHandlers() {
     closeVideoPlayer();
     try {
       if(broadcastWindow&&!broadcastWindow.isDestroyed())broadcastWindow.close();
+      closeNiconicoLiveVideoView();
       await niconicoSession.clearStorageData({storages:["cookies","localstorage","indexdb","serviceworkers","cachestorage"]});
       await notifySessionStatus();
       return {ok:true,message:"このアプリ専用のニコニコセッションを削除しました。"};
     } catch { return {ok:false,message:"セッションを削除できませんでした。"}; }
+  });
+  ipcMain.handle("niconico:live-view-open",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    if(typeof input!=="string"||input.length>512) return {ok:false,code:"INVALID_INPUT",message:"放送IDを確認してください。"};
+    return openNiconicoLiveVideoView(input);
+  });
+  ipcMain.on("niconico:live-view-bounds",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents) return;
+    setNiconicoLiveVideoBounds(input);
+  });
+  ipcMain.handle("niconico:live-view-close",event=>{
+    if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    return closeNiconicoLiveVideoView();
   });
   ipcMain.handle("niconico:check-program",(event,input)=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
@@ -1696,7 +1830,7 @@ function createMainWindow() {
     return {action:"deny"};
   });
   mainWindow.webContents.on("will-navigate",(event,url)=>{if(!url.startsWith("file://"))event.preventDefault();});
-  mainWindow.on("closed",()=>{mainWindow=null;});
+  mainWindow.on("closed",()=>{closeNiconicoLiveVideoView();mainWindow=null;});
 }
 
 app.whenReady().then(()=>{
@@ -1711,6 +1845,7 @@ app.whenReady().then(()=>{
 app.on("before-quit",event=>{
   if(finalQuitInProgress) return;
   event.preventDefault();
+  closeNiconicoLiveVideoView();
   finalQuitInProgress=true;
   void stopCommentStream("アプリを終了しました。").finally(()=>{ closeVideoPlayer(); app.quit(); });
 });
