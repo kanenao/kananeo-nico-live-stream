@@ -1502,7 +1502,7 @@ async function checkForApplicationUpdates(silent=false){
 if(page==="dashboard"&&updateCheckState.result?.updateAvailable)render();
 if(!silent&&updateCheckState.error)toast(updateCheckState.error);
 }
-function go(p){page=p;render();if(p==="dashboard")void refreshDashboardStatistics(true);if(p==="player"){void refreshQuotePlayback();if(!bgmTracks.length&&!bgmLoading)void refreshBgmLibrary(true);}if(p==="comments")renderComments();if(p==="library"){void refreshVideoLibrary();renderVideoLibraryRows();}if(p==="users")renderUserProfileRows();}
+function go(p){if(p!=="broadcast")hideBroadcastCommentContextMenu();page=p;render();if(p==="dashboard")void refreshDashboardStatistics(true);if(p==="player"){void refreshQuotePlayback();if(!bgmTracks.length&&!bgmLoading)void refreshBgmLibrary(true);}if(p==="comments")renderComments();if(p==="library"){void refreshVideoLibrary();renderVideoLibraryRows();}if(p==="users")renderUserProfileRows();}
 document.getElementById("nav").addEventListener("click",e=>{const b=e.target.closest("[data-page]");if(b)go(b.dataset.page)});
 window.addEventListener("resize",()=>{hideBroadcastCommentContextMenu();updateLiveVideoBounds();},{passive:true});
 document.addEventListener("scroll",()=>{hideBroadcastCommentContextMenu();updateLiveVideoBounds();},true);
