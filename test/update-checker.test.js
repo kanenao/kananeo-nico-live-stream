@@ -17,6 +17,7 @@ test("parses beta and stable semantic versions",()=>{
     major:1,minor:2,patch:3,prerelease:[]
   });
   assert.equal(parseVersion("01.2.3"),null);
+  assert.equal(parseVersion("1.2.3-beta.01"),null);
   assert.equal(parseVersion("not-a-version"),null);
 });
 
@@ -26,6 +27,7 @@ test("compares prerelease identifiers and stable releases by semantic version",(
   assert.equal(compareVersions("0.1.0-beta.23","0.1.0"),-1);
   assert.equal(compareVersions("0.1.0","0.1.0"),0);
   assert.equal(compareVersions("0.2.0-beta.1","0.1.99"),1);
+  assert.equal(compareVersions("1.0.0-beta.999999999999999999999","1.0.0-beta.1000000000000000000000"),-1);
   assert.equal(compareVersions("invalid","0.1.0"),null);
 });
 
