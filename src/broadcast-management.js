@@ -29,7 +29,7 @@ function createBroadcastVerification(program, checkedAt = Date.now()) {
 
   const programId = String(program.programId || "").trim().toLowerCase();
   const timestamp = Number(checkedAt);
-  if (!/^lv\\d+$/.test(programId) || !Number.isFinite(timestamp) || timestamp <= 0) return null;
+  if (!/^lv\d+$/.test(programId) || !Number.isFinite(timestamp) || timestamp <= 0) return null;
 
   const status = normalizeProgramStatus(program.programStatus);
   const endTime = Number(program.endTime);
@@ -52,7 +52,7 @@ function isBroadcastVerificationFresh(verification, programId, now = Date.now())
   const expectedId = String(programId || "").trim().toLowerCase();
   const checkedAt = Number(verification.checkedAt);
   const currentTime = Number(now);
-  if (!/^lv\\d+$/.test(expectedId) || expectedId !== verification.programId) return false;
+  if (!/^lv\d+$/.test(expectedId) || expectedId !== verification.programId) return false;
   if (!Number.isFinite(checkedAt) || !Number.isFinite(currentTime)) return false;
   const age = currentTime - checkedAt;
   return age >= 0 && age <= VERIFICATION_TTL_MS;
