@@ -60,6 +60,7 @@ input[type="range"]{accent-color:#8c7cff;cursor:pointer}
 .ncv-user-button{border:0;background:transparent;padding:0;color:#9fc9ff;text-align:left;font:inherit;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ncv-user-button:hover{color:#fff;text-decoration:underline}
 .ncv-comment-table .ncv-kind-cell{font-size:8px;color:#8795ae}
+.ncv-comment-table .ncv-body-cell{white-space:pre-wrap}
 @media(max-width:1250px){.broadcast-live-layout{grid-template-columns:minmax(0,1.05fr) minmax(330px,1fr)}.ncv-comment-table th:nth-child(3),.ncv-comment-table td:nth-child(3){width:82px}.ncv-comment-table th:nth-child(4),.ncv-comment-table td:nth-child(4){width:88px}}
 @media(max-width:1050px){.broadcast-live-layout{grid-template-columns:1fr}.ncv-comment-list{height:420px}.broadcast-video-slot{min-height:200px}}
 
