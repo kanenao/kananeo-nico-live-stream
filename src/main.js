@@ -1895,6 +1895,25 @@ function registerIpcHandlers() {
     if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
     return revokeRemoteControlDevice(deviceId);
   });
+  ipcMain.handle("remote:audit-list",event=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    return {ok:true,entries:remoteControlAudit.list({limit:500}),sessionOnly:true};
+  });
+  ipcMain.handle("remote:audit-clear",async event=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    try{await remoteControlStoreQueue;await fs.writeFile(path.join(app.getPath("userData"),"remote-control-audit.jsonl"),"",{encoding:"utf8",mode:0o600});remoteControlAudit.clear();return {ok:true};}
+    catch{return {ok:false,code:"CLEAR_FAILED",message:"監査ログを消去できませんでした。"};}
+  });
+  ipcMain.handle("remote:audit-export",async(event,filters)=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    const all=remoteControlAudit.list({limit:500}),f=filters&&typeof filters==="object"?filters:{},q=typeof f.query==="string"?f.query.trim().toLowerCase().slice(0,120):"",type=typeof f.type==="string"?f.type:"all",from=Date.parse(f.from||""),to=Date.parse((f.to||"")+"T23:59:59.999");
+    const entries=all.filter(x=>{const at=Date.parse(x.at);return (!q||[x.at,x.type,x.path,x.ip,x.command,x.method].join(" ").toLowerCase().includes(q))&&(type==="all"||x.type===type)&&(!Number.isFinite(from)||at>=from)&&(!Number.isFinite(to)||at<=to);});
+    const choice=await dialog.showSaveDialog(mainWindow,{title:"リモート監査ログをCSV保存",defaultPath:"remote-control-audit.csv",filters:[{name:"CSV",extensions:["csv"]}]});
+    if(choice.canceled||!choice.filePath)return {ok:false,code:"CANCELLED"};
+    const cols=["at","type","severity","method","path","ip","command"],cell=v=>{let s=String(v??"");if(/^[=+@\\-\\t\\r]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};
+    try{await fs.writeFile(choice.filePath,"\\uFEFF"+[cols.map(cell).join(","),...entries.map(x=>cols.map(k=>cell(x[k])).join(","))].join("\\r\\n")+"\\r\\n",{encoding:"utf8",mode:0o600});return {ok:true,count:entries.length};}
+    catch{return {ok:false,code:"EXPORT_FAILED",message:"CSVを書き出せませんでした。"};}
+  });
   ipcMain.handle("remote:open-controller",async event=>{
     if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
     const address=remoteControlServer?.address();
