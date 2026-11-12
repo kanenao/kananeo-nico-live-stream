@@ -33,6 +33,7 @@ let speechGeneration=0;
 const MAX_DISPLAY_COMMENTS=1000;
 const MAX_QUEUE_ITEMS=1000;
 let nicoStatus={authenticated:false,label:"状態を確認中"};
+let broadcastManageVerification=null;
 let dashboardStats={loading:false,watchCount:null,commentCount:null,updatedAt:"",error:""};
 let extensionOptionsState={loading:false,methods:[],updatedAt:"",error:""};
 let updateCheckState={loading:false,result:null,error:""};
@@ -140,7 +141,7 @@ html=hero("STREAM CONTROL CENTER","配信コントロールセンター","配信
 '<div class="muted" id="dashboard-stats-error">'+esc(dashboardStats.error||"")+'</div>'+
 '<div class="columns">'+panel("クイック操作","よく使う機能",'<div class="quick">'+[["♫","動画リクエスト","requests"],["◈","自動アンケート","poll"],["⟳","次枠・自動延長","automation"],["▣","OBS・外部ツール","external"]].map(x=>`<button data-go="${x[2]}"><span>${x[0]}</span><b>${x[1]}</b><small>機能を開く</small></button>`).join("")+'</div>')+
 panel("システムログ","ローカルに記録した直近の操作",state.logs.slice(0,5).map(x=>`<div class="row"><i></i><div><b>${esc(x)}</b><small>ローカル記録</small></div></div>`).join(""))+'</div>'+
-'<footer>kananeo nico live stream <span>0.1.0-beta.25 · Beta preview</span></footer>';
+'<footer>kananeo nico live stream <span>0.1.0-beta.28 · Beta preview</span></footer>';
 }else if(page==="requests"){
 const waiting=state.requests.filter(x=>!["completed","skipped","rejected"].includes(x.status)).length;
 const requestRows=state.requests.map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+(x.status==="playing"?"再生中":x.status==="completed"?"再生済み":x.status==="skipped"?"スキップ":x.status==="rejected"?"引用不可":"待機中")+'</td><td>'+esc(x.title)+(x.requestUserId?'<div class="muted">リクエスト者：'+esc(getRequesterDisplayName(x))+'</div>':"")+'</td><td>'+esc(x.videoId||x.url)+'</td><td><button class="btn" data-play="'+esc(x.id)+'">プレビュー</button> <button class="btn primary" data-quote-request="'+esc(x.id)+'">ニコ生へ送る</button> <button class="btn" data-up="'+i+'" '+(i===0?"disabled":"")+'>&uarr;</button> <button class="btn" data-down="'+i+'" '+(i===state.requests.length-1?"disabled":"")+'>&darr;</button> <button class="btn" data-remove="'+esc(x.id)+'">削除</button></td></tr>').join("");
@@ -216,7 +217,7 @@ html=hero("LIVE SESSION","放送・枠管理","番組枠の作成・放送管理
 '<div class="grid2">'+
 panel("ニコニコアカウント接続","公式ログインを専用セッションで開く",'<div class="empty" id="auth-status"><b>'+authTitle+'</b><br>'+authText+'</div><div class="actions"><button class="btn primary" data-nico-login>公式ログインを開く</button><button class="btn" data-nico-refresh>状態を再確認</button><button class="btn" data-nico-logout>このアプリからログアウト</button></div>')+
 panel("番組ページを確認","放送IDまたはニコ生番組URLを入力",'<div class="field"><label>放送ID / URL</label><input class="input" id="live-id" value="'+esc(state.lastProgramId||"")+'" placeholder="lv123456789 または放送URL" maxlength="512"></div><div class="actions"><button class="btn primary" data-nico-check>番組ページを確認</button></div><div class="empty" id="program-result">確認結果はここに表示します。</div>')+
-panel("番組枠の作成・停止","アプリ内のニコニコ公式画面で番組を作成・管理します。",'<div class="actions"><button class="btn primary" data-broadcast-create>＋ 新規番組枠を作成</button></div><div class="field"><label>停止・管理する放送ID</label><input class="input" id="broadcast-manage-id" value="'+esc(state.lastProgramId||"")+'" placeholder="lv123456789" maxlength="512"></div><div class="actions"><button class="btn danger" data-broadcast-manage>放送管理画面を開く（終了操作）</button></div><div class="muted">番組作成・放送終了はニコニコ公式画面で最終確認して実行します。アプリからの直接API操作は、現行仕様の確認が済むまで行いません。</div>')+
+panel("番組枠の作成・終了","新規作成後の番組確認から終了操作までを、同じ画面で安全に進めます。",'<div class="actions"><button class="btn primary" data-broadcast-create>＋ 新規番組枠を作成</button></div><div class="field"><label>管理する放送ID</label><input class="input" id="broadcast-manage-id" value="'+esc(state.lastProgramId||"")+'" placeholder="lv123456789" maxlength="512"></div><div class="actions"><button class="btn" data-broadcast-verify>放送ID・状態を確認</button><button class="btn danger" data-broadcast-manage disabled>番組管理画面を開く（配信終了）</button></div><div class="empty" id="broadcast-manage-result">放送IDを確認すると、番組名・現在の状態を表示します。確認結果は90秒間有効です。</div><div class="muted">番組の作成と配信終了はニコニコ公式画面で確定します。直接APIによる自動終了は未実装です。作成画面で枠を作成した後、放送IDを入力して確認してください。</div>')+
 '</div>'+
 panel("この段階で確認すること","番組ページ確認とコメント受信を区別します。",'<div class="row"><i></i><div><b>実装済み</b><small>公式ログイン画面、専用セッション、Cookieの存在確認、放送ID検証、番組ページの取得</small></div></div><div class="row"><i></i><div><b>次段階</b><small>NDGRコメントサーバー接続、コメント受信、配信主権限確認</small></div></div>')+
 '<div class="banner"><i class="led"></i><div><b>注意</b><small>番組ページを確認しても、コメント接続や配信操作が成功したことにはなりません。</small></div></div>';
@@ -248,6 +249,7 @@ const options=sources.map(source=>'<option value="'+esc(source)+'" '+(librarySou
 html=html.replace('<div class="section"><p id="library-count">','<div class="field"><label>取り込み元で絞り込み</label><select class="input" id="library-source"><option value="">すべて</option>'+options+'</select></div><div class="section"><p id="library-count">');
 }
 document.getElementById("content").innerHTML=html;
+if(page==="broadcast")renderBroadcastManageVerification();
 if(page==="voice"){renderSpeechVoices();updateSpeechQueueUi();}
 if(page==="settings")renderUpdateCheck();
 if(page==="library")renderLibrarySourcePreview();
@@ -1125,9 +1127,68 @@ const input=document.getElementById("live-id")?.value||"";
 const node=document.getElementById("program-result");if(!node)return;
 node.textContent="番組ページを確認しています…";
 const button=document.querySelector("[data-nico-check]");if(button)button.disabled=true;
-try{const r=await window.kananeoApp.niconico.checkProgram(input);node.replaceChildren();const title=document.createElement("b");title.textContent=r.ok?(r.title||r.programId):"確認できませんでした";const detail=document.createElement("div");detail.textContent=r.message||"";node.append(title,detail);if(r.ok){state.lastProgramId=r.programId;state.lastProgramTitle=r.title||r.programId;state.lastProgramStatus=r.programStatus||"";state.lastProgramEndAt=Number(r.endTime)||0;save();state.logs.unshift("番組ページを確認："+r.programId);save();void refreshDashboardStatistics(true);void refreshQuotePlayback({silent:true});}}
-catch{node.textContent="確認中にエラーが発生しました。";}
+try{
+ const r=await window.kananeoApp.niconico.checkProgram(input);
+ node.replaceChildren();
+ const title=document.createElement("b");title.textContent=r.ok?(r.title||r.programId):"確認できませんでした";
+ const detail=document.createElement("div");detail.textContent=r.message||"";node.append(title,detail);
+ if(r.ok){
+  state.lastProgramId=r.programId;state.lastProgramTitle=r.title||r.programId;state.lastProgramStatus=r.programStatus||"";state.lastProgramEndAt=Number(r.endTime)||0;
+  const manageInput=document.getElementById("broadcast-manage-id");if(manageInput)manageInput.value=r.programId;
+  broadcastManageVerification=window.KananeoBroadcastManagement.createBroadcastVerification(r);
+  save();state.logs.unshift("番組ページを確認："+r.programId);save();
+  renderBroadcastManageVerification();
+  void refreshDashboardStatistics(true);void refreshQuotePlayback({silent:true});
+ }
+}catch{node.textContent="確認中にエラーが発生しました。";}
 finally{if(button)button.disabled=false;}
+}
+function renderBroadcastManageVerification(){
+ const input=document.getElementById("broadcast-manage-id");
+ const result=document.getElementById("broadcast-manage-result");
+ const button=document.querySelector("[data-broadcast-manage]");
+ if(!input||!button)return;
+ const id=input.value.trim();
+ const fresh=window.KananeoBroadcastManagement.isBroadcastVerificationFresh(broadcastManageVerification,id);
+ button.disabled=!fresh;
+ if(!result)return;
+ if(fresh){
+  const info=broadcastManageVerification;
+  const age=Math.max(0,Math.floor((Date.now()-info.checkedAt)/1000));
+  result.textContent=info.title+"\n"+info.programId+" / "+info.statusLabel+"\n確認済み（"+age+"秒前）。配信終了は公式画面で実行してください。";
+ }else{
+  result.textContent="未確認、対象ID変更、または確認期限切れです。「放送ID・状態を確認」を押してください。";
+ }
+}
+async function verifyBroadcastManageTarget(){
+ const input=document.getElementById("broadcast-manage-id");
+ const resultNode=document.getElementById("broadcast-manage-result");
+ const verifyButton=document.querySelector("[data-broadcast-verify]");
+ const id=input?.value.trim()||"";
+ if(!id){toast("確認する放送IDを入力してください。");return;}
+ if(resultNode)resultNode.textContent="番組ページと現在の状態を確認しています…";
+ if(verifyButton)verifyButton.disabled=true;
+ broadcastManageVerification=null;renderBroadcastManageVerification();
+ try{
+  const checked=await window.kananeoApp.niconico.checkProgram(id);
+  if(!checked?.ok)throw new Error(checked?.message||"番組を確認できませんでした。");
+  broadcastManageVerification=window.KananeoBroadcastManagement.createBroadcastVerification(checked);
+  if(!broadcastManageVerification)throw new Error("放送IDまたは番組情報を検証できませんでした。");
+  state.lastProgramId=broadcastManageVerification.programId;
+  state.lastProgramTitle=broadcastManageVerification.title;
+  state.lastProgramStatus=broadcastManageVerification.status;
+  state.lastProgramEndAt=Number(checked.endTime)||0;
+  const primaryInput=document.getElementById("live-id");if(primaryInput)primaryInput.value=broadcastManageVerification.programId;
+  input.value=broadcastManageVerification.programId;
+  save();state.logs.unshift("放送管理対象を確認："+broadcastManageVerification.programId);save();
+  renderBroadcastManageVerification();
+  void refreshDashboardStatistics(true);
+  toast("番組を確認しました。90秒以内に管理画面を開けます。");
+ }catch(error){
+  broadcastManageVerification=null;renderBroadcastManageVerification();
+  if(resultNode)resultNode.textContent=error?.message||"番組を確認できませんでした。";
+  toast(error?.message||"番組を確認できませんでした。");
+ }finally{if(verifyButton)verifyButton.disabled=false;}
 }
 function clampBgmVolume(value){const number=Number(value);return Number.isFinite(number)?Math.max(0,Math.min(1,number)):0.7;}
 function formatBgmFileSize(bytes){const size=Number(bytes);if(!Number.isFinite(size)||size<=0)return "サイズ不明";return size>=1024*1024?(size/(1024*1024)).toFixed(1)+" MB":(size/1024).toFixed(0)+" KB";}
@@ -1247,12 +1308,17 @@ if(b.hasAttribute("data-broadcast-create")){
  toast(result?.ok?"アプリ内に番組作成画面を開きました。内容を確認して作成してください。":(result?.message||"番組作成画面を開けませんでした。"));
  return;
 }
+if(b.hasAttribute("data-broadcast-verify")){void verifyBroadcastManageTarget();return;}
 if(b.hasAttribute("data-broadcast-manage")){
  const id=document.getElementById("broadcast-manage-id")?.value.trim()||"";
- if(!id){toast("停止・管理する放送IDを入力してください。");return;}
- if(!confirm("放送管理画面を開きます。ニコニコ公式画面で番組の終了を確認して実行してください。"))return;
+ if(!window.KananeoBroadcastManagement.isBroadcastVerificationFresh(broadcastManageVerification,id)){
+  renderBroadcastManageVerification();toast("先に放送ID・現在の状態を確認してください。");return;
+ }
+ const info=broadcastManageVerification;
+ const prompt="番組管理画面を開きます。\n\n"+info.title+"（"+info.programId+"）\n現在の状態："+info.statusLabel+"\n\n配信終了はニコニコ公式画面で最終確認して実行してください。続けますか？";
+ if(!confirm(prompt))return;
  const result=await window.kananeoApp.niconico.openBroadcastManage(id);
- toast(result?.ok?"アプリ内に放送管理画面を開きました。公式画面で放送終了を実行してください。":(result?.message||"放送管理画面を開けませんでした。"));
+ toast(result?.ok?"アプリ内に番組管理画面を開きました。公式画面で必要な操作を行ってください。":(result?.message||"番組管理画面を開けませんでした。"));
  return;
 }
 if(b.hasAttribute("data-nico-refresh")){window.kananeoApp.niconico.getSessionStatus().then(applyNicoStatus);return;}
@@ -1474,7 +1540,7 @@ if(b.hasAttribute("data-export")){const a=document.createElement("a");a.href=URL
 if(b.hasAttribute("data-clear-logs")){state.logs=[];save();render()}
 if(b.hasAttribute("data-placeholder"))toast("現在の段階ではこの操作は未実装です。");
 });
-document.addEventListener("input",e=>{if(e.target.id==="comments-search")renderComments();if(e.target.id==="user-profile-search"){userProfileSearch=e.target.value;renderUserProfileRows();}if(e.target.id==="library-search")renderVideoLibraryRows();if(e.target.id==="library-source-search"){librarySourceQuery=e.target.value;renderLibrarySourcePreview();}});
+document.addEventListener("input",e=>{if(e.target.id==="broadcast-manage-id"){broadcastManageVerification=null;renderBroadcastManageVerification();}if(e.target.id==="comments-search")renderComments();if(e.target.id==="user-profile-search"){userProfileSearch=e.target.value;renderUserProfileRows();}if(e.target.id==="library-search")renderVideoLibraryRows();if(e.target.id==="library-source-search"){librarySourceQuery=e.target.value;renderLibrarySourcePreview();}});
 document.addEventListener("input",e=>{
  if(e.target.id==="bgm-volume"){state.playback.bgmVolume=clampBgmVolume(e.target.value);if(bgmAudio)bgmAudio.volume=state.playback.bgmVolume;updateBgmPlaybackUi();}
  if(e.target.id==="bgm-progress"&&bgmAudio&&Number.isFinite(bgmAudio.duration)){bgmAudio.currentTime=bgmAudio.duration*(Math.max(0,Math.min(1000,Number(e.target.value)||0))/1000);updateBgmPlaybackUi();}
