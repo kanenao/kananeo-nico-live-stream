@@ -5,6 +5,7 @@ const assert=require("node:assert/strict");
 const {
   MAX_BGM_TRACKS,
   MAX_BGM_TRACK_BYTES,
+  MAX_BGM_LIBRARY_BYTES,
   ALLOWED_BGM_EXTENSIONS,
   normalizeBgmTrack,
   createEmptyBgmLibrary,
@@ -29,6 +30,7 @@ test("normalizes audio metadata and rejects unsupported extensions",()=>{
   assert.equal(normalizeBgmTrack(track({name:"../bad/name"})).name,".. bad name");
   assert.equal(normalizeBgmTrack(track({size:MAX_BGM_TRACK_BYTES+1})),null);
   assert.equal(normalizeBgmTrack(track({id:"bad"})),null);
+  assert.equal(ALLOWED_BGM_EXTENSIONS.includes(".oga"),true);
 });
 
 test("normalizes a playlist, removes duplicate IDs, and enforces library bounds",()=>{
@@ -68,4 +70,18 @@ test("clamps BGM volume to the supported range",()=>{
   assert.equal(normalizeBgmVolume(-1),0);
   assert.equal(normalizeBgmVolume(2),1);
   assert.equal(normalizeBgmVolume("bad",0.4),0.4);
+});
+
+
+test("enforces the total local audio library size limit",()=>{
+  const tracks=Array.from({length:20},(_,index)=>track({
+    id:"123e4567-e89b-42d3-a456-"+String(index).padStart(12,"0"),
+    name:"large "+index,
+    size:MAX_BGM_TRACK_BYTES
+  }));
+  const library=normalizeBgmLibrary({tracks});
+  assert.equal(library.tracks.length,20);
+  assert.equal(library.tracks.reduce((sum,item)=>sum+item.size,0),MAX_BGM_LIBRARY_BYTES);
+  const next=track({id:"123e4567-e89b-42d3-a456-999999999999",size:1});
+  assert.equal(addBgmTrack(library,next).code,"LIBRARY_SIZE_LIMIT");
 });
