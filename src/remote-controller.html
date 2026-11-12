@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>kananeo nico live stream - リモートコントローラー</title>
+  <link rel="stylesheet" href="/remote-controller.css">
+  <script src="/remote-controller.js" defer></script>
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <div class="brand"><span class="mark">kn</span><div><b>kananeo</b><small>NICO LIVE STREAM / LOCAL CONTROLLER</small></div></div>
+      <span class="connection" id="connection-state">未接続</span>
+    </header>
+    <section class="intro">
+      <p class="eyebrow">LOCAL REMOTE CONTROL</p>
+      <h1>リモートコントローラー</h1>
+      <p>アプリ本体で発行したワンタイムコードを入力して接続します。このページはPC内のlocalhost接続専用です。</p>
+    </section>
+    <section class="panel" id="pair-panel">
+      <h2>端末をペアリング</h2>
+      <form id="pair-form">
+        <label>アプリ側に表示されたペアリングコード<input id="pair-code" autocomplete="one-time-code" inputmode="text" maxlength="16" placeholder="12桁のコード" required></label>
+        <label>端末名<input id="device-name" maxlength="40" value="ブラウザーコントローラー" required></label>
+        <button class="primary" type="submit">この端末を登録</button>
+      </form>
+      <p class="hint" id="pair-message">権限はアプリ側で発行時に指定されます。コードは5分で期限切れになります。</p>
+    </section>
+    <section class="panel hidden" id="control-panel">
+      <div class="panel-heading"><h2>接続状態</h2><button class="subtle" id="disconnect-button" type="button">このブラウザーから切断</button></div>
+      <div class="status-grid" id="status-grid"></div>
+      <div class="control-grid">
+        <section class="control-card" id="player-controls">
+          <h3>動画プレビュー</h3>
+          <p class="hint">ニコ生の引用再生・放送側の動画は操作しません。</p>
+          <div class="buttons">
+            <button data-command="player:pause">一時停止</button>
+            <button data-command="player:next">次の動画</button>
+            <button data-command="player:stop" class="danger">プレビューを閉じる</button>
+          </div>
+        </section>
+        <section class="control-card" id="bgm-controls">
+          <h3>BGM</h3>
+          <div class="buttons">
+            <button data-command="bgm:play">再生</button>
+            <button data-command="bgm:pause">一時停止</button>
+            <button data-command="bgm:next">次の曲</button>
+          </div>
+          <label class="volume-label">音量 <output id="volume-value">70%</output><input id="bgm-volume" type="range" min="0" max="1" step="0.01" value="0.7"></label>
+        </section>
+      </div>
+      <section class="control-card comments-card" id="comments-card">
+        <div class="panel-heading"><h3>最新コメント</h3><span class="hint" id="comment-count">0件</span></div>
+        <div class="comments" id="comments-list"><p class="hint">コメント閲覧権限がありません。</p></div>
+      </section>
+      <p class="hint" id="control-message" role="status"></p>
+    </section>
+    <footer>kananeo nico live stream · beta 31 · localhost only</footer>
+  </main>
+</body>
+</html>
