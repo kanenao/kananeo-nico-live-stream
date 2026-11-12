@@ -73,6 +73,23 @@ function removeBgmTrack(libraryInput, idInput) {
   return {ok:true,library,track};
 }
 
+function moveBgmTrack(libraryInput, idInput, directionInput) {
+  const library = normalizeBgmLibrary(libraryInput);
+  const id = String(idInput ?? "").trim();
+  if (!ID_PATTERN.test(id)) return {ok:false,code:"INVALID_ID",library};
+  const direction = String(directionInput ?? "").trim().toLowerCase();
+  if (direction !== "up" && direction !== "down") return {ok:false,code:"INVALID_DIRECTION",library};
+  const index = library.tracks.findIndex(track=>track.id===id);
+  if (index < 0) return {ok:false,code:"NOT_FOUND",library};
+  const targetIndex = index + (direction === "up" ? -1 : 1);
+  if (targetIndex < 0 || targetIndex >= library.tracks.length) {
+    return {ok:false,code:"BOUNDARY",library};
+  }
+  [library.tracks[index],library.tracks[targetIndex]] = [library.tracks[targetIndex],library.tracks[index]];
+  library.updatedAt = new Date().toISOString();
+  return {ok:true,library,movedTrackId:id,direction};
+}
+
 function normalizeBgmVolume(value, fallback = 0.7) {
   const number=Number(value);
   return Number.isFinite(number) ? Math.max(0,Math.min(1,number)) : fallback;
