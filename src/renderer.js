@@ -1,6 +1,15 @@
 (() => {
 const names={dashboard:"ダッシュボード",broadcast:"放送・枠管理",comments:"コメントビューア",requests:"動画リクエスト",stocks:"ストック",library:"動画ライブラリ",poll:"自動アンケート",player:"プレイヤー・BGM",automation:"自動枠取り・延長",external:"OBS・外部ツール",voice:"音声・自動応答",users:"ユーザー・NG管理",logs:"履歴・バックアップ",settings:"設定"};
 const key="kananeo-beta2";
+const COMMENT_VIEW_STORAGE_KEY=key+"-comment-view";
+const BROADCAST_COMMENT_COLUMNS=[{key:"number",label:"番号"},{key:"time",label:"時刻"},{key:"user",label:"投稿者"},{key:"userId",label:"ユーザーID"},{key:"content",label:"コメント本文"},{key:"type",label:"種別"}];
+const BROADCAST_COMMENT_COLORS=[{key:"comment",label:"通常コメント"},{key:"operatorComment",label:"放送者コメント"},{key:"gift",label:"ギフト"},{key:"emotion",label:"エモーション"},{key:"notification",label:"通知"}];
+function loadBroadcastCommentViewSettings(){
+ try{return window.KananeoCommentViewSettings.normalizeCommentViewSettings(JSON.parse(localStorage.getItem(COMMENT_VIEW_STORAGE_KEY)||"{}"));}
+ catch{return window.KananeoCommentViewSettings.normalizeCommentViewSettings({});}
+}
+let broadcastCommentViewSettings=loadBroadcastCommentViewSettings();
+let broadcastCommentViewDraft=window.KananeoCommentViewSettings.normalizeCommentViewSettings(broadcastCommentViewSettings);
 let commentConnection={state:"disconnected",message:"コメントサーバー未接続",programId:"",recordingEnabled:false};
 let receivedComments=[];
 let videoLibraryData={version:1,items:[],history:[],updatedAt:""};
@@ -148,7 +157,7 @@ html=hero("STREAM CONTROL CENTER","配信コントロールセンター","配信
 '<div class="muted" id="dashboard-stats-error">'+esc(dashboardStats.error||"")+'</div>'+
 '<div class="columns">'+panel("クイック操作","よく使う機能",'<div class="quick">'+[["♫","動画リクエスト","requests"],["◈","自動アンケート","poll"],["⟳","次枠・自動延長","automation"],["▣","OBS・外部ツール","external"]].map(x=>`<button data-go="${x[2]}"><span>${x[0]}</span><b>${x[1]}</b><small>機能を開く</small></button>`).join("")+'</div>')+
 panel("システムログ","ローカルに記録した直近の操作",state.logs.slice(0,5).map(x=>`<div class="row"><i></i><div><b>${esc(x)}</b><small>ローカル記録</small></div></div>`).join(""))+'</div>'+
-'<footer>kananeo nico live stream <span>0.1.0-beta.29 · Beta preview</span></footer>';
+'<footer>kananeo nico live stream <span>0.1.0-beta.30 · Beta preview</span></footer>';
 }else if(page==="requests"){
 const waiting=state.requests.filter(x=>!["completed","skipped","rejected"].includes(x.status)).length;
 const requestRows=state.requests.map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+(x.status==="playing"?"再生中":x.status==="completed"?"再生済み":x.status==="skipped"?"スキップ":x.status==="rejected"?"引用不可":"待機中")+'</td><td>'+esc(x.title)+(x.requestUserId?'<div class="muted">リクエスト者：'+esc(getRequesterDisplayName(x))+'</div>':"")+'</td><td>'+esc(x.videoId||x.url)+'</td><td><button class="btn" data-play="'+esc(x.id)+'">プレビュー</button> <button class="btn primary" data-quote-request="'+esc(x.id)+'">ニコ生へ送る</button> <button class="btn" data-up="'+i+'" '+(i===0?"disabled":"")+'>&uarr;</button> <button class="btn" data-down="'+i+'" '+(i===state.requests.length-1?"disabled":"")+'>&darr;</button> <button class="btn" data-remove="'+esc(x.id)+'">削除</button></td></tr>').join("");
@@ -236,7 +245,7 @@ panel("番組枠の作成・終了","公式の番組作成・管理画面を利�
 '<div class="broadcast-comment-toolbar"><input class="input" id="broadcast-comment-search" value="'+esc(broadcastCommentSearch)+'" placeholder="コメント・名前・ユーザーIDで検索"><select class="input" id="broadcast-comment-type"><option value="all" '+(broadcastCommentType==="all"?"selected":"")+'>すべて</option><option value="comment" '+(broadcastCommentType==="comment"?"selected":"")+'>通常コメント</option><option value="operatorComment" '+(broadcastCommentType==="operatorComment"?"selected":"")+'>放送者</option><option value="gift" '+(broadcastCommentType==="gift"?"selected":"")+'>ギフト</option><option value="emotion" '+(broadcastCommentType==="emotion"?"selected":"")+'>エモーション</option><option value="notification" '+(broadcastCommentType==="notification"?"selected":"")+'>通知</option></select></div>'+
 '<div class="broadcast-comment-actions"><span id="broadcast-comment-count">0件</span><span id="broadcast-comment-user-filter">'+(broadcastCommentUserId?"ユーザーで絞り込み中":"全ユーザー")+'</span><button class="btn" data-broadcast-comment-clear-user '+(!broadcastCommentUserId?"disabled":"")+'>絞り込み解除</button><button class="btn" data-broadcast-comments-copy>表示分をコピー</button></div>'+
 '<div id="broadcast-comments-list" class="ncv-comment-list"><div class="empty">コメント受信を開始すると、ここに一覧表示します。</div></div><div id="broadcast-comment-context" class="ncv-context-menu" hidden></div>'+
-'<div class="muted">コメント番号をクリックすると既読位置を記録、ダブルクリックで解除できます。投稿者名をクリックすると、そのユーザーのコメントだけを表示します。</div></section>'+
+'<details class="ncv-display-settings"><summary>コメント表示をカスタマイズ（文字サイズ・列・並び順・色）</summary><div id="broadcast-comment-settings-controls"></div></details><div class="muted">コメント番号をクリックすると既読位置を記録、ダブルクリックで解除できます。投稿者名をクリックすると、そのユーザーのコメントだけを表示します。</div></section>'+
 '</div>'+
 '<div class="banner"><i class="led"></i><div><b>表示について</b><small>放送映像はニコニコ公式視聴ページを専用セッションで表示します。コメント一覧はこのアプリが受信したNDGRコメントを表示します。配信ページの仕様や視聴権限により映像が表示できない場合があります。</small></div></div>';
 }else if(page==="voice"){
@@ -267,7 +276,7 @@ const options=sources.map(source=>'<option value="'+esc(source)+'" '+(librarySou
 html=html.replace('<div class="section"><p id="library-count">','<div class="field"><label>取り込み元で絞り込み</label><select class="input" id="library-source"><option value="">すべて</option>'+options+'</select></div><div class="section"><p id="library-count">');
 }
 document.getElementById("content").innerHTML=html;
-if(page==="broadcast"){renderBroadcastManageVerification();renderBroadcastComments();updateBroadcastLivePanel();}
+if(page==="broadcast"){renderBroadcastManageVerification();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();}
 updateLiveVideoBounds();
 if(page==="voice"){renderSpeechVoices();updateSpeechQueueUi();}
 if(page==="settings")renderUpdateCheck();
@@ -859,45 +868,81 @@ function getBroadcastFilteredComments(){
    .some(value=>String(value||"").toLocaleLowerCase("ja-JP").includes(query));
  });
 }
+function buildBroadcastCommentSettingsControls(){
+ const settings=broadcastCommentViewDraft;
+ const columnControls=BROADCAST_COMMENT_COLUMNS.map(column=>'<label class="ncv-setting-check"><input type="checkbox" data-ncv-column-visible="'+column.key+'" '+(settings.columns[column.key]?"checked":"")+(column.key==="content"?" disabled":"")+'> '+column.label+'</label>').join("");
+ const orderControls=settings.order.map((key,index)=>{
+  const label=BROADCAST_COMMENT_COLUMNS.find(column=>column.key===key)?.label||key;
+  return '<div class="ncv-order-row"><span>'+String(index+1)+'. '+label+'</span><div><button type="button" class="btn" data-ncv-order-move="up" data-ncv-column-order="'+key+'" '+(index===0?"disabled":"")+' aria-label="'+label+'を上へ">↑</button><button type="button" class="btn" data-ncv-order-move="down" data-ncv-column-order="'+key+'" '+(index===settings.order.length-1?"disabled":"")+' aria-label="'+label+'を下へ">↓</button></div></div>';
+ }).join("");
+ const colorControls=BROADCAST_COMMENT_COLORS.map(color=>'<label class="ncv-color-setting"><span>'+color.label+'</span><input type="color" data-ncv-type-color="'+color.key+'" value="'+settings.colors[color.key]+'"></label>').join("");
+ return '<div class="ncv-settings-grid">'+
+  '<div class="ncv-setting-group"><b>文字サイズ</b><label class="ncv-font-setting"><input type="range" id="ncv-comment-font-size" min="8" max="18" step="1" value="'+settings.fontSize+'"><output id="ncv-comment-font-size-value">'+settings.fontSize+'px</output></label></div>'+
+  '<div class="ncv-setting-group"><b>表示する列</b><div class="ncv-column-toggles">'+columnControls+'</div><small>コメント本文は常に表示します。</small></div>'+
+  '<div class="ncv-setting-group"><b>列の並び順</b><div class="ncv-column-order">'+orderControls+'</div><small>↑／↓で順序を変更できます。</small></div>'+
+  '<div class="ncv-setting-group"><b>コメント種別の文字色</b><div class="ncv-color-grid">'+colorControls+'</div></div>'+
+  '</div><div class="actions ncv-settings-actions"><button type="button" class="btn primary" data-ncv-display-save>表示設定を保存</button><button type="button" class="btn" data-ncv-display-reset>初期設定に戻す</button><span class="muted">このPC内に保存します。</span></div>';
+}
+function renderBroadcastCommentSettingsControls(){
+ const node=document.getElementById("broadcast-comment-settings-controls");
+ if(node)node.innerHTML=buildBroadcastCommentSettingsControls();
+}
+function persistBroadcastCommentViewSettings(nextSettings){
+ const normalized=window.KananeoCommentViewSettings.normalizeCommentViewSettings(nextSettings);
+ try{localStorage.setItem(COMMENT_VIEW_STORAGE_KEY,JSON.stringify(normalized));}
+ catch{toast("表示設定を保存できませんでした。PCの空き容量を確認してください。");return false;}
+ broadcastCommentViewSettings=normalized;
+ broadcastCommentViewDraft=window.KananeoCommentViewSettings.normalizeCommentViewSettings(normalized);
+ renderBroadcastCommentSettingsControls();renderBroadcastComments();
+ return true;
+}
+function saveBroadcastCommentViewSettings(){
+ const host=document.getElementById("broadcast-comment-settings-controls");if(!host)return;
+ const columns={},colors={};
+ host.querySelectorAll("[data-ncv-column-visible]").forEach(input=>{columns[input.dataset.ncvColumnVisible]=input.checked;});
+ host.querySelectorAll("[data-ncv-type-color]").forEach(input=>{colors[input.dataset.ncvTypeColor]=input.value;});
+ const next={fontSize:Number(host.querySelector("#ncv-comment-font-size")?.value??broadcastCommentViewDraft.fontSize),columns,colors,order:broadcastCommentViewDraft.order};
+ if(persistBroadcastCommentViewSettings(next))toast("コメント表示設定を保存しました。");
+}
+function resetBroadcastCommentViewSettings(){
+ if(persistBroadcastCommentViewSettings(window.KananeoCommentViewSettings.normalizeCommentViewSettings({})))toast("コメント表示設定を初期状態に戻しました。");
+}
 function renderBroadcastComments(){
- const list=document.getElementById("broadcast-comments-list");
- if(!list)return;
+ const list=document.getElementById("broadcast-comments-list");if(!list)return;
  const count=document.getElementById("broadcast-comment-count");
  const userFilter=document.getElementById("broadcast-comment-user-filter");
  const clearUser=document.querySelector("[data-broadcast-comment-clear-user]");
- const visible=getBroadcastFilteredComments();
+ const visible=getBroadcastFilteredComments(),settings=broadcastCommentViewSettings;
  if(count)count.textContent=visible.length+"件";
  if(userFilter)userFilter.textContent=broadcastCommentUserId?"ユーザー："+broadcastCommentUserId:"全ユーザー";
  if(clearUser)clearUser.disabled=!broadcastCommentUserId;
  const wasAtBottom=list.scrollHeight-list.scrollTop-list.clientHeight<48;
- if(!visible.length){
-  list.innerHTML='<div class="empty">表示できるコメントがありません。</div>';
-  return;
- }
- const seenUsers=new Set();
- const firstPostIds=new Set();
- for(const comment of receivedComments){
-  if(comment.type!=="comment"||!comment.userId)continue;
-  if(!seenUsers.has(comment.userId)){seenUsers.add(comment.userId);firstPostIds.add(comment.id);}
- }
+ if(!visible.length){list.innerHTML='<div class="empty">表示できるコメントがありません。</div>';return;}
+ const seenUsers=new Set(),firstPostIds=new Set();
+ for(const comment of receivedComments){if(comment.type!=="comment"||!comment.userId)continue;if(!seenUsers.has(comment.userId)){seenUsers.add(comment.userId);firstPostIds.add(comment.id);}}
+ const visibleColumns=settings.order.filter(key=>settings.columns[key]);
+ const headers=visibleColumns.map(key=>'<th data-ncv-column="'+key+'">'+(BROADCAST_COMMENT_COLUMNS.find(item=>item.key===key)?.label||key)+'</th>').join("");
  const rows=visible.map(({comment,index})=>{
-  const date=new Date(comment.timestamp);
-  const time=Number.isNaN(date.getTime())?"--:--:--":date.toLocaleTimeString("ja-JP",{hour12:false});
-  const profile=findUserProfile(comment.userId);
-  const name=profile?.nickname||comment.userName||"匿名";
-  const kind=({comment:"コメント",operatorComment:"放送者",gift:"ギフト",emotion:"エモーション",notification:"通知"}[comment.type]||"イベント");
-  const first=firstPostIds.has(comment.id);
-  const read=broadcastReadThroughIndex>=index;
-  const userButton=comment.userId
-   ?'<button class="ncv-user-button" data-broadcast-user="'+esc(comment.userId)+'" title="このユーザーで絞り込み">'+esc(name)+'</button>'
-   :esc(name);
+  const date=new Date(comment.timestamp),time=Number.isNaN(date.getTime())?"--:--:--":date.toLocaleTimeString("ja-JP",{hour12:false});
+  const profile=findUserProfile(comment.userId),name=profile?.nickname||comment.userName||"匿名";
+  const kind=({comment:"通常",operatorComment:"放送者",gift:"ギフト",emotion:"エモーション",notification:"通知"}[comment.type]||"イベント");
+  const first=firstPostIds.has(comment.id),read=broadcastReadThroughIndex>=index;
+  const userButton=comment.userId?'<button class="ncv-user-button" data-broadcast-user="'+esc(comment.userId)+'" title="このユーザーで絞り込み">'+esc(name)+'</button>':esc(name);
   const userIdButton=comment.userId?'<button class="ncv-user-id-button" data-broadcast-user="'+esc(comment.userId)+'" title="このユーザーのコメントだけ表示">'+esc(comment.userId)+'</button>':"—";
-  return '<tr data-broadcast-comment-index="'+index+'" class="'+(first?"ncv-first-post ":"")+(read?"ncv-read-marked":"")+'"><td class="ncv-number-cell"><button class="ncv-number-button" data-broadcast-read-through="'+index+'" title="ここまでを既読にする">'+esc(comment.commentNo||"—")+'</button></td><td class="ncv-time-cell">'+esc(time)+'</td><td class="ncv-user-cell">'+userButton+'</td><td class="ncv-id-cell">'+userIdButton+'</td><td class="ncv-body-cell">'+esc(comment.content||"")+'</td><td class="ncv-kind-cell">'+esc(kind)+'</td></tr>';
+  const cells={
+   number:'<td data-ncv-column="number" class="ncv-number-cell"><button class="ncv-number-button" data-broadcast-read-through="'+index+'" title="ここまでを既読にする">'+esc(comment.commentNo||"—")+'</button></td>',
+   time:'<td data-ncv-column="time" class="ncv-time-cell">'+esc(time)+'</td>',
+   user:'<td data-ncv-column="user" class="ncv-user-cell">'+userButton+'</td>',
+   userId:'<td data-ncv-column="userId" class="ncv-id-cell">'+userIdButton+'</td>',
+   content:'<td data-ncv-column="content" class="ncv-body-cell">'+esc(comment.content||"")+'</td>',
+   type:'<td data-ncv-column="type" class="ncv-kind-cell">'+esc(kind)+'</td>'
+  };
+  const color=settings.colors[comment.type]||settings.colors.comment;
+  return '<tr data-broadcast-comment-index="'+index+'" class="'+(first?"ncv-first-post ":"")+(read?"ncv-read-marked":"")+'" style="--ncv-kind-color:'+esc(color)+'">'+visibleColumns.map(key=>cells[key]).join("")+'</tr>';
  }).join("");
- list.innerHTML='<table class="ncv-comment-table"><thead><tr><th>番号</th><th>時刻</th><th>投稿者</th><th>ID</th><th>コメント</th><th>種別</th></tr></thead><tbody>'+rows+'</tbody></table>';
+ list.innerHTML='<table class="ncv-comment-table" style="font-size:'+settings.fontSize+'px"><thead><tr>'+headers+'</tr></thead><tbody>'+rows+'</tbody></table>';
  if(wasAtBottom)list.scrollTop=list.scrollHeight;
-}
-async function copyBroadcastComments(){
+}async function copyBroadcastComments(){
  const rows=getBroadcastFilteredComments();
  if(!rows.length){toast("コピーするコメントがありません。");return;}
  const text=rows.map(({comment})=>{
@@ -1511,6 +1556,16 @@ document.addEventListener("click",async e=>{
 const goBtn=e.target.closest("[data-go]");if(goBtn){hideBroadcastCommentContextMenu();go(goBtn.dataset.go);return}
 if(!e.target.closest("#broadcast-comment-context"))hideBroadcastCommentContextMenu();
 const b=e.target.closest("button");if(!b)return;
+if(b.hasAttribute("data-ncv-order-move")){
+ const key=b.dataset.ncvColumnOrder,direction=b.dataset.ncvOrderMove,index=broadcastCommentViewDraft.order.indexOf(key),nextIndex=index+(direction==="up"?-1:1);
+ if(index>=0&&nextIndex>=0&&nextIndex<broadcastCommentViewDraft.order.length){
+  const order=[...broadcastCommentViewDraft.order];[order[index],order[nextIndex]]=[order[nextIndex],order[index]];
+  broadcastCommentViewDraft={...broadcastCommentViewDraft,order};renderBroadcastCommentSettingsControls();
+ }
+ return;
+}
+if(b.hasAttribute("data-ncv-display-save")){saveBroadcastCommentViewSettings();return;}
+if(b.hasAttribute("data-ncv-display-reset")){resetBroadcastCommentViewSettings();return;}
 if(b.hasAttribute("data-broadcast-context-action")){void handleBroadcastCommentContextAction(b.dataset.broadcastContextAction);return;}
 if(b.hasAttribute("data-nico-login")){window.kananeoApp.niconico.openLogin().then(()=>toast("ニコニコ公式ログイン画面を開きました"));return;}
 if(b.hasAttribute("data-broadcast-create")){
@@ -1784,7 +1839,7 @@ if(b.hasAttribute("data-placeholder"))toast("現在の段階ではこの操作�
 });
  document.addEventListener("click",e=>{const marker=e.target.closest("[data-broadcast-read-through]");if(marker){broadcastReadThroughIndex=Number(marker.dataset.broadcastReadThrough);renderBroadcastComments();}});
  document.addEventListener("dblclick",e=>{if(e.target.closest("[data-broadcast-read-through]")){broadcastReadThroughIndex=-1;renderBroadcastComments();}});
-document.addEventListener("input",e=>{if(e.target.id==="broadcast-comment-search"){broadcastCommentSearch=e.target.value;renderBroadcastComments();}if(e.target.id==="broadcast-manage-id"){broadcastManageVerification=null;renderBroadcastManageVerification();}if(e.target.id==="comments-search")renderComments();if(e.target.id==="user-profile-search"){userProfileSearch=e.target.value;renderUserProfileRows();}if(e.target.id==="library-search")renderVideoLibraryRows();if(e.target.id==="library-source-search"){librarySourceQuery=e.target.value;renderLibrarySourcePreview();}});
+document.addEventListener("input",e=>{if(e.target.id==="ncv-comment-font-size"){const output=document.getElementById("ncv-comment-font-size-value");if(output)output.textContent=e.target.value+"px";}if(e.target.id==="broadcast-comment-search"){broadcastCommentSearch=e.target.value;renderBroadcastComments();}if(e.target.id==="broadcast-manage-id"){broadcastManageVerification=null;renderBroadcastManageVerification();}if(e.target.id==="comments-search")renderComments();if(e.target.id==="user-profile-search"){userProfileSearch=e.target.value;renderUserProfileRows();}if(e.target.id==="library-search")renderVideoLibraryRows();if(e.target.id==="library-source-search"){librarySourceQuery=e.target.value;renderLibrarySourcePreview();}});
 document.addEventListener("input",e=>{
  if(e.target.id==="bgm-volume"){state.playback.bgmVolume=clampBgmVolume(e.target.value);if(bgmAudio)bgmAudio.volume=state.playback.bgmVolume;updateBgmPlaybackUi();}
  if(e.target.id==="bgm-progress"&&bgmAudio&&Number.isFinite(bgmAudio.duration)){bgmAudio.currentTime=bgmAudio.duration*(Math.max(0,Math.min(1000,Number(e.target.value)||0))/1000);updateBgmPlaybackUi();}
