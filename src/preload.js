@@ -6,7 +6,11 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
   version:"0.1.0-beta.22",
   platform:process.platform,
-  stage:"per-user-comment-speech-mute",
+  stage:"github-release-update-check",
+  updates:Object.freeze({
+    check:()=>ipcRenderer.invoke("app:check-updates"),
+    openReleases:()=>ipcRenderer.invoke("app:open-releases")
+  }),
   videoLibrary:Object.freeze({
     get:()=>ipcRenderer.invoke("app:video-library-get"),
     add:input=>ipcRenderer.invoke("app:video-library-add",input),
