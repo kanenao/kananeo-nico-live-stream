@@ -44,6 +44,7 @@ const BROADCASTER_COMMENT_MIN_INTERVAL_MS = 5000;
 let lastBroadcasterCommentAttemptAt = 0;
 let mainWindow = null;
 let loginWindow = null;
+let broadcastWindow = null;
 let niconicoSession = null;
 let commentProvider = null;
 let commentProgramId = "";
@@ -115,6 +116,41 @@ function openNiconicoLoginWindow() {
     if (loginWindow && !loginWindow.isDestroyed()) loginWindow.close();
   });
   return {opened:true,reused:false};
+}
+
+function openNiconicoBroadcastWindow(mode, input = "") {
+  const navigation = require("./broadcast-navigation").buildBroadcastNavigationUrl(mode, input);
+  if (!navigation.ok) return navigation;
+  const targetUrl = navigation.url;
+
+  if (broadcastWindow && !broadcastWindow.isDestroyed()) {
+    broadcastWindow.focus();
+    broadcastWindow.loadURL(targetUrl).catch(() => {});
+    return {ok:true,reused:true,mode};
+  }
+
+  broadcastWindow = new BrowserWindow({
+    width:1120,height:860,minWidth:820,minHeight:640,
+    title:mode==="create"?"ニコニコ生放送・番組作成":"ニコニコ生放送・番組管理",
+    autoHideMenuBar:true,
+    webPreferences:{session:niconicoSession,contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true}
+  });
+  broadcastWindow.webContents.setWindowOpenHandler(({url}) => {
+    if (isTrustedNiconicoUrl(url)) return {action:"allow"};
+    try { if (new URL(url).protocol==="https:") shell.openExternal(url); } catch {}
+    return {action:"deny"};
+  });
+  broadcastWindow.webContents.on("will-navigate",(event,url) => {
+    if (!isTrustedNiconicoUrl(url)) {
+      event.preventDefault();
+      try { if (new URL(url).protocol==="https:") shell.openExternal(url); } catch {}
+    }
+  });
+  broadcastWindow.on("closed",()=>{broadcastWindow=null;});
+  broadcastWindow.loadURL(targetUrl).catch(()=>{
+    if(broadcastWindow&&!broadcastWindow.isDestroyed())broadcastWindow.close();
+  });
+  return {ok:true,reused:false,mode};
 }
 
 async function checkNiconicoProgram(input) {
@@ -1396,6 +1432,15 @@ async function checkApplicationUpdates() {
 
 function registerIpcHandlers() {
   ipcMain.handle("niconico:open-login",()=>openNiconicoLoginWindow());
+  ipcMain.handle("niconico:open-broadcast-create",event=>{
+    if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    return openNiconicoBroadcastWindow("create");
+  });
+  ipcMain.handle("niconico:open-broadcast-manage",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    if(typeof input!=="string"||input.length>512) return {ok:false,code:"INVALID_INPUT",message:"放送IDを確認してください。"};
+    return openNiconicoBroadcastWindow("manage",input);
+  });
   ipcMain.handle("niconico:get-extension-options",(event,input)=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     return getProgramExtensionOptions(input||{});
@@ -1479,6 +1524,7 @@ function registerIpcHandlers() {
     await stopCommentStream("ログアウトしたためコメント受信を停止しました。");
     closeVideoPlayer();
     try {
+      if(broadcastWindow&&!broadcastWindow.isDestroyed())broadcastWindow.close();
       await niconicoSession.clearStorageData({storages:["cookies","localstorage","indexdb","serviceworkers","cachestorage"]});
       await notifySessionStatus();
       return {ok:true,message:"このアプリ専用のニコニコセッションを削除しました。"};
