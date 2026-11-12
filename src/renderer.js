@@ -58,7 +58,7 @@ let bgmLoading=false;
 let bgmError="";
 let bgmCurrentId="";
 let bgmAudio=null;
-let remoteControlUi={loading:false,status:{running:false,host:"127.0.0.1",port:0,url:"",devices:[],storageHealthy:true,storageMessage:""},pairingCode:"",pairingExpiresAt:null,error:""};
+let remoteControlUi={loading:false,lastRefreshAt:0,status:{running:false,host:"127.0.0.1",port:0,url:"",devices:[],storageHealthy:true,storageMessage:""},pairingCode:"",pairingExpiresAt:null,error:""};
 let quotePlayback={active:false,verified:false,programId:"",videoId:"",queueType:"",itemId:"",message:"ニコ生への引用再生は停止中です。"};
 let quoteAutoTimer=null;
 let quoteAutoToken=0;
@@ -174,6 +174,7 @@ function updateRemoteControlUi(){
  const open=document.querySelector("[data-remote-open-controller]");
  const storage=document.getElementById("remote-storage-message");
  const pairing=document.getElementById("remote-pairing-code");
+ const copyCode=document.querySelector("[data-remote-copy-code]");
  const expiry=document.getElementById("remote-pairing-expiry");
  const error=document.getElementById("remote-control-error");
  if(serverLabel)serverLabel.textContent=remoteControlUi.loading?"状態確認中…":status.running?"起動中":"停止中";
@@ -185,6 +186,7 @@ function updateRemoteControlUi(){
  if(pairButton)pairButton.disabled=remoteControlUi.loading||!status.running;
  if(storage)storage.textContent=status.storageHealthy===false?(status.storageMessage||"保存データを読み取れません。"):"端末情報はこのPC内にハッシュ形式で保存します。";
  if(pairing)pairing.textContent=remoteControlUi.pairingCode||"未発行";
+ if(copyCode)copyCode.disabled=!remoteControlUi.pairingCode;
  if(expiry)expiry.textContent=remoteControlUi.pairingExpiresAt?"有効期限："+formatRemoteTimestamp(remoteControlUi.pairingExpiresAt):"ペアリングコードは5分間有効です。";
  if(error)error.textContent=remoteControlUi.error||"";
  renderRemoteDeviceRows();
@@ -196,10 +198,11 @@ async function refreshRemoteControlUi(silent=false){
   const result=await window.kananeoApp.remote.getStatus();
   if(!result?.ok)throw new Error(result?.message||"リモート操作の状態を取得できませんでした。");
   remoteControlUi.status=result;remoteControlUi.error="";
+  if(remoteControlUi.pairingExpiresAt&&(!result.pairingExpiresAt||Number(result.pairingExpiresAt)<=Date.now())){remoteControlUi.pairingCode="";remoteControlUi.pairingExpiresAt=null;}
  }catch(error){
   remoteControlUi.error=error?.message||"状態を取得できませんでした。";
   if(!silent)toast(remoteControlUi.error);
- }finally{remoteControlUi.loading=false;if(page==="remote")updateRemoteControlUi();}
+ }finally{remoteControlUi.loading=false;remoteControlUi.lastRefreshAt=Date.now();if(page==="remote")updateRemoteControlUi();}
 }
 async function startRemoteControlFromUi(){
  const port=Number(document.getElementById("remote-port")?.value||18240);
@@ -360,7 +363,7 @@ panel("個別ユーザーの読み上げ設定","特定ユーザーのコメン�
 }else if(page==="remote"){
 html=hero("LOCAL REMOTE CONTROL","リモート操作","ペアリングしたブラウザーから、状態確認・コメント閲覧・動画プレビュー・BGMを操作します。")+
 panel("サーバー設定","サーバーは既定で停止しています。起動操作を行ったときだけ127.0.0.1にHTTP接続を開きます。",'<div class="row"><b>状態</b><span id="remote-server-state">停止中</span></div><div class="grid2"><div class="field"><label>localhostポート（1024〜65535）</label><input class="input" id="remote-port" type="number" min="1024" max="65535" value="'+(remoteControlUi.status.port||18240)+'"></div><div class="field"><label>接続URL</label><div class="remote-url" id="remote-server-url">サーバーを起動するとURLを表示します。</div></div></div><div class="actions"><button class="btn primary" type="button" data-remote-start>サーバーを起動</button><button class="btn" type="button" data-remote-stop '+(!remoteControlUi.status.running?"disabled":"")+'>サーバーを停止</button><button class="btn" type="button" data-remote-open-controller '+(!remoteControlUi.status.running?"disabled":"")+'>ブラウザーで操作画面を開く</button><button class="btn" type="button" data-remote-refresh>状態を更新</button></div><div class="muted" id="remote-storage-message"></div><div class="muted" id="remote-control-error">'+esc(remoteControlUi.error||"")+'</div>')+
-panel("端末ペアリング","操作を許可する端末にだけワンタイムコードを渡してください。コードの有効期限は5分、試行は最大5回です。",'<div class="remote-permissions"><label><input type="checkbox" checked disabled> 状態閲覧（必須）</label><label><input type="checkbox" data-remote-permission="comments:read" checked> コメント閲覧</label><label><input type="checkbox" data-remote-permission="player:control"> 動画プレビュー操作</label><label><input type="checkbox" data-remote-permission="bgm:control"> BGM操作</label></div><div class="actions"><button class="btn primary" type="button" data-remote-pair-create '+(!remoteControlUi.status.running?"disabled":"")+'>ワンタイムコードを発行</button></div><div class="remote-pairing-code" id="remote-pairing-code">'+esc(remoteControlUi.pairingCode||"未発行")+'</div><div class="muted" id="remote-pairing-expiry">ペアリングコードは5分間有効です。</div><div class="muted">コードをブラウザーコントローラーの画面に入力すると端末が登録されます。認証トークンは登録時に一度だけ返し、PC内にはハッシュのみ保存します。</div>')+
+panel("端末ペアリング","操作を許可する端末にだけワンタイムコードを渡してください。コードの有効期限は5分、試行は最大5回です。",'<div class="remote-permissions"><label><input type="checkbox" checked disabled> 状態閲覧（必須）</label><label><input type="checkbox" data-remote-permission="comments:read" checked> コメント閲覧</label><label><input type="checkbox" data-remote-permission="player:control"> 動画プレビュー操作</label><label><input type="checkbox" data-remote-permission="bgm:control"> BGM操作</label></div><div class="actions"><button class="btn primary" type="button" data-remote-pair-create '+(!remoteControlUi.status.running?"disabled":"")+'>ワンタイムコードを発行</button></div><div class="remote-pairing-code" id="remote-pairing-code">'+esc(remoteControlUi.pairingCode||"未発行")+'</div><div class="actions"><button class="btn" type="button" data-remote-copy-code '+(!remoteControlUi.pairingCode?"disabled":"")+'>コードをコピー</button></div><div class="muted" id="remote-pairing-expiry">ペアリングコードは5分間有効です。</div><div class="muted">コードをブラウザーコントローラーの画面に入力すると端末が登録されます。認証トークンは登録時に一度だけ返し、PC内にはハッシュのみ保存します。</div>')+
 panel("登録済み端末","登録は最大20台。不要になった端末は失効してください。失効後は同じトークンで再接続できません。",'<div class="row"><b>登録端末</b><span id="remote-device-count">0台</span></div><div id="remote-device-rows" class="remote-device-list"><div class="empty">登録端末はありません。</div></div>')+
 '<div class="banner"><i class="led"></i><div><b>接続範囲の制限</b><small>β31は同じPC内からのlocalhost接続だけに対応します。スマートフォンや別PCからのLAN接続、HTTPS／WSS公開は未実装です。LAN公開はTLS・明示的な有効化・追加の安全確認を実装するまで行いません。</small></div></div>';
 }else if(page==="logs"){
@@ -1745,6 +1748,7 @@ if(b.hasAttribute("data-remote-refresh")){void refreshRemoteControlUi();return;}
 if(b.hasAttribute("data-remote-pair-create")){void createRemotePairingFromUi();return;}
 if(b.hasAttribute("data-remote-open-controller")){const result=await window.kananeoApp.remote.openController();if(!result?.ok)toast(result?.message||"操作画面を開けませんでした。");return;}
 if(b.hasAttribute("data-remote-revoke")){void revokeRemoteDeviceFromUi(b.dataset.remoteRevoke);return;}
+if(b.hasAttribute("data-remote-copy-code")){if(remoteControlUi.pairingCode){const result=await window.kananeoApp.niconico.copyText(remoteControlUi.pairingCode);toast(result?.ok?"ペアリングコードをコピーしました。":"コードをコピーできませんでした。");}return;}
 if(b.hasAttribute("data-remote-copy-url")){const url=remoteControlUi.status.url;if(url){const result=await window.kananeoApp.niconico.copyText(url);toast(result?.ok?"URLをコピーしました。":"URLをコピーできませんでした。");}return;}
 if(b.hasAttribute("data-broadcast-context-action")){void handleBroadcastCommentContextAction(b.dataset.broadcastContextAction);return;}
 if(b.hasAttribute("data-nico-login")){window.kananeoApp.niconico.openLogin().then(()=>toast("ニコニコ公式ログイン画面を開きました"));return;}
@@ -2118,5 +2122,5 @@ void refreshBgmLibrary(true);
 void checkForApplicationUpdates(true);
 if(window.kananeoApp?.remote){window.kananeoApp.remote.onRequest(request=>{void handleRemoteControlRequest(request);});}
 if(state.lastProgramId){void refreshDashboardStatistics(true);void refreshQuotePlayback({silent:true});}
-setInterval(()=>{updateQuoteScheduleUi();if(page==="broadcast"){renderBroadcastManageVerification();updateLiveVideoBounds();}if(page==="dashboard"){updateDashboardStatsUi();if(!dashboardStats.loading&&state.lastProgramId&&Date.now()-(Date.parse(dashboardStats.updatedAt)||0)>30000)void refreshDashboardStatistics(true);}},1000);
+setInterval(()=>{updateQuoteScheduleUi();if(page==="remote"&&!remoteControlUi.loading&&Date.now()-remoteControlUi.lastRefreshAt>5000)void refreshRemoteControlUi(true);if(page==="broadcast"){renderBroadcastManageVerification();updateLiveVideoBounds();}if(page==="dashboard"){updateDashboardStatsUi();if(!dashboardStats.loading&&state.lastProgramId&&Date.now()-(Date.parse(dashboardStats.updatedAt)||0)>30000)void refreshDashboardStatistics(true);}},1000);
 })();
