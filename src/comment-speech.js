@@ -109,14 +109,51 @@ function createCommentSpeechText(comment, profile, settingsInput = {}, ngWordsIn
   return {ok:true,text,settings};
 }
 
+function normalizeSpeechQueueItem(input) {
+  if (typeof input === "string") {
+    const text = input.trim();
+    return text ? text : null;
+  }
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const text = String(input.text ?? "").trim();
+  if (!text) return null;
+  return {
+    ...input,
+    text:text.slice(0,320),
+    userId:String(input.userId ?? "").replace(/\s+/g,"").slice(0,128),
+    userName:String(input.userName ?? "").replace(/[\r\n]+/g," ").trim().slice(0,80)
+  };
+}
+
 function appendSpeechQueue(queueInput, speechItem, maxQueue = 100) {
   const queue = Array.isArray(queueInput) ? queueInput.slice() : [];
   const cap = Math.floor(clampNumber(maxQueue,1,200,100));
-  const text = typeof speechItem === "string" ? speechItem.trim() : "";
-  if (!text) return {queue,added:false,dropped:0};
-  const next = [...queue,text];
+  const item = normalizeSpeechQueueItem(speechItem);
+  if (!item) return {queue,added:false,dropped:0};
+  const next = [...queue,item];
   const dropped = Math.max(0,next.length-cap);
   return {queue:next.slice(dropped),added:true,dropped};
+}
+
+function removeSpeechQueueByUser(queueInput, userIdInput) {
+  const queue = Array.isArray(queueInput) ? queueInput.slice() : [];
+  const userId = String(userIdInput ?? "").replace(/\s+/g,"").slice(0,128);
+  if (!userId) return {queue,removed:0};
+  const next = queue.filter(item => {
+    if (!item || typeof item !== "object") return true;
+    return String(item.userId ?? "").replace(/\s+/g,"").slice(0,128) !== userId;
+  });
+  return {queue:next,removed:queue.length-next.length};
+}
+
+function removeSpeechQueueItem(queueInput, indexInput) {
+  const queue = Array.isArray(queueInput) ? queueInput.slice() : [];
+  const index = Number(indexInput);
+  if (!Number.isInteger(index) || index < 0 || index >= queue.length) {
+    return {queue,removed:null,ok:false};
+  }
+  const [removed] = queue.splice(index,1);
+  return {queue,removed,ok:true};
 }
 
 const api = Object.freeze({
@@ -127,7 +164,10 @@ const api = Object.freeze({
   setUserSpeechMuted,
   selectSpeechVoice,
   createCommentSpeechText,
-  appendSpeechQueue
+  normalizeSpeechQueueItem,
+  appendSpeechQueue,
+  removeSpeechQueueByUser,
+  removeSpeechQueueItem
 });
 
 if (typeof module !== "undefined" && module.exports) module.exports = api;
