@@ -1,0 +1,71 @@
+"use strict";
+
+const test=require("node:test");
+const assert=require("node:assert/strict");
+const {
+  MAX_BGM_TRACKS,
+  MAX_BGM_TRACK_BYTES,
+  ALLOWED_BGM_EXTENSIONS,
+  normalizeBgmTrack,
+  createEmptyBgmLibrary,
+  normalizeBgmLibrary,
+  addBgmTrack,
+  removeBgmTrack,
+  normalizeBgmVolume
+}=require("../src/bgm-library");
+
+const track=(overrides={})=>({
+  id:"123e4567-e89b-42d3-a456-426614174000",
+  name:"sample",
+  extension:".mp3",
+  size:1024,
+  addedAt:"2026-11-12T10:00:00.000Z",
+  ...overrides
+});
+
+test("normalizes audio metadata and rejects unsupported extensions",()=>{
+  assert.deepEqual(normalizeBgmTrack(track()),track());
+  assert.equal(normalizeBgmTrack(track({extension:".exe"})),null);
+  assert.equal(normalizeBgmTrack(track({name:"../bad/name"})).name,".. bad name");
+  assert.equal(normalizeBgmTrack(track({size:MAX_BGM_TRACK_BYTES+1})),null);
+  assert.equal(normalizeBgmTrack(track({id:"bad"})),null);
+});
+
+test("normalizes a playlist, removes duplicate IDs, and enforces library bounds",()=>{
+  const library=normalizeBgmLibrary({tracks:[track(),track(),track({id:"123e4567-e89b-42d3-a456-426614174001",name:"second"})]});
+  assert.equal(library.version,1);
+  assert.equal(library.tracks.length,2);
+  assert.equal(normalizeBgmLibrary(null).tracks.length,0);
+  assert.equal(createEmptyBgmLibrary().tracks.length,0);
+});
+
+test("adds and removes tracks without changing the input library",()=>{
+  const empty=createEmptyBgmLibrary();
+  const added=addBgmTrack(empty,track());
+  assert.equal(added.ok,true);
+  assert.equal(added.library.tracks.length,1);
+  assert.equal(empty.tracks.length,0);
+  assert.equal(addBgmTrack(added.library,track()).code,"DUPLICATE_TRACK");
+  const removed=removeBgmTrack(added.library,track().id);
+  assert.equal(removed.ok,true);
+  assert.equal(removed.library.tracks.length,0);
+  assert.equal(removeBgmTrack(removed.library,track().id).code,"NOT_FOUND");
+  assert.equal(removeBgmTrack(added.library,"bad").code,"INVALID_ID");
+});
+
+test("enforces the playlist track count limit",()=>{
+  const tracks=Array.from({length:MAX_BGM_TRACKS},(_,i)=>track({
+    id:"123e4567-e89b-42d3-a456-"+String(i).padStart(12,"0"),
+    name:"track "+i
+  }));
+  const library=normalizeBgmLibrary({tracks});
+  assert.equal(library.tracks.length,MAX_BGM_TRACKS);
+  assert.equal(addBgmTrack(library,track({id:"123e4567-e89b-42d3-a456-999999999999"})).code,"TRACK_LIMIT");
+});
+
+test("clamps BGM volume to the supported range",()=>{
+  assert.equal(normalizeBgmVolume(0.35),0.35);
+  assert.equal(normalizeBgmVolume(-1),0);
+  assert.equal(normalizeBgmVolume(2),1);
+  assert.equal(normalizeBgmVolume("bad",0.4),0.4);
+});
