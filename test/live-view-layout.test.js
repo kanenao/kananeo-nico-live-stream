@@ -19,9 +19,9 @@ test("keeps valid bounds inside the main window content area", () => {
 
 test("clips scrolled or partially hidden slots to the viewport", () => {
   assert.deepEqual(normalizeLiveViewBounds(
-    {visible:true,x:-20,y:700,width:600,height:300},
+    {visible:true,x:-20,y:600,width:600,height:300},
     {width:1200,height:800}
-  ), {visible:true,x:0,y:700,width:580,height:100});
+  ), {visible:true,x:0,y:600,width:580,height:200});
 });
 
 test("rejects invalid or unreasonable input without exposing a view", () => {
