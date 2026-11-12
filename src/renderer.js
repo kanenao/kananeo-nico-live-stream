@@ -890,9 +890,10 @@ function renderBroadcastComments(){
   const userButton=comment.userId
    ?'<button class="ncv-user-button" data-broadcast-user="'+esc(comment.userId)+'" title="このユーザーで絞り込み">'+esc(name)+'</button>'
    :esc(name);
-  return '<tr class="'+(first?"ncv-first-post ":"")+(read?"ncv-read-marked":"")+'"><td class="ncv-number-cell"><button class="ncv-number-button" data-broadcast-read-through="'+index+'" title="ここまでを既読にする">'+esc(comment.commentNo||"—")+'</button></td><td class="ncv-time-cell">'+esc(time)+'</td><td class="ncv-user-cell">'+userButton+'</td><td class="ncv-body-cell">'+esc(comment.content||"")+'</td><td class="ncv-kind-cell">'+esc(kind)+'</td></tr>';
+  const userIdButton=comment.userId?'<button class="ncv-user-id-button" data-broadcast-user="'+esc(comment.userId)+'" title="このユーザーのコメントだけ表示">'+esc(comment.userId)+'</button>':"—";
+  return '<tr class="'+(first?"ncv-first-post ":"")+(read?"ncv-read-marked":"")+'"><td class="ncv-number-cell"><button class="ncv-number-button" data-broadcast-read-through="'+index+'" title="ここまでを既読にする">'+esc(comment.commentNo||"—")+'</button></td><td class="ncv-time-cell">'+esc(time)+'</td><td class="ncv-user-cell">'+userButton+'</td><td class="ncv-id-cell">'+userIdButton+'</td><td class="ncv-body-cell">'+esc(comment.content||"")+'</td><td class="ncv-kind-cell">'+esc(kind)+'</td></tr>';
  }).join("");
- list.innerHTML='<table class="ncv-comment-table"><thead><tr><th>番号</th><th>時刻</th><th>投稿者</th><th>コメント</th><th>種別</th></tr></thead><tbody>'+rows+'</tbody></table>';
+ list.innerHTML='<table class="ncv-comment-table"><thead><tr><th>番号</th><th>時刻</th><th>投稿者</th><th>ID</th><th>コメント</th><th>種別</th></tr></thead><tbody>'+rows+'</tbody></table>';
  if(wasAtBottom)list.scrollTop=list.scrollHeight;
 }
 async function copyBroadcastComments(){
