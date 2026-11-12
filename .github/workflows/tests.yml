@@ -33,5 +33,6 @@ jobs:
           node --check src/quote-scheduler.js
           node --check src/broadcast-management.js
           node --check src/live-view-layout.js
+          node --check src/comment-view-settings.js
       - name: Run unit tests
         run: npm test
