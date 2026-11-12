@@ -114,3 +114,17 @@ input[type="range"]{accent-color:#8c7cff;cursor:pointer}
 
 .ncv-comment-table .ncv-body-cell{color:var(--ncv-kind-color,#d8dfed)}
 .ncv-comment-table tbody tr.ncv-read-marked .ncv-body-cell{color:#6f7c95}
+
+/* β31 localhost remote controller management */
+.remote-permissions{display:flex;gap:9px 18px;flex-wrap:wrap;padding:10px;border:1px solid #2a3852;border-radius:8px;background:#0e1729}
+.remote-permissions label{display:flex;align-items:center;gap:7px;color:#b6c3d9;font-size:9px}
+.remote-permissions input{accent-color:#8c7cff}
+.remote-url{border:1px solid #35425e;background:#0e1729;border-radius:7px;padding:10px;color:#b9afff;font-size:10px;overflow-wrap:anywhere;min-height:36px}
+.remote-pairing-code{margin:12px 0 6px;padding:16px;border:1px dashed #675ca4;border-radius:9px;background:#171b35;color:#fff;text-align:center;font-size:27px;font-weight:900;letter-spacing:5px;font-variant-numeric:tabular-nums}
+.remote-device-list{display:grid;gap:8px}
+.remote-device-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid #2b3953;border-radius:8px;background:#0e1729}
+.remote-device-main{min-width:0;display:grid;gap:4px}
+.remote-device-main b{font-size:10px;color:#e2e8f4}
+.remote-device-main small{font-size:8px;color:#8b99b2;overflow-wrap:anywhere}
+.remote-device-row .btn{flex-shrink:0}
+.remote-device-row .btn.danger{border-color:#754b5b;background:#2a1c2b;color:#ffbdc9}
