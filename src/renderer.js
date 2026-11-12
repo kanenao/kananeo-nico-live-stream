@@ -217,7 +217,7 @@ return '<div class="row"><div><b>'+esc(profile?.nickname||userId)+'</b><small>'+
 
 html=hero("VOICE & AUTO RESPONSE","音声・自動応答","コメント読み上げをローカル音声合成で行います。読み上げは初期状態OFFで、NGワード・過去コメントは対象外です。")+
 panel("コメント読み上げ","Windows／Chromiumにインストールされた日本語音声を使用します。",'<form id="voice-settings-form"><label class="switchrow"><span><b>コメント読み上げを有効にする</b><small>通常コメントを受信した順に読み上げます。初期状態はOFFです。</small></span><input type="checkbox" id="voice-enabled" '+(state.voice.enabled?"checked":"")+'></label><label class="switchrow"><span><b>読み上げにコテハンを含める</b><small>登録済みコテハン、未登録ならニコニコ表示名を読み上げます。</small></span><input type="checkbox" id="voice-include-name" '+(state.voice.includeName?"checked":"")+'></label><label class="switchrow"><span><b>放送者コメントも読み上げる</b><small>通常コメントとは別に、放送者コメントを読み上げ対象にします。</small></span><input type="checkbox" id="voice-speak-operator" '+(state.voice.speakOperator?"checked":"")+'></label><div class="field"><label>音声</label><select class="input" id="voice-uri"><option value="">システム標準の日本語音声</option></select><small class="muted" id="voice-engine-status">'+(speechAvailable?"利用可能な音声を確認しています…":"この環境では音声合成APIを利用できません。")+'</small></div><div class="grid3"><div class="field"><label>読み上げ速度（0.5〜2）</label><input class="input" id="voice-rate" type="number" min="0.5" max="2" step="0.1" value="'+Number(state.voice.rate||1)+'"></div><div class="field"><label>声の高さ（0〜2）</label><input class="input" id="voice-pitch" type="number" min="0" max="2" step="0.1" value="'+Number(state.voice.pitch??1)+'"></div><div class="field"><label>音量（0〜1）</label><input class="input" id="voice-volume" type="number" min="0" max="1" step="0.1" value="'+Number(state.voice.volume??1)+'"></div></div><div class="actions"><button class="btn primary" type="submit">読み上げ設定を保存</button><button class="btn" type="button" data-voice-test '+(!speechAvailable?"disabled":"")+'>テスト読み上げ</button><button class="btn" type="button" data-voice-pause '+(!speechAvailable?"disabled":"")+'>一時停止</button><button class="btn" type="button" data-voice-resume '+(!speechAvailable?"disabled":"")+'>再開</button><button class="btn" type="button" data-voice-clear>停止・待ち行列クリア</button></div><div class="muted" id="voice-queue-status">待ち行列：'+speechQueue.length+' 件 / 読み上げ待ちで破棄：'+speechDroppedCount+' 件</div></form>')+
-panel("個別ユーザーの読み上げ設定","特定ユーザーのコメントだけを読み上げ対象から除外できます。コメント欄の「読み上げ除外」からも登録できます。",'<div class="row"><b>除外中のユーザー</b><span>'+state.voice.mutedUserIds.length+' 人</span></div>'+(mutedSpeechRows||'<div class="empty">個別除外ユーザーは登録されていません。</div>')+'<div class="actions"><button class="btn" type="button" data-voice-clear-muted '+(!state.voice.mutedUserIds.length?"disabled":"")+'>個別除外をすべて解除</button></div><div class="muted">この設定はこのPC内に保存され、NGユーザー設定とは独立しています。解除後に受信したコメントから読み上げを再開します。</div>');
+panel("個別ユーザーの読み上げ設定","特定ユーザーのコメントだけを読み上げ対象から除外できます。コメント欄の「読み上げ除外」からも登録できます。設定後に受信したコメントへ適用され、すでに読み上げ待ち行列に入ったコメントは残ります。",'<div class="row"><b>除外中のユーザー</b><span>'+state.voice.mutedUserIds.length+' 人</span></div>'+(mutedSpeechRows||'<div class="empty">個別除外ユーザーは登録されていません。</div>')+'<div class="actions"><button class="btn" type="button" data-voice-clear-muted '+(!state.voice.mutedUserIds.length?"disabled":"")+'>個別除外をすべて解除</button></div><div class="muted">この設定はこのPC内に保存され、NGユーザー設定とは独立しています。解除後に受信したコメントから読み上げを再開します。</div>');
 }else if(page==="logs"){
 html=hero("ACTIVITY & BACKUP","履歴・バックアップ","設定データのJSON書き出し・読み込み。")+
 panel("システムログ","操作履歴",state.logs.map(x=>`<div class="row"><i></i><b>${esc(x)}</b></div>`).join("")+'<div class="actions"><button class="btn primary" data-export>設定JSONを書き出す</button><button class="btn" data-clear-logs>ログを消去</button></div>');
@@ -1187,11 +1187,11 @@ if(b.hasAttribute("data-clear")){if(state.player.currentId)void window.kananeoAp
 if(b.hasAttribute("data-voice-toggle-user")){
 const userId=b.dataset.voiceToggleUser||"";
 const result=window.KananeoCommentSpeech.setUserSpeechMuted(state.voice,userId);
-if(!result.ok){toast("ユーザーIDを確認してください。");return;}
+if(!result.ok){toast(result.code==="MUTE_LIMIT"?"読み上げ除外は最大2,000人までです。":"ユーザーIDを確認してください。");return;}
 state.voice=result.settings;save();
 if(page==="comments")renderComments();
 if(page==="voice")render();
-toast(result.muted?"このユーザーを読み上げ対象から除外しました。":"このユーザーの読み上げを許可しました。");
+toast(result.muted?"このユーザーを今後の読み上げ対象から除外しました。":"このユーザーの読み上げを許可しました。");
 return;
 }
 if(b.hasAttribute("data-voice-unmute-user")){
