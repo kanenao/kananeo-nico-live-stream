@@ -105,5 +105,6 @@ module.exports = Object.freeze({
   normalizeBgmLibrary,
   addBgmTrack,
   removeBgmTrack,
+  moveBgmTrack,
   normalizeBgmVolume
 });
