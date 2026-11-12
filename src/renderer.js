@@ -212,10 +212,11 @@ panel("受信コメント",'<span id="comment-count">'+receivedComments.length+'
 }else if(page==="broadcast"){
 const authTitle=nicoStatus.authenticated?"ログインCookieを確認しました":"ニコニコにログインしていません";
 const authText=nicoStatus.authenticated?"このアプリ専用のセッションにログインCookieがあります。Cookie値は表示しません。":"下のボタンからニコニコ公式ログインを開いてください。パスワードはアプリに入力しません。";
-html=hero("LIVE SESSION","放送・枠管理","ニコニコ公式ログイン、放送IDによる番組ページ確認、コメントビューアへの接続を管理します。")+
+html=hero("LIVE SESSION","放送・枠管理","番組枠の作成・放送管理・終了、ニコニコ公式ログイン、番組確認をまとめて操作します。")+
 '<div class="grid2">'+
 panel("ニコニコアカウント接続","公式ログインを専用セッションで開く",'<div class="empty" id="auth-status"><b>'+authTitle+'</b><br>'+authText+'</div><div class="actions"><button class="btn primary" data-nico-login>公式ログインを開く</button><button class="btn" data-nico-refresh>状態を再確認</button><button class="btn" data-nico-logout>このアプリからログアウト</button></div>')+
 panel("番組ページを確認","放送IDまたはニコ生番組URLを入力",'<div class="field"><label>放送ID / URL</label><input class="input" id="live-id" value="${esc(state.lastProgramId||"")}" placeholder="lv123456789 または放送URL" maxlength="512"></div><div class="actions"><button class="btn primary" data-nico-check>番組ページを確認</button></div><div class="empty" id="program-result">確認結果はここに表示します。</div>')+
+panel("番組枠の作成・停止","アプリ内のニコニコ公式画面で番組を作成・管理します。",'<div class="actions"><button class="btn primary" data-broadcast-create>＋ 新規番組枠を作成</button></div><div class="field"><label>停止・管理する放送ID</label><input class="input" id="broadcast-manage-id" value="${esc(state.lastProgramId||"")}" placeholder="lv123456789" maxlength="512"></div><div class="actions"><button class="btn danger" data-broadcast-manage>放送管理画面を開く（終了操作）</button></div><div class="muted">番組作成・放送終了はニコニコ公式画面で最終確認して実行します。アプリからの直接API操作は、現行仕様の確認が済むまで行いません。</div>')+
 '</div>'+
 panel("この段階で確認すること","番組ページ確認とコメント受信を区別します。",'<div class="row"><i></i><div><b>実装済み</b><small>公式ログイン画面、専用セッション、Cookieの存在確認、放送ID検証、番組ページの取得</small></div></div><div class="row"><i></i><div><b>次段階</b><small>NDGRコメントサーバー接続、コメント受信、配信主権限確認</small></div></div>')+
 '<div class="banner"><i class="led"></i><div><b>注意</b><small>番組ページを確認しても、コメント接続や配信操作が成功したことにはなりません。</small></div></div>';
@@ -235,7 +236,7 @@ panel("システムログ","操作履歴",state.logs.map(x=>`<div class="row"><i
 }else{
 html=hero("APPLICATION SETTINGS","設定","アプリのバージョンとローカル設定を管理します。")+
 panel("アップデート確認","GitHub Releasesに公開されたバージョンを確認します。アプリの更新は自動実行せず、公開ページから配布ファイルを選んでください。",'<div class="row"><div><b>現在のバージョン</b><small>このアプリにインストールされているバージョン</small></div><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>確認状態</b><span id="update-check-status">未確認</span></div><div id="update-release-details"></div><div class="actions"><button class="btn primary" type="button" data-update-check>アップデートを確認</button><button class="btn" type="button" data-update-open-releases>GitHub Releasesを開く</button></div>')+
-panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Beta 26 / remote security foundation (network listener disabled)</span></div>');
+panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Beta 27 / in-app Niconico program management</span></div>');
 }
 if(page==="dashboard"&&updateCheckState.result?.updateAvailable){
 const latest=updateCheckState.result.latestVersion||"新しい版";
@@ -1241,6 +1242,19 @@ document.addEventListener("click",async e=>{
 const goBtn=e.target.closest("[data-go]");if(goBtn){go(goBtn.dataset.go);return}
 const b=e.target.closest("button");if(!b)return;
 if(b.hasAttribute("data-nico-login")){window.kananeoApp.niconico.openLogin().then(()=>toast("ニコニコ公式ログイン画面を開きました"));return;}
+if(b.hasAttribute("data-broadcast-create")){
+ const result=await window.kananeoApp.niconico.openBroadcastCreate();
+ toast(result?.ok?"アプリ内に番組作成画面を開きました。内容を確認して作成してください。":(result?.message||"番組作成画面を開けませんでした。"));
+ return;
+}
+if(b.hasAttribute("data-broadcast-manage")){
+ const id=document.getElementById("broadcast-manage-id")?.value.trim()||"";
+ if(!id){toast("停止・管理する放送IDを入力してください。");return;}
+ if(!confirm("放送管理画面を開きます。ニコニコ公式画面で番組の終了を確認して実行してください。"))return;
+ const result=await window.kananeoApp.niconico.openBroadcastManage(id);
+ toast(result?.ok?"アプリ内に放送管理画面を開きました。公式画面で放送終了を実行してください。":(result?.message||"放送管理画面を開けませんでした。"));
+ return;
+}
 if(b.hasAttribute("data-nico-refresh")){window.kananeoApp.niconico.getSessionStatus().then(applyNicoStatus);return;}
 if(b.hasAttribute("data-nico-logout")){if(confirm("このアプリ専用のニコニコセッションを削除しますか？")){clearQuoteAutoTimer("ログアウトのため引用再生の自動次動画を停止しました。");state.playback.quoteAutoNext=false;save();window.kananeoApp.niconico.logout().then(r=>{toast(r.message);return window.kananeoApp.niconico.getSessionStatus()}).then(applyNicoStatus);}return;}
 if(b.hasAttribute("data-nico-check")){void checkProgram();return;}
