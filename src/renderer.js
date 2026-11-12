@@ -1147,13 +1147,18 @@ function ensureBgmAudio(){
 function updateBgmPlaybackUi(){
  const current=getCurrentBgmTrack(),title=document.getElementById("bgm-current-name"),status=document.getElementById("bgm-current-status"),clock=document.getElementById("bgm-clock"),progress=document.getElementById("bgm-progress"),volume=document.getElementById("bgm-volume"),volumeLabel=document.getElementById("bgm-volume-label"),toggle=document.querySelector("[data-bgm-toggle]"),stop=document.querySelector("[data-bgm-stop]");
  if(title)title.textContent=current?.name||"再生する曲を選択してください";
- if(status)status.textContent=bgmError||(!current?"停止中":bgmAudio&&!bgmAudio.paused?"再生中":bgmAudio&&bgmAudio.ended?"再生終了":"一時停止中");
+ if(status)status.textContent=bgmError||(!current?"停止中":bgmAudio&&!bgmAudio.paused?"再生中":bgmAudio&&bgmAudio.ended?"再生終了":bgmAudio&&bgmAudio.currentTime>0?"一時停止中":"停止中");
  const duration=bgmAudio&&Number.isFinite(bgmAudio.duration)?bgmAudio.duration:0,currentTime=bgmAudio&&Number.isFinite(bgmAudio.currentTime)?bgmAudio.currentTime:0;
  if(clock)clock.textContent=formatBgmTime(currentTime)+" / "+formatBgmTime(duration);
  if(progress){progress.max=1000;progress.value=duration>0?Math.round(Math.max(0,Math.min(1,currentTime/duration))*1000):0;progress.disabled=!current||duration<=0;}
  if(volume)volume.value=String(clampBgmVolume(state.playback.bgmVolume));
  if(volumeLabel)volumeLabel.textContent=Math.round(clampBgmVolume(state.playback.bgmVolume)*100)+"%";
  if(toggle){toggle.disabled=!bgmTracks.length;toggle.textContent=bgmAudio&&!bgmAudio.paused?"一時停止":"再生";}
+ document.querySelectorAll("[data-bgm-play]").forEach(button=>{
+  const active=button.dataset.bgmPlay===bgmCurrentId&&!!bgmAudio&&!bgmAudio.paused;
+  button.textContent=active?"再生中":"再生";
+  button.classList.toggle("primary",active);
+ });
  if(stop)stop.disabled=!current;
  const libraryStatus=document.getElementById("bgm-library-status");
  if(libraryStatus&&!bgmLoading)libraryStatus.textContent=bgmError||"登録 "+bgmTracks.length+" 曲";
