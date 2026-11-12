@@ -762,7 +762,7 @@ if(manual&&current&&current.status==="playing")current.status="skipped";
 const next=await getNextQueueItem();
 if(!next){
 if(manual&&current)current.status=previousStatus||"playing";
-save();if(page==="requests"||page==="player")render();toast("次に再生できる動画はありません。");return;
+save();if(page==="requests"||page==="player")render();toast("次に再生できる動画はありません。");return false;
 }
 save();return await playQueueItem(next);
 }
