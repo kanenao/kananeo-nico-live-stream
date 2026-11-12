@@ -213,6 +213,7 @@ function openNiconicoLiveVideoView(input) {
         }
       });
       liveVideoView.setBackgroundColor("#070b14");
+      liveVideoView.setBorderRadius(8);
       mainWindow.contentView.addChildView(liveVideoView);
       liveVideoView.setBounds({x:0,y:0,width:1,height:1});
       liveVideoView.setVisible(false);
@@ -243,6 +244,11 @@ function openNiconicoLiveVideoView(input) {
             status:"ready",programId:liveVideoProgramId,
             url:contents.getURL(),title:contents.getTitle() || "ニコニコ生放送"
           });
+        }
+      });
+      contents.on("render-process-gone",(_event,details) => {
+        if (liveVideoView?.webContents === contents) {
+          notifyLiveVideoState({status:"error",programId:liveVideoProgramId,message:"放送画面の描画プロセスが終了しました："+String(details?.reason||"unknown")});
         }
       });
       contents.on("destroyed",() => {
