@@ -33,7 +33,7 @@ const { buildBroadcasterCommentRequest, parseBroadcasterCommentResponse } = requ
 const { buildUpdateCheckResult } = require("./update-checker");
 const {
   ALLOWED_BGM_EXTENSIONS, MAX_BGM_TRACK_BYTES, MAX_BGM_TRACKS,
-  createEmptyBgmLibrary, normalizeBgmLibrary, addBgmTrack, removeBgmTrack
+  createEmptyBgmLibrary, normalizeBgmLibrary, addBgmTrack, removeBgmTrack, moveBgmTrack
 } = require("./bgm-library");
 
 const NICONICO_HOME = "https://live.nicovideo.jp/";
