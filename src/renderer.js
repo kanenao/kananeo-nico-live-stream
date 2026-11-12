@@ -47,7 +47,7 @@ let pollEnqueteOpen=false;
 let pollWaitTimer=null;
 let pollWaitResolve=null;
 let pollFinishPromise=null;
-const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,mainVolume:1,subVolume:0,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},logs:["β2 UIプロトタイプを起動しました"]};
+const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,mainVolume:1,subVolume:0,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},logs:["β2 UIプロトタイプを起動しました"]};
 let state=load(),page="dashboard";
 function load(){
 try{
@@ -1185,6 +1185,25 @@ if(b.hasAttribute("data-stock-remove")){state.stocks=state.stocks.filter(x=>x.id
 if(b.hasAttribute("data-stock-clear")){if(quotePlayback.queueType==="stock"&&quotePlayback.active){toast("引用再生を停止してからストックを消去してください。");return;}state.stocks=[];save();render();}
 if(b.hasAttribute("data-remove")){const removed=state.requests.find(x=>x.id===b.dataset.remove);state.requests=state.requests.filter(x=>x.id!==b.dataset.remove);if(removed&&removed.id===state.player.currentId){state.player.currentId="";state.player.status="closed";void window.kananeoApp.niconico.closeVideo();}save();render()}
 if(b.hasAttribute("data-clear")){if(state.player.currentId)void window.kananeoApp.niconico.closeVideo();state.requests=[];state.player.currentId="";state.player.status="closed";save();render()}
+if(b.hasAttribute("data-voice-toggle-user")){
+const userId=b.dataset.voiceToggleUser||"";
+const result=window.KananeoCommentSpeech.setUserSpeechMuted(state.voice,userId);
+if(!result.ok){toast("ユーザーIDを確認してください。");return;}
+state.voice=result.settings;save();
+if(page==="comments")renderComments();
+if(page==="voice")render();
+toast(result.muted?"このユーザーを読み上げ対象から除外しました。":"このユーザーの読み上げを許可しました。");
+return;
+}
+if(b.hasAttribute("data-voice-unmute-user")){
+const result=window.KananeoCommentSpeech.setUserSpeechMuted(state.voice,b.dataset.voiceUnmuteUser,false);
+if(result.ok){state.voice=result.settings;save();render();toast("このユーザーの読み上げを許可しました。");}
+return;
+}
+if(b.hasAttribute("data-voice-clear-muted")){
+state.voice=window.KananeoCommentSpeech.normalizeCommentSpeechSettings({...state.voice,mutedUserIds:[]});
+save();render();toast("個別除外をすべて解除しました。");return;
+}
 if(b.hasAttribute("data-voice-toggle-user")){
 const userId=b.dataset.voiceToggleUser||"";
 const result=window.KananeoCommentSpeech.setUserSpeechMuted(state.voice,userId);
