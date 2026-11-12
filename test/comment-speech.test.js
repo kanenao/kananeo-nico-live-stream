@@ -9,7 +9,9 @@ const {
   setUserSpeechMuted,
   selectSpeechVoice,
   createCommentSpeechText,
-  appendSpeechQueue
+  appendSpeechQueue,
+  removeSpeechQueueByUser,
+  removeSpeechQueueItem
 }=require("../src/comment-speech");
 
 test("normalizes speech settings and clamps values",()=>{
@@ -95,4 +97,37 @@ test("speech queue drops oldest items when it reaches its cap",()=>{
   assert.deepEqual(result.queue,["two","three","four"]);
   assert.equal(result.dropped,1);
   assert.equal(appendSpeechQueue(result.queue,"",3).added,false);
+});
+
+
+test("stores speaker metadata with queued comments and removes muted users immediately",()=>{
+  const queued=appendSpeechQueue(
+    [{text:"先頭",userId:"other",userName:"別ユーザー"}],
+    {text:"読み上げ対象外",userId:" 123 ",userName:"対象ユーザー"},
+    10
+  );
+  assert.equal(queued.added,true);
+  assert.deepEqual(queued.queue[1],{text:"読み上げ対象外",userId:"123",userName:"対象ユーザー"});
+  const removed=removeSpeechQueueByUser(queued.queue,"123");
+  assert.equal(removed.removed,1);
+  assert.deepEqual(removed.queue,[{text:"先頭",userId:"other",userName:"別ユーザー"}]);
+  assert.equal(removeSpeechQueueByUser(removed.queue,"").removed,0);
+});
+
+test("removes one pending speech item by index and rejects invalid indexes",()=>{
+  const queue=["one",{text:"two",userId:"2"},"three"];
+  const removed=removeSpeechQueueItem(queue,1);
+  assert.equal(removed.ok,true);
+  assert.deepEqual(removed.removed,{text:"two",userId:"2"});
+  assert.deepEqual(removed.queue,["one","three"]);
+  assert.equal(removeSpeechQueueItem(queue,9).ok,false);
+  assert.equal(removeSpeechQueueItem(queue,-1).ok,false);
+});
+
+test("rejects empty queue metadata without mutating the original queue",()=>{
+  const original=["existing"];
+  const result=appendSpeechQueue(original,{text:"  ",userId:"1"},10);
+  assert.equal(result.added,false);
+  assert.deepEqual(result.queue,original);
+  assert.deepEqual(original,["existing"]);
 });
