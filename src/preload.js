@@ -4,7 +4,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
-  version:"0.1.0-beta.36",
+  version:"0.1.0-beta.37",
   platform:process.platform,
   stage:"https-lan-remote-control",
   remote:Object.freeze({
@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
     revokeDevice:id=>ipcRenderer.invoke("remote:revoke-device",id),
     openController:()=>ipcRenderer.invoke("remote:open-controller"),
     getAudit:()=>ipcRenderer.invoke("remote:audit-list"),
+    getNotificationSettings:()=>ipcRenderer.invoke("remote:notification-settings-get"),
+    setNotificationSettings:settings=>ipcRenderer.invoke("remote:notification-settings-set",settings),
     clearAudit:()=>ipcRenderer.invoke("remote:audit-clear"),
     exportAudit:filters=>ipcRenderer.invoke("remote:audit-export",filters),
     onRequest:callback=>{

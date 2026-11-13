@@ -1,6 +1,6 @@
 "use strict";
 
-const { app, BrowserWindow, WebContentsView, shell, session, ipcMain, clipboard, dialog } = require("electron");
+const { app, BrowserWindow, WebContentsView, shell, session, ipcMain, clipboard, dialog, Notification } = require("electron");
 const path = require("node:path");
 const os = require("node:os");
 const fs = require("node:fs/promises");
@@ -13,6 +13,7 @@ const {
 const { createRemoteControlServer } = require("./remote-control-server");
 const { createRemoteAuditLog } = require("./remote-control-audit");
 const { createRemoteControlAnomalyDetector } = require("./remote-control-anomaly");
+const { normalizeRemoteNotificationSettings, shouldNotifyRemoteAnomaly, buildRemoteAnomalyNotification } = require("./remote-control-notifications");
 const { isPrivateLanIpv4, validateLanTlsMaterial } = require("./remote-control-tls");
 const { pathToFileURL } = require("node:url");
 const {
@@ -85,11 +86,26 @@ let remoteControlStoreQueue = Promise.resolve();
 let remoteControlServer = null;
 const remoteControlAudit = createRemoteAuditLog({limit:500});
 const remoteControlAnomalyDetector = createRemoteControlAnomalyDetector();
+let remoteNotificationSettings = normalizeRemoteNotificationSettings();
 let remoteControlPairing = null;
 let remoteTlsFilePaths = {certificate:"",privateKey:""};
 const pendingRemoteRendererRequests = new Map();
 
 const REMOTE_AUDIT_FILE_NAME="remote-control-audit.jsonl";
+const REMOTE_NOTIFICATION_SETTINGS_FILE_NAME="remote-control-notifications.json";
+async function loadRemoteNotificationSettings(){
+ try{const raw=await fs.readFile(path.join(app.getPath("userData"),REMOTE_NOTIFICATION_SETTINGS_FILE_NAME),"utf8");remoteNotificationSettings=normalizeRemoteNotificationSettings(JSON.parse(raw));}
+ catch(error){if(error?.code!=="ENOENT")console.warn("通知設定を読み込めませんでした。既定値を使用します。");remoteNotificationSettings=normalizeRemoteNotificationSettings();}
+}
+async function saveRemoteNotificationSettings(input){
+ const next=normalizeRemoteNotificationSettings(input),file=path.join(app.getPath("userData"),REMOTE_NOTIFICATION_SETTINGS_FILE_NAME),temporary=file+".tmp";
+ try{await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(temporary,JSON.stringify(next,null,2)+"\\n",{encoding:"utf8",mode:0o600});await fs.rename(temporary,file);remoteNotificationSettings=next;return {ok:true,settings:{...next}};}
+ catch(error){try{await fs.rm(temporary,{force:true});}catch{}return {ok:false,code:"SAVE_FAILED",message:"通知設定を保存できませんでした。"};}
+}
+function showRemoteAnomalyNotification(anomaly){
+ if(!shouldNotifyRemoteAnomaly(remoteNotificationSettings,anomaly)||!Notification.isSupported())return false;
+ try{new Notification(buildRemoteAnomalyNotification(anomaly)).show();return true;}catch{return false;}
+}
 const REMOTE_AUDIT_MAX_FILE_BYTES=2*1024*1024;
 const REMOTE_AUDIT_MAX_RESTORE_BYTES=2*1024*1024;
 async function loadRemoteControlAuditHistory(){
@@ -1833,6 +1849,7 @@ function createRemoteControlHttpServer() {
       const entry=remoteControlAudit.record(event);
       const anomaly=remoteControlAnomalyDetector.observe(event);
       const entries=anomaly?[entry,remoteControlAudit.record(anomaly)]:[entry];
+      if(anomaly)showRemoteAnomalyNotification(anomaly);
       remoteControlStoreQueue=remoteControlStoreQueue.then(async()=>{for(const row of entries)await appendRemoteControlAudit(row);}).catch(()=>{});
     },
     resolveDevice:resolveRemoteDevice,
@@ -1917,6 +1934,15 @@ function registerIpcHandlers() {
   ipcMain.handle("remote:revoke-device",async(event,deviceId)=>{
     if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
     return revokeRemoteControlDevice(deviceId);
+  });
+  ipcMain.handle("remote:notification-settings-get",event=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    return {ok:true,settings:{...remoteNotificationSettings}};
+  });
+  ipcMain.handle("remote:notification-settings-set",async(event,input)=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    if(!input||typeof input!=="object"||typeof input.enabled!=="boolean")return {ok:false,code:"INVALID_INPUT",message:"通知設定を確認してください。"};
+    return saveRemoteNotificationSettings({enabled:input.enabled});
   });
   ipcMain.handle("remote:audit-list",event=>{
     if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
@@ -2234,6 +2260,7 @@ function createMainWindow() {
 app.whenReady().then(async()=>{
   await loadRemoteControlDeviceStore();
   await loadRemoteControlAuditHistory();
+  await loadRemoteNotificationSettings();
   app.setAppUserModelId("jp.kanenao.nicolivestream");
   niconicoSession=session.fromPartition(NICONICO_PARTITION);
   niconicoSession.setPermissionRequestHandler((_webContents,_permission,callback)=>callback(false));
