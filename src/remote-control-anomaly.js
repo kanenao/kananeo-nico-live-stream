@@ -27,7 +27,7 @@ function createRemoteControlAnomalyDetector({
       const matching=events.filter(row=>row.ip===ip);
       if(matching.length>=ipThreshold) {
         const key="ip:"+ip,last=notifiedAt.get(key)||0;
-        if(time-last>=cooldownMs) {
+        if(!notifiedAt.has(key)||time-last>=cooldownMs) {
           notifiedAt.set(key,time);
           return {type:"security_anomaly",ip,command:"ip_burst"};
         }
@@ -35,7 +35,7 @@ function createRemoteControlAnomalyDetector({
     }
     if(events.length>=globalThreshold) {
       const key="global",last=notifiedAt.get(key)||0;
-      if(time-last>=cooldownMs) {
+      if(!notifiedAt.has(key)||time-last>=cooldownMs) {
         notifiedAt.set(key,time);
         return {type:"security_anomaly",ip:"",command:"connection_burst"};
       }
