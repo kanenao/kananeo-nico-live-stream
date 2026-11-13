@@ -87,6 +87,26 @@ let remoteControlPairing = null;
 let remoteTlsFilePaths = {certificate:"",privateKey:""};
 const pendingRemoteRendererRequests = new Map();
 
+const REMOTE_AUDIT_FILE_NAME="remote-control-audit.jsonl";
+const REMOTE_AUDIT_MAX_FILE_BYTES=2*1024*1024;
+const REMOTE_AUDIT_MAX_RESTORE_BYTES=2*1024*1024;
+async function loadRemoteControlAuditHistory(){
+ const directory=app.getPath("userData"),current=path.join(directory,REMOTE_AUDIT_FILE_NAME),backup=current+".1",rows=[];
+ for(const file of [backup,current]){
+  try{const stat=await fs.stat(file);if(!stat.isFile()||stat.size<=0||stat.size>REMOTE_AUDIT_MAX_RESTORE_BYTES)continue;const content=await fs.readFile(file,"utf8");for(const line of content.split(/\r?\n/)){if(!line||line.length>4096)continue;try{const row=JSON.parse(line);if(row&&typeof row==="object")rows.push(row);}catch{}}}
+  catch(error){if(error?.code!=="ENOENT")console.warn("監査ログの読み込みをスキップしました。");}
+ }
+ rows.sort((a,b)=>Date.parse(a?.at||"")-Date.parse(b?.at||""));
+ remoteControlAudit.restore(rows.slice(-500));
+}
+async function appendRemoteControlAudit(entry){
+ const file=path.join(app.getPath("userData"),REMOTE_AUDIT_FILE_NAME),backup=file+".1",line=JSON.stringify(entry)+"\n";
+ try{await fs.mkdir(path.dirname(file),{recursive:true});let size=0;try{size=(await fs.stat(file)).size;}catch(error){if(error?.code!=="ENOENT")throw error;}
+  if(size+Buffer.byteLength(line,"utf8")>REMOTE_AUDIT_MAX_FILE_BYTES){await fs.rm(backup,{force:true});try{await fs.rename(file,backup);}catch(error){if(error?.code!=="ENOENT")throw error;}}
+  await fs.appendFile(file,line,{encoding:"utf8",mode:0o600});
+ }catch(error){console.warn("監査ログを保存できませんでした。",error?.code||"IO_ERROR");}
+}
+
 function isNiconicoHost(hostname) {
   const host = String(hostname || "").toLowerCase();
   return host === "nicovideo.jp" || host.endsWith(".nicovideo.jp");
@@ -1809,8 +1829,7 @@ function createRemoteControlHttpServer() {
     onPair:completeRemotePairing,
     onAudit:event=>{
       const entry=remoteControlAudit.record(event);
-      const auditPath=path.join(app.getPath("userData"),"remote-control-audit.jsonl");
-      remoteControlStoreQueue=remoteControlStoreQueue.then(()=>fs.appendFile(auditPath,JSON.stringify(entry)+"\n","utf8")).catch(()=>{});
+      remoteControlStoreQueue=remoteControlStoreQueue.then(()=>appendRemoteControlAudit(entry)).catch(()=>{});
     },
     resolveDevice:resolveRemoteDevice,
     onSnapshot:async()=>{
@@ -1897,11 +1916,11 @@ function registerIpcHandlers() {
   });
   ipcMain.handle("remote:audit-list",event=>{
     if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
-    return {ok:true,entries:remoteControlAudit.list({limit:500}),sessionOnly:true};
+    return {ok:true,entries:remoteControlAudit.list({limit:500}),sessionOnly:false};
   });
   ipcMain.handle("remote:audit-clear",async event=>{
     if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
-    try{await remoteControlStoreQueue;await fs.writeFile(path.join(app.getPath("userData"),"remote-control-audit.jsonl"),"",{encoding:"utf8",mode:0o600});remoteControlAudit.clear();return {ok:true};}
+    try{await remoteControlStoreQueue;const file=path.join(app.getPath("userData"),REMOTE_AUDIT_FILE_NAME);await fs.writeFile(file,"",{encoding:"utf8",mode:0o600});await fs.rm(file+".1",{force:true});remoteControlAudit.clear();return {ok:true};}
     catch{return {ok:false,code:"CLEAR_FAILED",message:"監査ログを消去できませんでした。"};}
   });
   ipcMain.handle("remote:audit-export",async(event,filters)=>{
@@ -2210,6 +2229,7 @@ function createMainWindow() {
 
 app.whenReady().then(async()=>{
   await loadRemoteControlDeviceStore();
+  await loadRemoteControlAuditHistory();
   app.setAppUserModelId("jp.kanenao.nicolivestream");
   niconicoSession=session.fromPartition(NICONICO_PARTITION);
   niconicoSession.setPermissionRequestHandler((_webContents,_permission,callback)=>callback(false));
