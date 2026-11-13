@@ -206,7 +206,7 @@ async function refreshRemoteControlUi(silent=false){
  }catch(error){
   remoteControlUi.error=error?.message||"状態を取得できませんでした。";
   if(!silent)toast(remoteControlUi.error);
- }finally{remoteControlUi.loading=false;remoteControlUi.lastRefreshAt=Date.now();if(page==="remote")updateRemoteControlUi();if(page==="audit")void refreshRemoteAudit();}
+ }finally{remoteControlUi.loading=false;remoteControlUi.lastRefreshAt=Date.now();if(page==="remote")updateRemoteControlUi();}
 }
 async function refreshRemoteLanOptions(){
  try{

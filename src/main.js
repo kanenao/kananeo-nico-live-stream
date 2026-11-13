@@ -99,7 +99,7 @@ async function loadRemoteNotificationSettings(){
 }
 async function saveRemoteNotificationSettings(input){
  const next=normalizeRemoteNotificationSettings(input),file=path.join(app.getPath("userData"),REMOTE_NOTIFICATION_SETTINGS_FILE_NAME),temporary=file+".tmp";
- try{await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(temporary,JSON.stringify(next,null,2)+"\\n",{encoding:"utf8",mode:0o600});await fs.rename(temporary,file);remoteNotificationSettings=next;return {ok:true,settings:{...next}};}
+ try{await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(temporary,JSON.stringify(next,null,2)+"\n",{encoding:"utf8",mode:0o600});await fs.rename(temporary,file);remoteNotificationSettings=next;return {ok:true,settings:{...next}};}
  catch(error){try{await fs.rm(temporary,{force:true});}catch{}return {ok:false,code:"SAVE_FAILED",message:"通知設定を保存できませんでした。"};}
 }
 function showRemoteAnomalyNotification(anomaly){
