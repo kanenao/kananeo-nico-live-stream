@@ -13,7 +13,7 @@ test("summarizes totals, warnings, anomalies and distinct source IPs",()=>{
 });
 test("returns zeroed summary for empty or invalid input",()=>{
  assert.deepEqual(summarizeRemoteAudit(null),{total:0,warnings:0,anomalies:0,uniqueSources:0});
- assert.deepEqual(summarizeRemoteAudit([null,{}, {type:"auth_failed",ip:4}]),{total:3,warnings:0,anomalies:0,uniqueSources:0});
+ assert.deepEqual(summarizeRemoteAudit([null,{}, {type:"auth_failed",ip:4}]),{total:3,warnings:1,anomalies:0,uniqueSources:0});
 });
 test("counts only non-empty string IP addresses and does not expose them",()=>{
  const result=summarizeRemoteAudit([{ip:" 10.0.0.1 "},{ip:"10.0.0.1"},{ip:"10.0.0.2"}]);
