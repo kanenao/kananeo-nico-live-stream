@@ -1,5 +1,5 @@
 "use strict";
-const DEFAULT_LIMIT=500,EVENT_TYPES=new Set(["peer_rejected","host_rejected","origin_rejected","cross_site_rejected","ip_rate_limited","pair_rate_limited","pair_succeeded","pair_failed","auth_failed","device_rate_limited","command_succeeded","command_failed"]);
+const DEFAULT_LIMIT=500,EVENT_TYPES=new Set(["peer_rejected","host_rejected","origin_rejected","cross_site_rejected","ip_rate_limited","pair_rate_limited","pair_succeeded","pair_failed","auth_failed","device_rate_limited","command_succeeded","command_failed","security_anomaly"]);
 const WARNING_TYPES=new Set(["peer_rejected","host_rejected","origin_rejected","cross_site_rejected","ip_rate_limited","pair_rate_limited","auth_failed","device_rate_limited","command_failed"]);
 function createRemoteAuditLog({limit=DEFAULT_LIMIT,now=()=>Date.now()}={}){
  const max=Math.max(20,Math.min(5000,Math.floor(Number(limit)||DEFAULT_LIMIT))),entries=[];

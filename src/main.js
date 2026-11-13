@@ -12,6 +12,7 @@ const {
 } = require("./remote-control-security");
 const { createRemoteControlServer } = require("./remote-control-server");
 const { createRemoteAuditLog } = require("./remote-control-audit");
+const { createRemoteControlAnomalyDetector } = require("./remote-control-anomaly");
 const { isPrivateLanIpv4, validateLanTlsMaterial } = require("./remote-control-tls");
 const { pathToFileURL } = require("node:url");
 const {
@@ -83,6 +84,7 @@ let remoteControlStoreError = "";
 let remoteControlStoreQueue = Promise.resolve();
 let remoteControlServer = null;
 const remoteControlAudit = createRemoteAuditLog({limit:500});
+const remoteControlAnomalyDetector = createRemoteControlAnomalyDetector();
 let remoteControlPairing = null;
 let remoteTlsFilePaths = {certificate:"",privateKey:""};
 const pendingRemoteRendererRequests = new Map();
@@ -1829,7 +1831,9 @@ function createRemoteControlHttpServer() {
     onPair:completeRemotePairing,
     onAudit:event=>{
       const entry=remoteControlAudit.record(event);
-      remoteControlStoreQueue=remoteControlStoreQueue.then(()=>appendRemoteControlAudit(entry)).catch(()=>{});
+      const anomaly=remoteControlAnomalyDetector.observe(event);
+      const entries=anomaly?[entry,remoteControlAudit.record(anomaly)]:[entry];
+      remoteControlStoreQueue=remoteControlStoreQueue.then(async()=>{for(const row of entries)await appendRemoteControlAudit(row);}).catch(()=>{});
     },
     resolveDevice:resolveRemoteDevice,
     onSnapshot:async()=>{
