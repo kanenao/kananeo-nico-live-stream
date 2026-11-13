@@ -9,8 +9,8 @@ test("detects five failures from one IP in a rolling minute",()=>{
  assert.deepEqual(result,{type:"security_anomaly",ip:"192.168.1.20",command:"ip_burst"});
 });
 test("does not alert again during cooldown and alerts after cooldown",()=>{
- let time=1000;const detector=createRemoteControlAnomalyDetector({now:()=>time,cooldownMs:5000});
- const burst=()=>{let result;for(let i=0;i<5;i++){result=detector.observe({type:"auth_failed",ip:"10.0.0.8"});time+=1;}return result;};
+ let time=1000;const detector=createRemoteControlAnomalyDetector({now:()=>time,cooldownMs:5000,globalThreshold:99});
+ const burst=()=>{let result=null;for(let i=0;i<5;i++){const current=detector.observe({type:"auth_failed",ip:"10.0.0.8"});if(current)result=current;time+=1;}return result;};
  assert.equal(burst().command,"ip_burst");
  assert.equal(burst(),null);
  time+=5001;
