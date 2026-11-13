@@ -160,9 +160,11 @@ function renderRemoteAuditRows(){
  const q=remoteAuditFilters.query.toLowerCase(),from=Date.parse(remoteAuditFilters.from||""),to=Date.parse((remoteAuditFilters.to||"")+"T23:59:59.999");
  const rows=remoteAuditEntries.filter(x=>{const at=Date.parse(x.at);return (!q||[x.at,x.type,x.path,x.ip,x.command,x.method].join(" ").toLowerCase().includes(q))&&(remoteAuditFilters.type==="all"||x.type===remoteAuditFilters.type)&&(!Number.isFinite(from)||at>=from)&&(!Number.isFinite(to)||at<=to);});
  const count=document.getElementById("remote-audit-count");if(count)count.textContent=rows.length+"件";
- const anomalyCount=remoteAuditEntries.filter(x=>x.type==="security_anomaly").length;
+ const summary=window.KananeoRemoteAuditSummary.summarizeRemoteAudit(remoteAuditEntries);
+ const summaryHtml='<div class="grid2"><div class="row"><b>記録件数</b><strong>'+summary.total+'件</strong></div><div class="row"><b>警告イベント</b><strong>'+summary.warnings+'件</strong></div><div class="row"><b>異常アクセス検知</b><strong>'+summary.anomalies+'件</strong></div><div class="row"><b>接続元IP数</b><strong>'+summary.uniqueSources+'件</strong></div></div>';
+ const anomalyCount=summary.anomalies;
  const warning=anomalyCount?'<div class="notice warning" role="status">不審なアクセスの集中を'+anomalyCount+'件検知しました。接続元IPと発生時刻を確認し、心当たりのない端末はリモート端末一覧から失効してください。</div>':'';
- host.innerHTML=warning+(rows.length?'<div class="table-wrap"><table class="table"><thead><tr><th>日時</th><th>イベント</th><th>重要度</th><th>接続元</th><th>API</th><th>操作</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(formatRemoteTimestamp(x.at))+'</td><td>'+esc(x.type==="security_anomaly"?"異常アクセス検知":x.type)+'</td><td>'+esc(x.severity)+'</td><td>'+esc(x.ip||"—")+'</td><td>'+esc((x.method||"")+" "+(x.path||""))+'</td><td>'+esc(x.command||"—")+'</td></tr>').join("")+'</tbody></table></div>':'<div class="empty">条件に一致する監査ログはありません。</div>');
+ host.innerHTML=summaryHtml+warning+(rows.length?'<div class="table-wrap"><table class="table"><thead><tr><th>日時</th><th>イベント</th><th>重要度</th><th>接続元</th><th>API</th><th>操作</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(formatRemoteTimestamp(x.at))+'</td><td>'+esc(x.type==="security_anomaly"?"異常アクセス検知":x.type)+'</td><td>'+esc(x.severity)+'</td><td>'+esc(x.ip||"—")+'</td><td>'+esc((x.method||"")+" "+(x.path||""))+'</td><td>'+esc(x.command||"—")+'</td></tr>').join("")+'</tbody></table></div>':'<div class="empty">条件に一致する監査ログはありません。</div>');
 }
 function renderRemoteDeviceRows(){
  const host=document.getElementById("remote-device-rows");
