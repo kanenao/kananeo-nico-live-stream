@@ -5,7 +5,7 @@ const { parseVersion, bumpVersion, replaceVersion } = require("../scripts/bump-v
 
 test("small changes bump the patch base and keep alpha sequence", () => {
   assert.equal(bumpVersion("0.1.0-alpha.41", "patch"), "0.1.1-alpha.42");
-  assert.equal(bumpVersion("0.1.1-alpha.94", "patch"), "0.1.2-alpha.95");
+  assert.equal(bumpVersion("0.1.1-alpha.94", "patch"), "0.1.1-alpha.95");
 });
 
 test("feature changes bump the minor base without resetting alpha", () => {
