@@ -1,6 +1,6 @@
 {
   "name": "kananeo-nico-live-stream",
-  "version": "0.1.0-alpha.41",
+  "version": "0.1.1-alpha.42",
   "private": true,
   "description": "総合ニコ生管理デスクトップアプリ",
   "main": "src/main.js",
@@ -8,7 +8,9 @@
     "start": "electron .",
     "dev": "electron .",
     "test": "node --test",
-    "dist:win": "electron-builder --win nsis --win portable --x64 --publish never"
+    "dist:win": "electron-builder --win nsis --win portable --x64 --publish never",
+    "version:bump": "node scripts/bump-version.js patch",
+    "version:bump:feature": "node scripts/bump-version.js feature"
   },
   "devDependencies": {
     "electron": "45.2.3",
