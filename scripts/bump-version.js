@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 function parseVersion(value) {
-  const match = String(value || "").match(/^(\\d+)\\.(\\d+)\\.(\\d+)-alpha\\.(\\d+)$/);
+  const match = String(value || "").match(/^(\d+)\.(\d+)\.(\d+)-alpha\.(\d+)$/);
   if (!match) throw new Error("α版のバージョン形式 X.Y.Z-alpha.N が必要です。");
   return match.slice(1).map(Number);
 }
@@ -12,7 +12,7 @@ function parseVersion(value) {
 function bumpVersion(current, kind = "patch") {
   const [major, minor, patch, alpha] = parseVersion(current);
   if (kind === "patch") {
-    const nextPatch = major === 0 && minor === 1 && patch === 0 ? 1 : patch + 1;
+    const nextPatch = major === 0 && minor === 1 && patch === 0 ? 1 : patch;
     return `${major}.${minor}.${nextPatch}-alpha.${alpha + 1}`;
   }
   if (kind === "feature") return `${major}.${minor + 1}.0-alpha.${alpha + 1}`;
@@ -38,7 +38,7 @@ function run() {
     updated.set(file, replaceVersion(fs.readFileSync(file, "utf8"), current, next));
   }
   pkg.version = next;
-  updated.set(packagePath, JSON.stringify(pkg, null, 2) + "\\n");
+  updated.set(packagePath, JSON.stringify(pkg, null, 2) + "\n");
   for (const [file, content] of updated) fs.writeFileSync(file, content, "utf8");
   console.log(`バージョンを ${current} から ${next} に更新しました。`);
 }
