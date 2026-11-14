@@ -72,7 +72,7 @@ let pollEnqueteOpen=false;
 let pollWaitTimer=null;
 let pollWaitResolve=null;
 let pollFinishPromise=null;
-const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,targets:[]},logs:["β2 UIプロトタイプを起動しました"]};
+const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,targets:[],history:[]},logs:["β2 UIプロトタイプを起動しました"]};
 let remoteAuditEntries=[],remoteAuditFilters={query:"",type:"all",from:"",to:""},remoteAuditNotificationEnabled=true;
 let state=load(),page="dashboard";
 let streamMonitorRuntime={busy:false,nextCheckAt:0,lastCheckAt:"",message:"監視は停止中です。",checked:0};
@@ -81,7 +81,7 @@ try{
 const stored=JSON.parse(localStorage.getItem(key)||"{}");
 const loaded={...initial,...stored};
 loaded.player={...initial.player,...(stored.player||{})};
-loaded.streamMonitor=window.KananeoStreamMonitor.normalizeStreamMonitorSettings(stored.streamMonitor);
+loaded.streamMonitor={...window.KananeoStreamMonitor.normalizeStreamMonitorSettings(stored.streamMonitor),history:window.KananeoStreamMonitorHistory.normalizeHistory(stored.streamMonitor?.history)};
 loaded.playback={...initial.playback,...(stored.playback||{})};
 loaded.poll={...initial.poll,...(stored.poll||{})};
 loaded.requestSettings={...initial.requestSettings,...(stored.requestSettings||{})};
@@ -104,11 +104,12 @@ function parseStreamMonitorTargets(value){
  }
  return ids.slice(0,50);
 }
+function addStreamMonitorHistory(type,programId,message){state.streamMonitor.history=window.KananeoStreamMonitorHistory.appendHistory(state.streamMonitor.history,{type,programId,message,at:new Date().toISOString()});save();}
 function renderStreamMonitorUi(){
  const host=document.getElementById("stream-monitor-status");if(!host)return;
  const config=state.streamMonitor,rows=config.targets||[];
  const active=rows.filter(x=>x.status==="onAir").length;
- host.innerHTML='<div class="grid2"><div class="row"><b>監視状態</b><strong>'+(config.enabled?"稼働中":"停止中")+'</strong></div><div class="row"><b>登録放送</b><strong>'+rows.length+'件</strong></div><div class="row"><b>放送中</b><strong>'+active+'件</strong></div><div class="row"><b>最終確認</b><strong>'+(streamMonitorRuntime.lastCheckAt?esc(new Date(streamMonitorRuntime.lastCheckAt).toLocaleTimeString("ja-JP")):"未確認")+'</strong></div></div><div class="muted">'+esc(streamMonitorRuntime.message)+'</div><div class="stream-monitor-list">'+(rows.map(x=>'<div class="row"><div><b>'+esc(x.programId)+'</b><small>'+esc(x.title||"番組名未取得")+' / '+esc(window.KananeoStreamMonitor.statusLabel(x.status))+(x.lastError?" / "+esc(x.lastError):"")+'</small></div><span>'+esc(x.lastCheckedAt?new Date(x.lastCheckedAt).toLocaleTimeString("ja-JP"):"—")+'</span></div>').join("")||'<div class="empty">監視する放送IDを登録してください。</div>')+'</div>';
+ host.innerHTML='<div class="grid2"><div class="row"><b>監視状態</b><strong>'+(config.enabled?"稼働中":"停止中")+'</strong></div><div class="row"><b>登録放送</b><strong>'+rows.length+'件</strong></div><div class="row"><b>放送中</b><strong>'+active+'件</strong></div><div class="row"><b>最終確認</b><strong>'+(streamMonitorRuntime.lastCheckAt?esc(new Date(streamMonitorRuntime.lastCheckAt).toLocaleTimeString("ja-JP")):"未確認")+'</strong></div></div><div class="muted">'+esc(streamMonitorRuntime.message)+'</div><div class="stream-monitor-list">'+(rows.map(x=>'<div class="row"><div><b>'+esc(x.programId)+'</b><small>'+esc(x.title||"番組名未取得")+' / '+esc(window.KananeoStreamMonitor.statusLabel(x.status))+(x.lastError?" / "+esc(x.lastError):"")+'</small></div><span>'+esc(x.lastCheckedAt?new Date(x.lastCheckedAt).toLocaleTimeString("ja-JP"):"—")+'</span></div>').join("")||'<div class="empty">監視する放送IDを登録してください。</div>')+'</div><h3>監視履歴（最新20件）</h3><div class="stream-monitor-list">'+(state.streamMonitor.history.slice(0,20).map(item=>'<div class="row"><div><b>'+esc(item.programId||"監視システム")+'</b><small>'+esc(item.message)+'</small></div><span>'+esc(new Date(item.at).toLocaleString("ja-JP"))+'</span></div>').join("")||'<div class="empty">履歴はまだありません。</div>')+'</div>';
  const start=document.querySelector("[data-stream-monitor-start]"),stop=document.querySelector("[data-stream-monitor-stop]"),check=document.querySelector("[data-stream-monitor-check]");
  if(start)start.disabled=config.enabled||!rows.length;if(stop)stop.disabled=!config.enabled;if(check)check.disabled=streamMonitorRuntime.busy||!rows.length;
 }
@@ -140,7 +141,7 @@ async function runStreamMonitorCheck(force=false){
    const index=state.streamMonitor.targets.findIndex(x=>x.programId===target.programId);
    if(index>=0)state.streamMonitor.targets[index]=updated.target;
    checked++;
-   if(updated.becameLive)detected.push(target.programId);
+   if(updated.becameLive){detected.push(target.programId);addStreamMonitorHistory("live",target.programId,"放送開始を検知しました。");}else if(!result?.ok){addStreamMonitorHistory("error",target.programId,result?.message||"番組確認に失敗しました。");}
    renderStreamMonitorUi();
   }
   streamMonitorRuntime.lastCheckAt=new Date().toISOString();streamMonitorRuntime.checked=checked;
@@ -158,10 +159,10 @@ async function runStreamMonitorCheck(force=false){
 }
 function startStreamMonitor(){
  if(!state.streamMonitor.targets?.length){toast("先に監視対象を保存してください。");return;}
- state.streamMonitor.enabled=true;save();streamMonitorRuntime.nextCheckAt=0;streamMonitorRuntime.message="監視を開始しました。";renderStreamMonitorUi();void runStreamMonitorCheck(true);toast("放送監視を開始しました。アプリ起動中に定期確認します。");
+ state.streamMonitor.enabled=true;addStreamMonitorHistory("started","","放送監視を開始しました。");save();streamMonitorRuntime.nextCheckAt=0;streamMonitorRuntime.message="監視を開始しました。";renderStreamMonitorUi();void runStreamMonitorCheck(true);toast("放送監視を開始しました。アプリ起動中に定期確認します。");
 }
 function stopStreamMonitor(){
- state.streamMonitor.enabled=false;save();streamMonitorRuntime.nextCheckAt=0;streamMonitorRuntime.message="監視を停止しました。";renderStreamMonitorUi();toast("放送監視を停止しました。");
+ state.streamMonitor.enabled=false;addStreamMonitorHistory("stopped","","放送監視を停止しました。");save();streamMonitorRuntime.nextCheckAt=0;streamMonitorRuntime.message="監視を停止しました。";renderStreamMonitorUi();toast("放送監視を停止しました。");
 }
 function renderExtensionOptions(){
 const node=document.getElementById("extension-options");
@@ -2224,7 +2225,7 @@ if(e.target.id==="ng-word-form"){state.ngWords.push(document.getElementById("ng-
 if(e.target.id==="ng-user-form"){state.ngUsers.push(document.getElementById("ng-user").value.trim());save();render()}
 if(e.target.id==="track-form"){state.playlist.push(document.getElementById("track").value.trim());save();render()}
 });
-if(window.speechSynthesis&&typeof window.speechSynthesis.addEventListener==="function"){window.speechSynthesis.addEventListener("voiceschanged",()=>{if(page==="voice")renderSpeechVoices();});}
+window.addEventListener("focus",()=>{if(state.streamMonitor.enabled){streamMonitorRuntime.nextCheckAt=0;void runStreamMonitorCheck(true);}});\ndocument.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&state.streamMonitor.enabled){streamMonitorRuntime.nextCheckAt=0;void runStreamMonitorCheck(true);}});\nif(window.speechSynthesis&&typeof window.speechSynthesis.addEventListener==="function"){window.speechSynthesis.addEventListener("voiceschanged",()=>{if(page==="voice")renderSpeechVoices();});}
 if(window.kananeoApp?.niconico){window.kananeoApp.niconico.getSessionStatus().then(applyNicoStatus).catch(()=>{});window.kananeoApp.niconico.onSessionChanged(applyNicoStatus);
     window.kananeoApp.niconico.onLiveVideoState(applyLiveVideoState);
     void refreshVideoLibrary(true);
