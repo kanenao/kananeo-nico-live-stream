@@ -1,7 +1,7 @@
 "use strict";
 const test=require("node:test");
 const assert=require("node:assert/strict");
-const {normalizeStreamMonitorSettings,applyProgramCheck,statusLabel}=require("../src/stream-monitor");
+const {normalizeStreamMonitorSettings,applyProgramCheck,isStreamMonitorGenerationCurrent,statusLabel}=require("../src/stream-monitor");
 test("normalizes and deduplicates at most 50 registered broadcast IDs",()=>{
  const targets=Array.from({length:55},(_,i)=>({programId:"lv"+(1000+i)}));
  const result=normalizeStreamMonitorSettings({enabled:true,intervalSeconds:45,autoComments:true,targets:[...targets,{programId:"LV1000"},{programId:"https://example.com"}]});
@@ -22,4 +22,12 @@ test("does not mark a target offline when a page request fails",()=>{
 });
 test("shows safe Japanese status labels",()=>{
  assert.equal(statusLabel("onAir"),"放送中");assert.equal(statusLabel("ended"),"終了");assert.equal(statusLabel("other"),"状態未確認");
+});
+
+test("invalidates stale asynchronous checks after stop or settings changes",()=>{
+ const captured=12;
+ assert.equal(isStreamMonitorGenerationCurrent(captured,12),true);
+ assert.equal(isStreamMonitorGenerationCurrent(captured,13),false);
+ assert.equal(isStreamMonitorGenerationCurrent(captured,11),false);
+ assert.equal(isStreamMonitorGenerationCurrent("12",12),false);
 });

@@ -137,6 +137,7 @@ async function runStreamMonitorCheck(force=false){
   for(const target of [...config.targets]){
    let result;
    try{result=await window.kananeoApp.niconico.checkProgram(target.programId);}catch(error){result={ok:false,message:error?.message||"確認に失敗しました。"};}
+   if(!window.KananeoStreamMonitor.isStreamMonitorGenerationCurrent(generation,streamMonitorRuntime.generation))break;
    const updated=window.KananeoStreamMonitor.applyProgramCheck(target,result,new Date().toISOString());
    const index=state.streamMonitor.targets.findIndex(x=>x.programId===target.programId);
    if(index>=0)state.streamMonitor.targets[index]=updated.target;
@@ -148,11 +149,12 @@ async function runStreamMonitorCheck(force=false){
   streamMonitorRuntime.message=checked+"件を確認しました。次回確認："+new Date(next).toLocaleTimeString("ja-JP");
   save();
   for(const id of detected){
+   if(!window.KananeoStreamMonitor.isStreamMonitorGenerationCurrent(generation,streamMonitorRuntime.generation))break;
    toast("放送開始を検知しました："+id);
    if(state.streamMonitor.autoComments){
     const active=["connecting","connected","recovering"].includes(commentConnection.state);
     if(active&&commentConnection.programId.toLowerCase()!==id){streamMonitorRuntime.message=id+" は放送中ですが、別の番組のコメントを受信中のため自動接続を保留しました。";}
-    else if(!active){streamMonitorRuntime.message=id+" の放送開始を検知。コメント取得を開始しています。";await startComments(id);}
+    else if(!active&&window.KananeoStreamMonitor.isStreamMonitorGenerationCurrent(generation,streamMonitorRuntime.generation)){streamMonitorRuntime.message=id+" の放送開始を検知。コメント取得を開始しています。";await startComments(id);}
    }
   }
  }finally{streamMonitorRuntime.busy=false;renderStreamMonitorUi();}

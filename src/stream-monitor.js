@@ -22,6 +22,7 @@ function applyProgramCheck(target,result,checkedAt=new Date().toISOString()){
  const status=LIVE_STATUSES.has(raw)?"onAir":ENDED_STATUSES.has(raw)?"ended":"unknown";
  return {target:{...previous,status,title:typeof result.title==="string"?result.title.slice(0,200):previous.title||"",lastCheckedAt:checkedAt,lastError:""},becameLive:status==="onAir"&&previous.status!=="onAir"};
 }
+function isStreamMonitorGenerationCurrent(capturedGeneration,currentGeneration){return Number.isInteger(capturedGeneration)&&capturedGeneration===currentGeneration;}
 function statusLabel(status){return status==="onAir"?"放送中":status==="ended"?"終了":"状態未確認";}
-if(typeof module!=="undefined"&&module.exports)module.exports={normalizeStreamMonitorSettings,applyProgramCheck,statusLabel};
-if(typeof window!=="undefined")window.KananeoStreamMonitor={normalizeStreamMonitorSettings,applyProgramCheck,statusLabel};
+if(typeof module!=="undefined"&&module.exports)module.exports={normalizeStreamMonitorSettings,applyProgramCheck,isStreamMonitorGenerationCurrent,statusLabel};
+if(typeof window!=="undefined")window.KananeoStreamMonitor={normalizeStreamMonitorSettings,applyProgramCheck,isStreamMonitorGenerationCurrent,statusLabel};
