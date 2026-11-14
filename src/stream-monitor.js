@@ -6,7 +6,7 @@ function normalizeStreamMonitorSettings(input){
  const seen=new Set(),targets=[];
  for(const item of Array.isArray(value.targets)?value.targets:[]){
   const id=typeof item?.programId==="string"?item.programId.trim().toLowerCase():"";
-  if(!/^lv\\d{1,20}$/.test(id)||seen.has(id)||targets.length>=50)continue;
+  if(!/^lv\d{1,20}$/.test(id)||seen.has(id)||targets.length>=50)continue;
   seen.add(id);
   targets.push({programId:id,status:["onAir","ended","unknown"].includes(item.status)?item.status:"unknown",title:typeof item.title==="string"?item.title.slice(0,200):"",lastCheckedAt:typeof item.lastCheckedAt==="string"?item.lastCheckedAt:"",lastError:typeof item.lastError==="string"?item.lastError.slice(0,240):""});
  }

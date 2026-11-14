@@ -94,12 +94,12 @@ return loaded;
 }
 function save(){localStorage.setItem(key,JSON.stringify(state))}
 function parseStreamMonitorTargets(value){
- const rows=String(value||"").split(/\\r?\\n|,/).map(x=>x.trim()).filter(Boolean);
+ const rows=String(value||"").split(/\r?\n|,/).map(x=>x.trim()).filter(Boolean);
  const ids=[];
  for(const row of rows){
   let id="";
-  if(/^lv\\d+$/i.test(row))id=row.toLowerCase();
-  else{try{const url=new URL(row);if(url.protocol==="https:"&&["live.nicovideo.jp","live2.nicovideo.jp"].includes(url.hostname.toLowerCase())){const match=url.pathname.match(/^\\/watch\\/(lv\\d+)\\/?$/i);if(match)id=match[1].toLowerCase();}}catch{}}
+  if(/^lv\d+$/i.test(row))id=row.toLowerCase();
+  else{try{const url=new URL(row);if(url.protocol==="https:"&&["live.nicovideo.jp","live2.nicovideo.jp"].includes(url.hostname.toLowerCase())){const match=url.pathname.match(/^\/watch\/(lv\d+)\/?$/i);if(match)id=match[1].toLowerCase();}}catch{}}
   if(id&&!ids.includes(id))ids.push(id);
  }
  return ids.slice(0,50);
@@ -484,7 +484,7 @@ const options=sources.map(source=>'<option value="'+esc(source)+'" '+(librarySou
 html=html.replace('<div class="section"><p id="library-count">','<div class="field"><label>取り込み元で絞り込み</label><select class="input" id="library-source"><option value="">すべて</option>'+options+'</select></div><div class="section"><p id="library-count">');
 }
 document.getElementById("content").innerHTML=html;
-if(page==="broadcast"){renderBroadcastManageVerification();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();}
+if(page==="broadcast"){renderBroadcastManageVerification();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();renderStreamMonitorUi();}
 updateLiveVideoBounds();
 if(page==="voice"){renderSpeechVoices();updateSpeechQueueUi();}
 if(page==="settings")renderUpdateCheck();
