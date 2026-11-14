@@ -6,7 +6,9 @@ test("normalizes monitor history and rejects malformed entries",()=>{
  const rows=normalizeHistory([{type:"live",programId:"LV123",message:"開始",at:"2026-11-14T00:00:00Z"},{type:"bad",programId:"https://evil",message:"x".repeat(400),at:"invalid"},null]);
  assert.equal(rows.length,1);
  assert.equal(rows[0].programId,"lv123");
- assert.equal(rows[0].message,"開始");\n const bounded=normalizeHistory([{type:"info",programId:"",message:"x".repeat(400),at:"2026-11-14T00:00:00Z"}]);\n assert.equal(bounded[0].message.length,240);
+ assert.equal(rows[0].message,"開始");
+ const bounded=normalizeHistory([{type:"info",programId:"",message:"x".repeat(400),at:"2026-11-14T00:00:00Z"}]);
+ assert.equal(bounded[0].message.length,240);
 });
 test("prepends newest history and caps retained records",()=>{
  let rows=[];
