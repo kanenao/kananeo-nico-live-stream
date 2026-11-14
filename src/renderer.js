@@ -75,7 +75,7 @@ let pollFinishPromise=null;
 const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,targets:[],history:[]},logs:["β2 UIプロトタイプを起動しました"]};
 let remoteAuditEntries=[],remoteAuditFilters={query:"",type:"all",from:"",to:""},remoteAuditNotificationEnabled=true;
 let state=load(),page="dashboard";
-let streamMonitorRuntime={busy:false,nextCheckAt:0,lastCheckAt:"",message:"監視は停止中です。",checked:0};
+let streamMonitorRuntime={busy:false,nextCheckAt:0,lastCheckAt:"",message:"監視は停止中です。",checked:0,generation:0};
 function load(){
 try{
 const stored=JSON.parse(localStorage.getItem(key)||"{}");
@@ -122,7 +122,7 @@ function saveStreamMonitorSettings(){
  const interval=Number(document.getElementById("stream-monitor-interval")?.value||60);
  state.streamMonitor.intervalSeconds=Math.max(30,Math.min(300,Number.isFinite(interval)?interval:60));
  state.streamMonitor.autoComments=document.getElementById("stream-monitor-auto-comments")?.checked===true;
- save();streamMonitorRuntime.nextCheckAt=0;renderStreamMonitorUi();toast(ids.length+"件の監視対象を保存しました。");
+ save();streamMonitorRuntime.generation++;streamMonitorRuntime.nextCheckAt=0;renderStreamMonitorUi();toast(ids.length+"件の監視対象を保存しました。");
 }
 async function runStreamMonitorCheck(force=false){
  const config=state.streamMonitor;
@@ -130,7 +130,7 @@ async function runStreamMonitorCheck(force=false){
  if(streamMonitorRuntime.busy)return;
  if(!config.targets?.length){streamMonitorRuntime.message="監視対象が登録されていません。";renderStreamMonitorUi();return;}
  if(!force&&Date.now()<streamMonitorRuntime.nextCheckAt)return;
- streamMonitorRuntime.busy=true;streamMonitorRuntime.message="登録した放送ページを確認しています…";renderStreamMonitorUi();
+ streamMonitorRuntime.busy=true;const generation=++streamMonitorRuntime.generation;streamMonitorRuntime.message="登録した放送ページを確認しています…";renderStreamMonitorUi();
  const next=Date.now()+(config.intervalSeconds||60)*1000;streamMonitorRuntime.nextCheckAt=next;
  let checked=0,detected=[];
  try{
@@ -162,7 +162,7 @@ function startStreamMonitor(){
  state.streamMonitor.enabled=true;addStreamMonitorHistory("started","","放送監視を開始しました。");save();streamMonitorRuntime.nextCheckAt=0;streamMonitorRuntime.message="監視を開始しました。";renderStreamMonitorUi();void runStreamMonitorCheck(true);toast("放送監視を開始しました。アプリ起動中に定期確認します。");
 }
 function stopStreamMonitor(){
- state.streamMonitor.enabled=false;addStreamMonitorHistory("stopped","","放送監視を停止しました。");save();streamMonitorRuntime.nextCheckAt=0;streamMonitorRuntime.message="監視を停止しました。";renderStreamMonitorUi();toast("放送監視を停止しました。");
+ state.streamMonitor.enabled=false;streamMonitorRuntime.generation++;addStreamMonitorHistory("stopped","","放送監視を停止しました。");save();streamMonitorRuntime.nextCheckAt=0;streamMonitorRuntime.message="監視を停止しました。";renderStreamMonitorUi();toast("放送監視を停止しました。");
 }
 function renderExtensionOptions(){
 const node=document.getElementById("extension-options");
@@ -445,7 +445,7 @@ panel("番組枠の作成・終了","公式の番組作成・管理画面を利�
 '<div id="broadcast-comments-list" class="ncv-comment-list"><div class="empty">コメント受信を開始すると、ここに一覧表示します。</div></div><div id="broadcast-comment-context" class="ncv-context-menu" hidden></div>'+
 '<details class="ncv-display-settings"><summary>コメント表示をカスタマイズ（文字サイズ・列・並び順・色）</summary><div id="broadcast-comment-settings-controls"></div></details><div class="muted">コメント番号をクリックすると既読位置を記録、ダブルクリックで解除できます。投稿者名をクリックすると、そのユーザーのコメントだけを表示します。</div></section>'+
 '</div>'+
-panel("24時間放送監視","登録した番組ページをアプリ起動中に定期確認します。放送開始時は通知し、任意でコメント取得を自動開始します。",'<div class="field"><label>監視する放送ID・公式番組URL（1行に1件、最大50件）</label><textarea class="input" id="stream-monitor-targets" rows="4" placeholder="lv123456789\nlv987654321">'+esc((state.streamMonitor.targets||[]).map(x=>x.programId).join("\n"))+'</textarea></div><div class="grid2"><div class="field"><label>確認間隔</label><select class="input" id="stream-monitor-interval"><option value="30" '+(state.streamMonitor.intervalSeconds===30?"selected":"")+'>30秒</option><option value="60" '+(state.streamMonitor.intervalSeconds===60?"selected":"")+'>1分</option><option value="120" '+(state.streamMonitor.intervalSeconds===120?"selected":"")+'>2分</option><option value="300" '+(state.streamMonitor.intervalSeconds===300?"selected":"")+'>5分</option></select></div><label class="switchrow"><span><b>放送開始時にコメント取得</b><small>受信コメントをPC内へ保存します。別番組を受信中は切り替えません。</small></span><input type="checkbox" id="stream-monitor-auto-comments" '+(state.streamMonitor.autoComments?"checked":"")+'></label></div><div class="actions"><button class="btn" type="button" data-stream-monitor-save>監視対象を保存</button><button class="btn primary" type="button" data-stream-monitor-start '+(state.streamMonitor.enabled?"disabled":"")+'>監視開始</button><button class="btn danger" type="button" data-stream-monitor-stop '+(!state.streamMonitor.enabled?"disabled":"")+'>監視停止</button><button class="btn" type="button" data-stream-monitor-check>今すぐ確認</button></div><div id="stream-monitor-status" class="section"></div><div class="muted">監視はアプリが起動している間に動作します。PCのスリープ中・アプリ終了中は確認できません。現段階の自動開始対象はコメント取得です。映像ファイルの自動録画は別途実装が必要です。</div>')+
+panel("24時間放送監視","登録した番組ページをアプリ起動中に定期確認します。放送開始時は通知し、任意でコメント取得を自動開始します。",'<div class="field"><label>監視する放送ID・公式番組URL（1行に1件、最大50件）</label><textarea class="input" id="stream-monitor-targets" rows="4" placeholder="lv123456789\nlv987654321">'+esc((state.streamMonitor.targets||[]).map(x=>x.programId).join("\n"))+'</textarea></div><div class="grid2"><div class="field"><label>確認間隔</label><select class="input" id="stream-monitor-interval"><option value="30" '+(state.streamMonitor.intervalSeconds===30?"selected":"")+'>30秒</option><option value="60" '+(state.streamMonitor.intervalSeconds===60?"selected":"")+'>1分</option><option value="120" '+(state.streamMonitor.intervalSeconds===120?"selected":"")+'>2分</option><option value="300" '+(state.streamMonitor.intervalSeconds===300?"selected":"")+'>5分</option></select></div><label class="switchrow"><span><b>放送開始時にコメント取得</b><small>受信コメントをPC内へ保存します。別番組を受信中は切り替えません。</small></span><input type="checkbox" id="stream-monitor-auto-comments" '+(state.streamMonitor.autoComments?"checked":"")+'></label></div><div class="actions"><button class="btn" type="button" data-stream-monitor-save>監視対象を保存</button><button class="btn primary" type="button" data-stream-monitor-start '+(state.streamMonitor.enabled?"disabled":"")+'>監視開始</button><button class="btn danger" type="button" data-stream-monitor-stop '+(!state.streamMonitor.enabled?"disabled":"")+'>監視停止</button><button class="btn" type="button" data-stream-monitor-check>今すぐ確認</button></div><div id="stream-monitor-status" class="section"></div><div class="muted">監視停止・対象変更時は処理中の古い確認結果を破棄します。監視はアプリが起動している間に動作します。PCのスリープ中・アプリ終了中は確認できません。現段階の自動開始対象はコメント取得です。映像ファイルの自動録画は別途実装が必要です。</div>')+
 '<div class="banner"><i class="led"></i><div><b>表示について</b><small>放送映像はニコニコ公式視聴ページを専用セッションで表示します。コメント一覧はこのアプリが受信したNDGRコメントを表示します。配信ページの仕様や視聴権限により映像が表示できない場合があります。</small></div></div>';
 }else if(page==="voice"){
 const speechAvailable=!!(window.speechSynthesis&&typeof window.SpeechSynthesisUtterance==="function");
