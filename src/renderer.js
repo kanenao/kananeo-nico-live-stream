@@ -94,7 +94,8 @@ return loaded;
 }
 function save(){localStorage.setItem(key,JSON.stringify(state))}
 function parseStreamMonitorTargets(value){
- const rows=String(value||"").split(/\r?\n|,/).map(x=>x.trim()).filter(Boolean);
+ const rows=String(value||"").split(/\r?
+|,/).map(x=>x.trim()).filter(Boolean);
  const ids=[];
  for(const row of rows){
   let id="";
@@ -336,7 +337,9 @@ async function createRemotePairingFromUi(){
 async function revokeRemoteDeviceFromUi(deviceId){
  const device=(remoteControlUi.status.devices||[]).find(item=>item.id===deviceId);
  if(!device||device.revokedAt)return;
- if(!confirm("「"+device.name+"」の接続権限を失効しますか？\n\n失効後は、この端末のトークンを再利用できません。"))return;
+ if(!confirm("「"+device.name+"」の接続権限を失効しますか？
+
+失効後は、この端末のトークンを再利用できません。"))return;
  const result=await window.kananeoApp.remote.revokeDevice(deviceId);
  if(!result?.ok){toast(result?.message||"端末を失効できませんでした。");return;}
  remoteControlUi.pairingCode="";remoteControlUi.pairingExpiresAt=null;
@@ -445,7 +448,9 @@ panel("番組枠の作成・終了","公式の番組作成・管理画面を利�
 '<div id="broadcast-comments-list" class="ncv-comment-list"><div class="empty">コメント受信を開始すると、ここに一覧表示します。</div></div><div id="broadcast-comment-context" class="ncv-context-menu" hidden></div>'+
 '<details class="ncv-display-settings"><summary>コメント表示をカスタマイズ（文字サイズ・列・並び順・色）</summary><div id="broadcast-comment-settings-controls"></div></details><div class="muted">コメント番号をクリックすると既読位置を記録、ダブルクリックで解除できます。投稿者名をクリックすると、そのユーザーのコメントだけを表示します。</div></section>'+
 '</div>'+
-panel("24時間放送監視","登録した番組ページをアプリ起動中に定期確認します。放送開始時は通知し、任意でコメント取得を自動開始します。",'<div class="field"><label>監視する放送ID・公式番組URL（1行に1件、最大50件）</label><textarea class="input" id="stream-monitor-targets" rows="4" placeholder="lv123456789\nlv987654321">'+esc((state.streamMonitor.targets||[]).map(x=>x.programId).join("\n"))+'</textarea></div><div class="grid2"><div class="field"><label>確認間隔</label><select class="input" id="stream-monitor-interval"><option value="30" '+(state.streamMonitor.intervalSeconds===30?"selected":"")+'>30秒</option><option value="60" '+(state.streamMonitor.intervalSeconds===60?"selected":"")+'>1分</option><option value="120" '+(state.streamMonitor.intervalSeconds===120?"selected":"")+'>2分</option><option value="300" '+(state.streamMonitor.intervalSeconds===300?"selected":"")+'>5分</option></select></div><label class="switchrow"><span><b>放送開始時にコメント取得</b><small>受信コメントをPC内へ保存します。別番組を受信中は切り替えません。</small></span><input type="checkbox" id="stream-monitor-auto-comments" '+(state.streamMonitor.autoComments?"checked":"")+'></label></div><div class="actions"><button class="btn" type="button" data-stream-monitor-save>監視対象を保存</button><button class="btn primary" type="button" data-stream-monitor-start '+(state.streamMonitor.enabled?"disabled":"")+'>監視開始</button><button class="btn danger" type="button" data-stream-monitor-stop '+(!state.streamMonitor.enabled?"disabled":"")+'>監視停止</button><button class="btn" type="button" data-stream-monitor-check>今すぐ確認</button></div><div id="stream-monitor-status" class="section"></div><div class="muted">監視はアプリが起動している間に動作します。PCのスリープ中・アプリ終了中は確認できません。現段階の自動開始対象はコメント取得です。映像ファイルの自動録画は別途実装が必要です。</div>')+
+panel("24時間放送監視","登録した番組ページをアプリ起動中に定期確認します。放送開始時は通知し、任意でコメント取得を自動開始します。",'<div class="field"><label>監視する放送ID・公式番組URL（1行に1件、最大50件）</label><textarea class="input" id="stream-monitor-targets" rows="4" placeholder="lv123456789
+lv987654321">'+esc((state.streamMonitor.targets||[]).map(x=>x.programId).join("
+"))+'</textarea></div><div class="grid2"><div class="field"><label>確認間隔</label><select class="input" id="stream-monitor-interval"><option value="30" '+(state.streamMonitor.intervalSeconds===30?"selected":"")+'>30秒</option><option value="60" '+(state.streamMonitor.intervalSeconds===60?"selected":"")+'>1分</option><option value="120" '+(state.streamMonitor.intervalSeconds===120?"selected":"")+'>2分</option><option value="300" '+(state.streamMonitor.intervalSeconds===300?"selected":"")+'>5分</option></select></div><label class="switchrow"><span><b>放送開始時にコメント取得</b><small>受信コメントをPC内へ保存します。別番組を受信中は切り替えません。</small></span><input type="checkbox" id="stream-monitor-auto-comments" '+(state.streamMonitor.autoComments?"checked":"")+'></label></div><div class="actions"><button class="btn" type="button" data-stream-monitor-save>監視対象を保存</button><button class="btn primary" type="button" data-stream-monitor-start '+(state.streamMonitor.enabled?"disabled":"")+'>監視開始</button><button class="btn danger" type="button" data-stream-monitor-stop '+(!state.streamMonitor.enabled?"disabled":"")+'>監視停止</button><button class="btn" type="button" data-stream-monitor-check>今すぐ確認</button></div><div id="stream-monitor-status" class="section"></div><div class="muted">監視はアプリが起動している間に動作します。PCのスリープ中・アプリ終了中は確認できません。現段階の自動開始対象はコメント取得です。映像ファイルの自動録画は別途実装が必要です。</div>')+
 '<div class="banner"><i class="led"></i><div><b>表示について</b><small>放送映像はニコニコ公式視聴ページを専用セッションで表示します。コメント一覧はこのアプリが受信したNDGRコメントを表示します。配信ページの仕様や視聴権限により映像が表示できない場合があります。</small></div></div>';
 }else if(page==="voice"){
 const speechAvailable=!!(window.speechSynthesis&&typeof window.SpeechSynthesisUtterance==="function");
@@ -770,7 +775,9 @@ async function playQuotedQueueItem(item,queueType="request",skipConfirmation=fal
 if(!item)return false;
 const programId=state.lastProgramId||commentConnection.programId;
 if(!programId){toast("先に「放送・枠管理」で配信中の放送IDを確認してください。");return false;}
-const ok=skipConfirmation||confirm("ニコ生の放送へ「"+item.title+"」を引用再生します。\\n\\n視聴者に動画が流れます。放送主権限が必要です。実行しますか？");
+const ok=skipConfirmation||confirm("ニコ生の放送へ「"+item.title+"」を引用再生します。\
+\
+視聴者に動画が流れます。放送主権限が必要です。実行しますか？");
 if(!ok)return false;
 try{
 const validation=await window.kananeoApp.niconico.validateVideo(item.videoId||item.url);
@@ -1172,7 +1179,8 @@ function renderBroadcastComments(){
   const time=new Date(comment.timestamp);
   const stamp=Number.isNaN(time.getTime())?"":time.toLocaleString("ja-JP");
   return "["+stamp+"] "+(comment.commentNo?"#"+comment.commentNo+" ":"")+(comment.userName||"匿名")+": "+(comment.content||"");
- }).join("\n");
+ }).join("
+");
  const result=await window.kananeoApp.niconico.copyText(text);
  toast(result?.ok?"コメントをコピーしました。":"コメントをコピーできませんでした。");
 }
@@ -1302,7 +1310,8 @@ if(repliedRequestComments.has(dedupeKey))return;
 if(requestReplyQueue.length>=20)return;
 const replacements={video_id:String(videoId||""),comment_no:commentNo,reason:String(reason||"")};
 let text=String(template||"").trim().replace(/\{(video_id|comment_no|reason)\}/g,(_match,key)=>replacements[key]||"");
-text=text.replace(/[\r\n]+/g," ").trim();
+text=text.replace(/[\r
+]+/g," ").trim();
 text=Array.from(text).slice(0,80).join("");
 if(!text)return;
 repliedRequestComments.add(dedupeKey);
@@ -1455,7 +1464,8 @@ const text=rows.map(c=>{
 const time=new Date(c.timestamp);
 const stamp=Number.isNaN(time.getTime())?"":time.toLocaleString("ja-JP");
 return '['+stamp+'] '+(c.userName||"匿名")+': '+(c.content||"");
-}).join("\\n");
+}).join("\
+");
 const result=await window.kananeoApp.niconico.copyText(text);
 toast(result?.ok?"コメントをコピーしました。":"コピーできませんでした。");
 }
@@ -1465,7 +1475,8 @@ if(!rows.length){toast("保存するコメントがありません。");return;}
 const csvCell=value=>'"'+String(value??"").replace(/"/g,'""')+'"';
 const lines=[["日時","種別","ユーザー名","ユーザーID","コメント","過去コメント"].map(csvCell).join(",")];
 for(const c of rows)lines.push([c.timestamp,c.type,c.userName,c.userId,c.content,c.isHistory?"はい":"いいえ"].map(csvCell).join(","));
-const blob=new Blob(["\\uFEFF"+lines.join("\\r\\n")],{type:"text/csv;charset=utf-8"});
+const blob=new Blob(["\\uFEFF"+lines.join("\\r\
+")],{type:"text/csv;charset=utf-8"});
 const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="nicolive-comments-"+(commentConnection.programId||"session")+".csv";a.click();URL.revokeObjectURL(url);
 toast("CSVファイルを保存しました。");
 }
@@ -1628,7 +1639,9 @@ function renderBroadcastManageVerification(){
  if(fresh){
   const info=broadcastManageVerification;
   const age=Math.max(0,Math.floor((Date.now()-info.checkedAt)/1000));
-  result.textContent=info.title+"\n"+info.programId+" / "+info.statusLabel+"\n確認済み（"+age+"秒前）。配信終了は公式画面で実行してください。";
+  result.textContent=info.title+"
+"+info.programId+" / "+info.statusLabel+"
+確認済み（"+age+"秒前）。配信終了は公式画面で実行してください。";
  }else{
   result.textContent="未確認、対象ID変更、または確認期限切れです。「放送ID・状態を確認」を押してください。";
  }
@@ -1806,7 +1819,8 @@ function renderUpdateCheck(){
  if(!release){details.innerHTML='<div class="empty">'+esc(result.message||"公開済みのリリースはありません。")+'</div>';return;}
  const date=release.publishedAt?new Date(release.publishedAt).toLocaleString("ja-JP"):"公開日不明";
  const notes=String(release.body||"").trim().slice(0,3000);
- const notesHtml=notes?'<div class="muted" style="white-space:normal;line-height:1.8;margin-top:8px">'+esc(notes).replace(/\r?\n/g,"<br>")+'</div>':'<div class="muted">リリースノートはありません。</div>';
+ const notesHtml=notes?'<div class="muted" style="white-space:normal;line-height:1.8;margin-top:8px">'+esc(notes).replace(/\r?
+/g,"<br>")+'</div>':'<div class="muted">リリースノートはありません。</div>';
  details.innerHTML='<div class="row"><div><b>最新公開版：'+esc(release.version)+'</b><small>'+esc(date)+' / 配布ファイル '+Number(release.assetsCount||0)+' 件</small></div>'+(result.updateAvailable?'<span class="tag">更新あり</span>':'')+'</div><div class="row"><div><b>'+esc(release.name||release.tagName)+'</b>'+notesHtml+'</div></div>';
 }
 async function checkForApplicationUpdates(silent=false){
@@ -1909,7 +1923,12 @@ if(b.hasAttribute("data-broadcast-manage")){
   renderBroadcastManageVerification();toast("先に放送ID・現在の状態を確認してください。");return;
  }
  const info=broadcastManageVerification;
- const prompt="番組管理画面を開きます。\n\n"+info.title+"（"+info.programId+"）\n現在の状態："+info.statusLabel+"\n\n配信終了はニコニコ公式画面で最終確認して実行してください。続けますか？";
+ const prompt="番組管理画面を開きます。
+
+"+info.title+"（"+info.programId+"）
+現在の状態："+info.statusLabel+"
+
+配信終了はニコニコ公式画面で最終確認して実行してください。続けますか？";
  if(!confirm(prompt))return;
  const result=await window.kananeoApp.niconico.openBroadcastManage(id);
  toast(result?.ok?"アプリ内に番組管理画面を開きました。公式画面で必要な操作を行ってください。":(result?.message||"番組管理画面を開けませんでした。"));
@@ -2225,7 +2244,9 @@ if(e.target.id==="ng-word-form"){state.ngWords.push(document.getElementById("ng-
 if(e.target.id==="ng-user-form"){state.ngUsers.push(document.getElementById("ng-user").value.trim());save();render()}
 if(e.target.id==="track-form"){state.playlist.push(document.getElementById("track").value.trim());save();render()}
 });
-window.addEventListener("focus",()=>{if(state.streamMonitor.enabled){streamMonitorRuntime.nextCheckAt=0;void runStreamMonitorCheck(true);}});\ndocument.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&state.streamMonitor.enabled){streamMonitorRuntime.nextCheckAt=0;void runStreamMonitorCheck(true);}});\nif(window.speechSynthesis&&typeof window.speechSynthesis.addEventListener==="function"){window.speechSynthesis.addEventListener("voiceschanged",()=>{if(page==="voice")renderSpeechVoices();});}
+window.addEventListener("focus",()=>{if(state.streamMonitor.enabled){streamMonitorRuntime.nextCheckAt=0;void runStreamMonitorCheck(true);}});
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&state.streamMonitor.enabled){streamMonitorRuntime.nextCheckAt=0;void runStreamMonitorCheck(true);}});
+if(window.speechSynthesis&&typeof window.speechSynthesis.addEventListener==="function"){window.speechSynthesis.addEventListener("voiceschanged",()=>{if(page==="voice")renderSpeechVoices();});}
 if(window.kananeoApp?.niconico){window.kananeoApp.niconico.getSessionStatus().then(applyNicoStatus).catch(()=>{});window.kananeoApp.niconico.onSessionChanged(applyNicoStatus);
     window.kananeoApp.niconico.onLiveVideoState(applyLiveVideoState);
     void refreshVideoLibrary(true);
