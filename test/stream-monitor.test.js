@@ -1,7 +1,7 @@
 "use strict";
 const test=require("node:test");
 const assert=require("node:assert/strict");
-const {normalizeStreamMonitorSettings,applyProgramCheck,isStreamMonitorGenerationCurrent,statusLabel}=require("../src/stream-monitor");
+const {normalizeStreamMonitorSettings,applyProgramCheck,isStreamMonitorGenerationCurrent,checkStreamMonitorTargets,statusLabel}=require("../src/stream-monitor");
 test("normalizes and deduplicates at most 50 registered broadcast IDs",()=>{
  const targets=Array.from({length:55},(_,i)=>({programId:"lv"+(1000+i)}));
  const result=normalizeStreamMonitorSettings({enabled:true,intervalSeconds:45,autoComments:true,targets:[...targets,{programId:"LV1000"},{programId:"https://example.com"}]});
@@ -30,4 +30,51 @@ test("invalidates stale asynchronous checks after stop or settings changes",()=>
  assert.equal(isStreamMonitorGenerationCurrent(captured,13),false);
  assert.equal(isStreamMonitorGenerationCurrent(captured,11),false);
  assert.equal(isStreamMonitorGenerationCurrent("12",12),false);
+});
+
+test("checks at most two broadcasts concurrently and applies every result",async()=>{
+ const targets=Array.from({length:7},(_,i)=>({programId:"lv"+(i+1)}));
+ let inFlight=0,maxInFlight=0;
+ const seen=[];
+ const result=await checkStreamMonitorTargets(targets,async target=>{
+  inFlight++;maxInFlight=Math.max(maxInFlight,inFlight);
+  await new Promise(resolve=>setImmediate(resolve));
+  inFlight--;
+  return {ok:true,programStatus:"ON_AIR",title:target.programId};
+ },(target,response)=>seen.push([target.programId,response.title]),{concurrency:99});
+ assert.equal(maxInFlight,2);
+ assert.equal(result.checked,7);
+ assert.equal(result.cancelled,false);
+ assert.deepEqual(seen.map(item=>item[0]).sort(),targets.map(x=>x.programId).sort());
+});
+test("discards outstanding results and does not start queued requests after cancellation",async()=>{
+ const targets=Array.from({length:5},(_,i)=>({programId:"lv"+(i+1)}));
+ let resume;
+ const gate=new Promise(resolve=>{resume=resolve;});
+ let current=true;
+ const started=[],applied=[];
+ const pending=checkStreamMonitorTargets(targets,async target=>{
+  started.push(target.programId);
+  await gate;
+  return {ok:true};
+ },target=>applied.push(target.programId),{isCurrent:()=>current});
+ assert.equal(started.length,2);
+ current=false;
+ resume();
+ const result=await pending;
+ assert.equal(result.cancelled,true);
+ assert.equal(result.checked,0);
+ assert.equal(started.length,2);
+ assert.deepEqual(applied,[]);
+});
+test("converts individual request failures into visible errors and continues",async()=>{
+ const items=[{programId:"lv1"},{programId:"lv2"}],results=[];
+ const outcome=await checkStreamMonitorTargets(items,async target=>{
+  if(target.programId==="lv1")throw new Error("network offline");
+  return {ok:true};
+ },(target,response)=>results.push({id:target.programId,...response}),{concurrency:1});
+ assert.equal(outcome.checked,2);
+ assert.equal(results[0].message,"network offline");
+ assert.equal(results[0].ok,false);
+ assert.equal(results[1].ok,true);
 });

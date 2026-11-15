@@ -122,7 +122,7 @@ function saveStreamMonitorSettings(){
  const interval=Number(document.getElementById("stream-monitor-interval")?.value||60);
  state.streamMonitor.intervalSeconds=Math.max(30,Math.min(300,Number.isFinite(interval)?interval:60));
  state.streamMonitor.autoComments=document.getElementById("stream-monitor-auto-comments")?.checked===true;
- save();streamMonitorRuntime.generation++;streamMonitorRuntime.nextCheckAt=0;renderStreamMonitorUi();toast(ids.length+"件の監視対象を保存しました。");
+ save();streamMonitorRuntime.generation++;streamMonitorRuntime.nextCheckAt=0;streamMonitorRuntime.message="監視設定を更新しました。次の確認に反映します。";renderStreamMonitorUi();toast(ids.length+"件の監視対象を保存しました。");
 }
 async function runStreamMonitorCheck(force=false){
  const config=state.streamMonitor;
@@ -130,34 +130,53 @@ async function runStreamMonitorCheck(force=false){
  if(streamMonitorRuntime.busy)return;
  if(!config.targets?.length){streamMonitorRuntime.message="監視対象が登録されていません。";renderStreamMonitorUi();return;}
  if(!force&&Date.now()<streamMonitorRuntime.nextCheckAt)return;
- streamMonitorRuntime.busy=true;const generation=++streamMonitorRuntime.generation;streamMonitorRuntime.message="登録した放送ページを確認しています…";renderStreamMonitorUi();
- const next=Date.now()+(config.intervalSeconds||60)*1000;streamMonitorRuntime.nextCheckAt=next;
- let checked=0,detected=[];
+ streamMonitorRuntime.busy=true;
+ const generation=++streamMonitorRuntime.generation;
+ const isCurrent=()=>window.KananeoStreamMonitor.isStreamMonitorGenerationCurrent(generation,streamMonitorRuntime.generation);
+ streamMonitorRuntime.message="登録した放送ページを確認しています…";
+ renderStreamMonitorUi();
+ streamMonitorRuntime.nextCheckAt=Date.now()+(config.intervalSeconds||60)*1000;
+ const detected=[];
  try{
-  for(const target of [...config.targets]){
-   let result;
-   try{result=await window.kananeoApp.niconico.checkProgram(target.programId);}catch(error){result={ok:false,message:error?.message||"確認に失敗しました。"};}
-   if(!window.KananeoStreamMonitor.isStreamMonitorGenerationCurrent(generation,streamMonitorRuntime.generation))break;
-   const updated=window.KananeoStreamMonitor.applyProgramCheck(target,result,new Date().toISOString());
-   const index=state.streamMonitor.targets.findIndex(x=>x.programId===target.programId);
-   if(index>=0)state.streamMonitor.targets[index]=updated.target;
-   checked++;
-   if(updated.becameLive){detected.push(target.programId);addStreamMonitorHistory("live",target.programId,"放送開始を検知しました。");}else if(!result?.ok){addStreamMonitorHistory("error",target.programId,result?.message||"番組確認に失敗しました。");}
-   renderStreamMonitorUi();
-  }
-  streamMonitorRuntime.lastCheckAt=new Date().toISOString();streamMonitorRuntime.checked=checked;
-  streamMonitorRuntime.message=checked+"件を確認しました。次回確認："+new Date(next).toLocaleTimeString("ja-JP");
+  const batch=await window.KananeoStreamMonitor.checkStreamMonitorTargets(
+   config.targets,
+   target=>window.kananeoApp.niconico.checkProgram(target.programId),
+   (target,result)=>{
+    const updated=window.KananeoStreamMonitor.applyProgramCheck(target,result,new Date().toISOString());
+    const index=state.streamMonitor.targets.findIndex(x=>x.programId===target.programId);
+    if(index>=0)state.streamMonitor.targets[index]=updated.target;
+    if(updated.becameLive){detected.push(target.programId);addStreamMonitorHistory("live",target.programId,"放送開始を検知しました。");}
+    else if(!result?.ok){addStreamMonitorHistory("error",target.programId,result?.message||"番組確認に失敗しました。");}
+    renderStreamMonitorUi();
+   },
+   {concurrency:2,isCurrent}
+  );
+  if(batch.cancelled||!isCurrent())return;
+  const next=Date.now()+(config.intervalSeconds||60)*1000;
+  streamMonitorRuntime.nextCheckAt=next;
+  streamMonitorRuntime.lastCheckAt=new Date().toISOString();
+  streamMonitorRuntime.checked=batch.checked;
+  streamMonitorRuntime.message=batch.checked+"件を確認しました。次回確認："+new Date(next).toLocaleTimeString("ja-JP");
   save();
   for(const id of detected){
-   if(!window.KananeoStreamMonitor.isStreamMonitorGenerationCurrent(generation,streamMonitorRuntime.generation))break;
+   if(!isCurrent())break;
    toast("放送開始を検知しました："+id);
    if(state.streamMonitor.autoComments){
     const active=["connecting","connected","recovering"].includes(commentConnection.state);
     if(active&&commentConnection.programId.toLowerCase()!==id){streamMonitorRuntime.message=id+" は放送中ですが、別の番組のコメントを受信中のため自動接続を保留しました。";}
-    else if(!active&&window.KananeoStreamMonitor.isStreamMonitorGenerationCurrent(generation,streamMonitorRuntime.generation)){streamMonitorRuntime.message=id+" の放送開始を検知。コメント取得を開始しています。";await startComments(id);}
+    else if(!active&&isCurrent()){streamMonitorRuntime.message=id+" の放送開始を検知。コメント取得を開始しています。";await startComments(id);}
    }
   }
- }finally{streamMonitorRuntime.busy=false;renderStreamMonitorUi();}
+ }catch(error){
+  if(isCurrent()){
+   streamMonitorRuntime.message="放送監視でエラーが発生しました："+String(error?.message||"処理に失敗しました。").slice(0,140);
+   streamMonitorRuntime.nextCheckAt=Date.now()+30000;
+   toast(streamMonitorRuntime.message);
+  }
+ }finally{
+  streamMonitorRuntime.busy=false;
+  renderStreamMonitorUi();
+ }
 }
 function startStreamMonitor(){
  if(!state.streamMonitor.targets?.length){toast("先に監視対象を保存してください。");return;}
