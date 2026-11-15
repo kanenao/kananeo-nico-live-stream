@@ -76,6 +76,7 @@ let pollFinishPromise=null;
 let pollDeadlineTimer=null;
 let pollVideoId="";
 let pollTimingSummary="";
+let pollVerifiedRound=false;
 const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,ownAccount:false,targets:[],history:[]},logs:["β2 UIプロトタイプを起動しました"]};
 let remoteAuditEntries=[],remoteAuditFilters={query:"",type:"all",from:"",to:""},remoteAuditNotificationEnabled=true;
 let state=load(),page="dashboard";
@@ -1003,13 +1004,31 @@ function activePollMedia(now=Date.now()){
 function safePollVideoMatches(){
  return !!(quotePlayback.active&&pollVideoId&&(quotePlayback.videoId||state.player.quoteVideoId)===pollVideoId);
 }
+function restoreQuoteAutoAfterVerifiedPoll(){
+ if(!pollVideoId||!safePollVideoMatches())return false;
+ const media=activePollMedia();
+ if(!Number.isFinite(media.startedAt)||media.startedAt<=0||media.durationMs<=0)return false;
+ state.player.quotePollAutoSuspended=false;
+ pollRuntime.active=false;
+ save();
+ if(state.playback.quoteAutoNext&&state.playback.playStyle!==0){
+  const restored=scheduleQuoteAutoNext({videoId:pollVideoId,lengthMs:media.durationMs},media.startedAt);
+  if(restored)quoteAutoMessage="投票済みです。動画の実際の終了時間に合わせて自動次動画を再開しました。";
+ }else{
+  quoteAutoMessage="投票済みです。手動再生モードのため、次動画の操作は手動で行います。";
+ }
+ updateQuoteScheduleUi();
+ return true;
+}
 function setPollDeadlineGuard(token,mediaEndsAt){
  stopPollDeadlineGuard();
  const marginMs=window.KananeoPollTiming.SAFETY_SECONDS*1000;
  pollDeadlineTimer=setTimeout(()=>{
   if(token!==pollRunToken||!pollRuntime.active)return;
   pollTimingSummary="動画終了前の安全余裕に達したためアンケートを終了し、自動スキップを保留しました。";
-  void stopAutomaticPoll("動画終了が近いためアンケートを安全停止しました。");
+  const resumeNatural=pollVerifiedRound&&pollRuntime.status==="repeating";
+  void stopAutomaticPoll("動画終了が近いためアンケートを安全停止しました。")
+    .then(()=>{if(resumeNatural)restoreQuoteAutoAfterVerifiedPoll();});
  },Math.max(0,mediaEndsAt-Date.now()-marginMs));
 }
 function waitForPoll(ms,token){
@@ -1083,7 +1102,9 @@ async function startAutomaticPoll(){
   setPollRuntime("skipped",initial.message,[]);toast(initial.message);return;
  }
  const token=++pollRunToken;
+ let resumeNaturalAfterPoll=false;
  pollVideoId=media.videoId;
+ pollVerifiedRound=false;
  pollRuntime={active:true,status:"starting",message:"アンケートを準備しています。",result:[],extensionSeconds:0};
  pollCurrentProgramId=programId;
  pollTimingSummary="必要 "+initial.requiredSeconds+"秒／動画残り "+Math.floor(initial.remainingMs/1000)+"秒（開始待ち "+timing.INITIAL_START_SECONDS+"秒、投票 "+input.waitSeconds+"秒、結果 "+input.resultSeconds+"秒、安全余裕 "+timing.SAFETY_SECONDS+"秒）";
@@ -1101,6 +1122,7 @@ async function startAutomaticPoll(){
    const budget=timing.mediaPlan({...activePollMedia(),startWaitSeconds:0,voteSeconds:input.waitSeconds,resultSeconds:input.resultSeconds});
    if(!budget.ok){
     pollTimingSummary=budget.message;setPollRuntime("skipped",budget.message);
+    resumeNaturalAfterPoll=true;
     break;
    }
    setPollRuntime("starting",round+"回目のアンケートを開始しています。");
@@ -1132,6 +1154,7 @@ async function startAutomaticPoll(){
    if(!finish?.ok)throw new Error(finish?.message||"アンケート終了APIが失敗しました。自動スキップを行いません。");
    if(token!==pollRunToken)return;
    if(!safePollVideoMatches())throw new Error("動画が変わったため自動スキップを中止します。");
+   if(decision.decision==="repeat")pollVerifiedRound=true;
    if(decision.decision==="next"){
     stopPollDeadlineGuard();
     const current=currentQueueItem();
@@ -1147,6 +1170,7 @@ async function startAutomaticPoll(){
    if(!plan.ok){
     pollTimingSummary=plan.message||"動画の残り時間が足りません。";
     setPollRuntime("skipped","動画の残り尺を超えるため再投票を省略します。",fetched.items);
+    resumeNaturalAfterPoll=true;
     break;
    }
    state.player.quoteExpectedEndAt=plan.plannedEndAt;
@@ -1160,6 +1184,7 @@ async function startAutomaticPoll(){
   if(token===pollRunToken&&pollRuntime.active){
    const message=pollRuntime.status==="skipped"?"動画尺が不足するため自動アンケートを省略しました。":"再投票100回の安全上限に達しました。";
    pollRuntime.active=false;
+   resumeNaturalAfterPoll=pollVerifiedRound;
    setPollRuntime("idle",message);toast(message);
   }
  }catch(error){
@@ -1173,7 +1198,9 @@ async function startAutomaticPoll(){
   if(token===pollRunToken){
    stopPollDeadlineGuard();
    await finishActiveEnquete(programId);
-   pollRuntime.active=false;pollCurrentProgramId="";pollVideoId="";
+   pollRuntime.active=false;pollCurrentProgramId="";
+   if(resumeNaturalAfterPoll&&safePollVideoMatches())restoreQuoteAutoAfterVerifiedPoll();
+   pollVideoId="";pollVerifiedRound=false;
    if(state.player.quotePollAutoSuspended){
     quoteAutoMessage="アンケート結果確認後の安全保留中です。次動画への移動は手動で行ってください。";
     updateQuoteScheduleUi();
