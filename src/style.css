@@ -128,3 +128,9 @@ input[type="range"]{accent-color:#8c7cff;cursor:pointer}
 .remote-device-main small{font-size:8px;color:#8b99b2;overflow-wrap:anywhere}
 .remote-device-row .btn{flex-shrink:0}
 .remote-device-row .btn.danger{border-color:#754b5b;background:#2a1c2b;color:#ffbdc9}
+
+/* Visible diagnostics even when the main renderer fails to initialize. */
+.ui-error-banner{margin:16px 38px 0;padding:12px 15px;border:1px solid #d68282;border-radius:8px;background:#4b232c;color:#ffe6e6;font-size:12px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+.ui-error-banner[hidden],#ui-health-reload[hidden]{display:none!important}
+#ui-health-status.error{border-color:#d68282;color:#ffcece;background:#48232d}
+#ui-health-check,#ui-health-reload{font-size:10px;padding:7px 10px;white-space:nowrap;cursor:pointer}
