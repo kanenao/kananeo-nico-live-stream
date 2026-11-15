@@ -1,4 +1,6 @@
 "use strict";
+// Keep declarations private: classic browser scripts share one global lexical scope.
+(() => {
 
 const DEFAULT_COMMENT_VIEW_SETTINGS = Object.freeze({
   version: 1,
@@ -76,3 +78,4 @@ const api = Object.freeze({
 
 if (typeof module !== "undefined" && module.exports) module.exports = api;
 if (typeof window !== "undefined") window.KananeoCommentViewSettings = api;
+})();

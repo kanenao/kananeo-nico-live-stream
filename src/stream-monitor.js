@@ -1,4 +1,6 @@
 "use strict";
+// Keep declarations private: classic browser scripts share one global lexical scope.
+(() => {
 const LIVE_STATUSES=new Set(["ON_AIR","onAir","LIVE","live"]);
 const ENDED_STATUSES=new Set(["ENDED","ended","CLOSED","closed"]);
 function normalizeStreamMonitorSettings(input){
@@ -53,3 +55,4 @@ async function checkStreamMonitorTargets(targets,checkProgram,onResult,options={
 function statusLabel(status){return status==="onAir"?"放送中":status==="ended"?"終了":"状態未確認";}
 if(typeof module!=="undefined"&&module.exports)module.exports={normalizeStreamMonitorSettings,applyProgramCheck,isStreamMonitorGenerationCurrent,checkStreamMonitorTargets,statusLabel};
 if(typeof window!=="undefined")window.KananeoStreamMonitor={normalizeStreamMonitorSettings,applyProgramCheck,isStreamMonitorGenerationCurrent,checkStreamMonitorTargets,statusLabel};
+})();

@@ -1,4 +1,6 @@
 "use strict";
+// Keep declarations private: classic browser scripts share one global lexical scope.
+(() => {
 
 const MAX_DURATION_MS = 12 * 60 * 60 * 1000;
 const MAX_GAP_SECONDS = 300;
@@ -39,10 +41,13 @@ function isQuoteScheduleDue(schedule, now = Date.now()) {
   return remaining !== null && remaining <= 0;
 }
 
-module.exports = {
+const api = {
   MAX_DURATION_MS,
   MAX_GAP_SECONDS,
   createQuoteSchedule,
   getRemainingMs,
   isQuoteScheduleDue
 };
+if (typeof module !== "undefined" && module.exports) module.exports = api;
+if (typeof window !== "undefined") window.KananeoQuoteScheduler = api;
+})();

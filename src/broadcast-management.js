@@ -1,4 +1,6 @@
 "use strict";
+// Keep declarations private: classic browser scripts share one global lexical scope.
+(() => {
 
 const VERIFICATION_TTL_MS = 90 * 1000;
 
@@ -67,3 +69,4 @@ const api = Object.freeze({
 
 if (typeof module !== "undefined" && module.exports) module.exports = api;
 if (typeof window !== "undefined") window.KananeoBroadcastManagement = api;
+})();

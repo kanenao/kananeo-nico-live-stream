@@ -1,4 +1,6 @@
 "use strict";
+// Keep declarations private: classic browser scripts share one global lexical scope.
+(() => {
 
 const MAX_HISTORY=100;
 const MAX_MESSAGE_LENGTH=240;
@@ -21,3 +23,4 @@ function appendHistory(input,event){
 }
 if(typeof module!=="undefined"&&module.exports)module.exports={MAX_HISTORY,normalizeHistory,appendHistory};
 if(typeof window!=="undefined")window.KananeoStreamMonitorHistory={MAX_HISTORY,normalizeHistory,appendHistory};
+})();

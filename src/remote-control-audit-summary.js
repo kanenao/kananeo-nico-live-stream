@@ -1,4 +1,6 @@
 "use strict";
+// Keep declarations private: classic browser scripts share one global lexical scope.
+(() => {
 const WARNING_TYPES=new Set(["peer_rejected","host_rejected","origin_rejected","cross_site_rejected","ip_rate_limited","pair_rate_limited","auth_failed","device_rate_limited","command_failed","security_anomaly"]);
 function summarizeRemoteAudit(entries){
  const rows=Array.isArray(entries)?entries:[];
@@ -14,3 +16,4 @@ function summarizeRemoteAudit(entries){
 }
 if(typeof module!=="undefined"&&module.exports)module.exports={summarizeRemoteAudit};
 if(typeof window!=="undefined")window.KananeoRemoteAuditSummary={summarizeRemoteAudit};
+})();

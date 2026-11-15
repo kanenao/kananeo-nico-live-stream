@@ -1,4 +1,6 @@
 "use strict";
+// Keep declarations private: classic browser scripts share one global lexical scope.
+(() => {
 
 const api = (() => {
   const MAX_USER_PROFILES = 1000;
@@ -94,3 +96,4 @@ const api = (() => {
 
 if (typeof module !== "undefined" && module.exports) module.exports = api;
 if (typeof window !== "undefined") window.KananeoUserProfiles = api;
+})();

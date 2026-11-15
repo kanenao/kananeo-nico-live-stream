@@ -1,4 +1,6 @@
 "use strict";
+// Keep declarations private: classic browser scripts share one global lexical scope.
+(() => {
 
 const DEFAULT_COMMENT_SPEECH_SETTINGS = Object.freeze({
   enabled:false,
@@ -172,3 +174,4 @@ const api = Object.freeze({
 
 if (typeof module !== "undefined" && module.exports) module.exports = api;
 if (typeof window !== "undefined") window.KananeoCommentSpeech = api;
+})();

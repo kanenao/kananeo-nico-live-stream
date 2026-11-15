@@ -1,4 +1,6 @@
 "use strict";
+// Keep declarations private: classic browser scripts share one global lexical scope.
+(() => {
 
 function sanitizeUiError(error) {
   const name=typeof error?.name==="string"?error.name:"Error";
@@ -66,3 +68,4 @@ if(typeof window!=="undefined"&&typeof document!=="undefined"){
   window.KananeoUiHealth=Object.freeze({markReady,report,trackAction,diagnose});
  })();
 }
+})();
