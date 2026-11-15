@@ -43,6 +43,7 @@ const {
 const { selectNextPlaybackCandidate } = require("./playback-scheduler");
 const { buildBroadcasterCommentRequest, parseBroadcasterCommentResponse } = require("./broadcaster-comment-api");
 const { buildUpdateCheckResult } = require("./update-checker");
+const { createAutoUpdateService } = require("./auto-update-service");
 const {
   ALLOWED_BGM_EXTENSIONS, MAX_BGM_TRACK_BYTES, MAX_BGM_TRACKS,
   createEmptyBgmLibrary, normalizeBgmLibrary, addBgmTrack, removeBgmTrack, moveBgmTrack
@@ -69,6 +70,7 @@ let commentRecoveryTimer = null;
 let commentRecoveryAttempts = 0;
 let commentRecoveryActive = false;
 let finalQuitInProgress = false;
+let autoUpdateService = null;
 let playerWindow = null;
 let playerMonitorTimer = null;
 let playerMonitorBusy = false;
@@ -2221,7 +2223,15 @@ function registerIpcHandlers() {
     if(!isVideoLibrarySender(event)) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     return updateVideoLibrary(library=>({ok:true,library:clearVideoHistory(library)}));
   });
-  ipcMain.handle("app:check-updates",event=>{
+  ipcMain.handle("app:auto-update-status",event=>{
+     if(event.sender!==mainWindow?.webContents)return {supported:false,phase:"unavailable",message:"この操作は許可されていません。"};
+     return autoUpdateService?.getStatus()||{supported:false,phase:"unavailable",message:"自動更新を準備しています。"};
+   });
+   ipcMain.handle("app:auto-update-check",async event=>{
+     if(event.sender!==mainWindow?.webContents)return {supported:false,phase:"unavailable",message:"この操作は許可されていません。"};
+     return autoUpdateService?.check()||{supported:false,phase:"unavailable",message:"自動更新を準備しています。"};
+   });
+   ipcMain.handle("app:check-updates",event=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     return checkApplicationUpdates();
   });
@@ -2267,6 +2277,14 @@ app.whenReady().then(async()=>{
   niconicoSession.cookies.on("changed",()=>{void notifySessionStatus();});
   registerIpcHandlers();
   createMainWindow();
+  try{
+    const {autoUpdater}=require("electron-updater");
+    autoUpdateService=createAutoUpdateService({
+      app,updater:autoUpdater,portable:!!process.env.PORTABLE_EXECUTABLE_FILE,
+      notify:status=>{if(mainWindow&&!mainWindow.isDestroyed())mainWindow.webContents.send("app:auto-update-status",status);}
+    });
+    autoUpdateService.start();
+  }catch(error){console.error("Auto update startup failed:",error?.name||"Error");}
   app.on("activate",()=>{if(BrowserWindow.getAllWindows().length===0)createMainWindow();});
 });
 app.on("before-quit",event=>{

@@ -1,5 +1,11 @@
 # α版ロードマップ
 
+## α52：Windows Setup版の自動更新
+- [x] αチャンネル更新確認・ダウンロードと終了時インストール
+- [x] GitHub Releaseへのalpha.yml添付
+- [x] Portable版での手動更新を案内
+- [ ] Windows実機で連続更新試験
+
 ## α51：α版GitHub Releases自動公開
 - [x] mainへのα版更新時、Windows Build成功後にプレリリースを自動作成
 - [x] SetupとPortableの両方が揃わない場合は公開しない

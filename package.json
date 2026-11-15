@@ -1,6 +1,6 @@
 {
   "name": "kananeo-nico-live-stream",
-  "version": "0.2.0-alpha.51",
+  "version": "0.2.0-alpha.52",
   "private": true,
   "description": "総合ニコ生管理デスクトップアプリ",
   "main": "src/main.js",
@@ -17,7 +17,8 @@
     "electron-builder": "26.18.1"
   },
   "dependencies": {
-    "nicomget": "https://codeload.github.com/Segu-g/nicomget/tar.gz/05899c0d350bf5b873c9b083ea620f42c3d1fa4f"
+    "nicomget": "https://codeload.github.com/Segu-g/nicomget/tar.gz/05899c0d350bf5b873c9b083ea620f42c3d1fa4f",
+    "electron-updater": "6.8.12"
   },
   "overrides": {
     "nicomget": {
@@ -66,6 +67,21 @@
     },
     "portable": {
       "artifactName": "${productName}-${version}-Portable-${arch}.${ext}"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "kanenao",
+        "repo": "kananeo-nico-live-stream",
+        "channel": "alpha"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "config/app-update.yml",
+        "to": "app-update.yml"
+      }
+    ],
+    "electronUpdaterCompatibility": ">=2.16"
   }
 }

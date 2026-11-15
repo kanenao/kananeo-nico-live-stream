@@ -47,11 +47,22 @@ jobs:
       - name: Build Windows installer and portable app
         run: npm run dist:win
 
+      - name: Generate alpha update manifest
+        run: node scripts/generate-update-manifest.js
+
+      - name: Verify embedded update configuration
+        shell: pwsh
+        run: |
+          if (!(Test-Path "dist/win-unpacked/resources/app-update.yml")) { throw "Missing app-update.yml" }
+          if (!(Test-Path "dist/alpha.yml")) { throw "Missing alpha.yml" }
+
       - name: Upload Windows builds
         uses: actions/upload-artifact@v4
         with:
           name: kananeo-nico-live-stream-windows-${{ github.ref_name }}
-          path: dist/*.exe
+          path: |
+            dist/*.exe
+            dist/alpha.yml
           if-no-files-found: error
           retention-days: 14
 
@@ -96,10 +107,11 @@ jobs:
                 return;
               }
             }
-            const files = fs.readdirSync("dist").filter(name => name.toLowerCase().endsWith(".exe")).sort();
+            const files = fs.readdirSync("dist").filter(name => name.toLowerCase().endsWith(".exe") || name === "alpha.yml").sort();
             const installer = files.some(name => /setup/i.test(name));
             const portable = files.some(name => /portable/i.test(name));
-            if (!installer || !portable) throw new Error("Both Windows Setup and Portable EXE must exist before publication.");
+            if (!installer || !portable || !files.includes("alpha.yml")) throw new Error("Setup, Portable and alpha.yml are required.");
+            if (!fs.readFileSync("dist/alpha.yml", "utf8").startsWith("version: " + version + "\n")) throw new Error("alpha.yml version mismatch.");
 
             let release;
             try {

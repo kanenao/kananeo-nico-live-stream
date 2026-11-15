@@ -53,6 +53,7 @@ let broadcastContextMenuComment=null;
 let dashboardStats={loading:false,watchCount:null,commentCount:null,updatedAt:"",error:""};
 let extensionOptionsState={loading:false,methods:[],updatedAt:"",error:""};
 let updateCheckState={loading:false,result:null,error:""};
+let autoUpdateState={supported:false,phase:"idle",message:"自動更新を確認中です。",percent:0,version:""};
 let bgmTracks=[];
 let bgmLoading=false;
 let bgmError="";
@@ -493,7 +494,7 @@ html=hero("ACTIVITY & BACKUP","履歴・バックアップ","設定データのJ
 panel("システムログ","操作履歴",state.logs.map(x=>`<div class="row"><i></i><b>${esc(x)}</b></div>`).join("")+'<div class="actions"><button class="btn primary" data-export>設定JSONを書き出す</button><button class="btn" data-clear-logs>ログを消去</button></div>');
 }else{
 html=hero("APPLICATION SETTINGS","設定","アプリのバージョンとローカル設定を管理します。")+
-panel("アップデート確認","GitHub Releasesに公開されたバージョンを確認します。アプリの更新は自動実行せず、公開ページから配布ファイルを選んでください。",'<div class="row"><div><b>現在のバージョン</b><small>このアプリにインストールされているバージョン</small></div><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>確認状態</b><span id="update-check-status">未確認</span></div><div id="update-release-details"></div><div class="actions"><button class="btn primary" type="button" data-update-check>アップデートを確認</button><button class="btn" type="button" data-update-open-releases>GitHub Releasesを開く</button></div>')+
+panel("自動更新・アップデート確認","Setup版はα版の新着を自動ダウンロードし、終了時に適用します。Portable版はGitHub Releasesから更新してください。",'<div class="row"><div><b>現在のバージョン</b><small>このアプリにインストールされているバージョン</small></div><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>自動更新</b><span id="auto-update-status">確認中</span></div><div id="auto-update-details" class="muted"></div><div class="row"><b>確認状態</b><span id="update-check-status">未確認</span></div><div id="update-release-details"></div><div class="actions"><button class="btn primary" type="button" data-update-auto-check>自動更新を再確認</button><button class="btn" type="button" data-update-check>公開版を確認</button><button class="btn" type="button" data-update-open-releases>GitHub Releasesを開く</button></div>')+
 panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Alpha（開発版） / localhost・LAN リモート対応</span></div>');
 }
 if(page==="dashboard"&&updateCheckState.result?.updateAvailable){
@@ -509,7 +510,7 @@ document.getElementById("content").innerHTML=html;
 if(page==="broadcast"){renderBroadcastManageVerification();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();renderStreamMonitorUi();}
 updateLiveVideoBounds();
 if(page==="voice"){renderSpeechVoices();updateSpeechQueueUi();}
-if(page==="settings")renderUpdateCheck();
+if(page==="settings"){renderUpdateCheck();renderAutoUpdateStatus();}
 if(page==="remote")updateRemoteControlUi();
 if(page==="audit")void refreshRemoteAudit();
 if(page==="library")renderLibrarySourcePreview();
@@ -1812,6 +1813,25 @@ async function handleRemoteControlRequest(request){
  }catch(error){result={ok:false,code:"REMOTE_ACTION_FAILED",message:error?.message||"操作を実行できませんでした。"};}
  window.kananeoApp.remote.resolveRequest(request.requestId,result);
 }
+function renderAutoUpdateStatus(){
+ const status=document.getElementById("auto-update-status"),details=document.getElementById("auto-update-details"),button=document.querySelector("[data-update-auto-check]");
+ if(!status||!details)return;
+ const s=autoUpdateState;
+ status.textContent=s.message||"状態不明";
+ details.textContent=s.phase==="downloading"?"ダウンロード："+s.percent+"%"+(s.version?" / "+s.version:""):
+   s.phase==="downloaded"?"ダウンロード済み："+(s.version||"α版")+"。終了時に更新します。":
+   !s.supported?"自動更新はWindows Setup版のみです。":"更新はアプリ終了時に適用し、配信中に再起動しません。";
+ if(button)button.disabled=!s.supported||["checking","downloading","downloaded"].includes(s.phase);
+}
+function applyAutoUpdateStatus(s){
+ if(!s||typeof s!=="object")return;
+ autoUpdateState={supported:s.supported===true,phase:String(s.phase||"idle"),message:String(s.message||"").slice(0,220),percent:Number(s.percent)||0,version:String(s.version||"").slice(0,70)};
+ renderAutoUpdateStatus();
+}
+async function manuallyCheckAutoUpdate(){
+ try{const s=await window.kananeoApp.updates.checkAuto();applyAutoUpdateStatus(s);if(s?.phase==="error"||s?.phase==="unavailable")toast(s.message);}
+ catch{toast("自動更新の確認に失敗しました。");}
+}
 function renderUpdateCheck(){
  const status=document.getElementById("update-check-status");
  const details=document.getElementById("update-release-details");
@@ -1944,6 +1964,7 @@ if(b.hasAttribute("data-nico-check")){void checkProgram();return;}
 if(b.hasAttribute("data-dashboard-refresh")){void refreshDashboardStatistics(false);return;}
 if(b.hasAttribute("data-extension-check")){void refreshExtensionOptions();return;}
 if(b.hasAttribute("data-update-check")){void checkForApplicationUpdates();return;}
+if(b.hasAttribute("data-update-auto-check")){void manuallyCheckAutoUpdate();return;}
 if(b.hasAttribute("data-bgm-add-files")){
  b.disabled=true;
  try{
@@ -2263,6 +2284,7 @@ window.KananeoUiHealth?.markReady();
 void refreshBgmLibrary(true);
 void refreshRemoteLanOptions();
 void checkForApplicationUpdates(true);
+if(window.kananeoApp?.updates?.onAutoStatus){window.kananeoApp.updates.onAutoStatus(applyAutoUpdateStatus);void window.kananeoApp.updates.getAutoStatus().then(applyAutoUpdateStatus).catch(()=>{});}
 if(window.kananeoApp?.remote){window.kananeoApp.remote.onRequest(request=>{void handleRemoteControlRequest(request);});}
 if(state.lastProgramId){void refreshDashboardStatistics(true);void refreshQuotePlayback({silent:true});}
 setInterval(()=>{if(state.streamMonitor.enabled&&!streamMonitorRuntime.busy&&Date.now()>=streamMonitorRuntime.nextCheckAt)void runStreamMonitorCheck();updateQuoteScheduleUi();if(page==="remote"&&!remoteControlUi.loading&&Date.now()-remoteControlUi.lastRefreshAt>5000)void refreshRemoteControlUi(true);if(page==="broadcast"){renderBroadcastManageVerification();updateLiveVideoBounds();}if(page==="dashboard"){updateDashboardStatsUi();if(!dashboardStats.loading&&state.lastProgramId&&Date.now()-(Date.parse(dashboardStats.updatedAt)||0)>30000)void refreshDashboardStatistics(true);}},1000);
