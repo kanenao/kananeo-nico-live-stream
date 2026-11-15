@@ -4,7 +4,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
-  version:"0.2.0-alpha.57",
+  version:"0.2.0-alpha.58",
   platform:process.platform,
   stage:"https-lan-remote-control",
   remote:Object.freeze({
@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
     check:()=>ipcRenderer.invoke("app:check-updates"),
     getAutoStatus:()=>ipcRenderer.invoke("app:auto-update-status"),
     checkAuto:()=>ipcRenderer.invoke("app:auto-update-check"),
+    applyAuto:()=>ipcRenderer.invoke("app:auto-update-apply"),
     onAutoStatus:callback=>{
       if(typeof callback!=="function")return ()=>{};
       const listener=(_event,status)=>callback(status);
