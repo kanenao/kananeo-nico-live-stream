@@ -2319,7 +2319,7 @@ document.addEventListener("visibilitychange",()=>{if(document.visibilityState===
 if(window.speechSynthesis&&typeof window.speechSynthesis.addEventListener==="function"){window.speechSynthesis.addEventListener("voiceschanged",()=>{if(page==="voice")renderSpeechVoices();});}
 if(window.kananeoApp?.niconico){window.kananeoApp.niconico.getSessionStatus().then(applyNicoStatus).catch(()=>{});window.kananeoApp.niconico.onSessionChanged(applyNicoStatus);
     window.kananeoApp.niconico.onLiveVideoState(applyLiveVideoState);
-    window.kananeoApp.niconico.onCreatedBroadcast(value=>{if(value?.programId){void adoptCreatedBroadcast(value.programId);toast("作成した番組IDを検知："+value.programId);}});
+    window.kananeoApp.niconico.onCreatedBroadcast?.(value=>{if(value?.programId){void adoptCreatedBroadcast(value.programId);toast("作成した番組IDを検知："+value.programId);}});
     void refreshVideoLibrary(true);
     window.kananeoApp.niconico.onComment(receiveComment);
     window.kananeoApp.niconico.onCommentState(updateCommentConnection);window.kananeoApp.niconico.onVideoState(updateVideoPlayerState);}

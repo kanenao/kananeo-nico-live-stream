@@ -49,7 +49,7 @@ function makePage(){
   kananeoApp:{
    version:"0.2.0-alpha.50",
    niconico:{
-    getSessionStatus:()=>never,onSessionChanged(){},onLiveVideoState(){},
+    getSessionStatus:()=>never,onSessionChanged(){},onLiveVideoState(){},onCreatedBroadcast(){},
     onComment(){},onCommentState(){},onVideoState(){},setLiveVideoBounds(){}
    },
    bgm:{get:()=>never},
