@@ -226,6 +226,8 @@ async function refreshOwnBroadcast(showMessage=false){
 function showAutoNextStatus(){
  const node=document.getElementById("auto-next-status");
  if(node)node.textContent=state.automation.autoNext?autoNextRuntime.message:"自動次枠監視はOFFです。";
+ const button=document.querySelector("[data-auto-next-check]");
+ if(button)button.disabled=!state.automation.autoNext;
 }
 async function checkAutoNextFrame(force=false){
  if(!state.automation.autoNext||autoNextRuntime.busy)return;
