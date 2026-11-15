@@ -46,6 +46,7 @@ const { buildUpdateCheckResult } = require("./update-checker");
 const {loggedInId,broadcastHistoryUrl,parseHistory,programFromCreateUrl}=require("./own-broadcast");
 const {editingMenus,editingContextMenu}=require("./editing-support");
 const { createAutoUpdateService } = require("./auto-update-service");
+const { settleBeforeQuit } = require("./quit-helpers");
 const {
   ALLOWED_BGM_EXTENSIONS, MAX_BGM_TRACK_BYTES, MAX_BGM_TRACKS,
   createEmptyBgmLibrary, normalizeBgmLibrary, addBgmTrack, removeBgmTrack, moveBgmTrack
@@ -74,6 +75,7 @@ let commentRecoveryAttempts = 0;
 let commentRecoveryActive = false;
 let finalQuitInProgress = false;
 let autoUpdateService = null;
+let autoUpdateInitializationFailed = false;
 let playerWindow = null;
 let playerMonitorTimer = null;
 let playerMonitorBusy = false;
@@ -2263,11 +2265,17 @@ function registerIpcHandlers() {
   });
   ipcMain.handle("app:auto-update-status",event=>{
      if(event.sender!==mainWindow?.webContents)return {supported:false,phase:"unavailable",message:"この操作は許可されていません。"};
-     return autoUpdateService?.getStatus()||{supported:false,phase:"unavailable",message:"自動更新を準備しています。"};
+     return autoUpdateService?.getStatus()||{supported:false,phase:autoUpdateInitializationFailed?"error":"unavailable",errorCode:autoUpdateInitializationFailed?"UPDATER_INIT_FAILED":"",message:autoUpdateInitializationFailed?"更新モジュールを初期化できませんでした。Setup版を再インストールしてください。":"自動更新を準備しています。"};
    });
    ipcMain.handle("app:auto-update-check",async event=>{
      if(event.sender!==mainWindow?.webContents)return {supported:false,phase:"unavailable",message:"この操作は許可されていません。"};
-     return autoUpdateService?.check()||{supported:false,phase:"unavailable",message:"自動更新を準備しています。"};
+     return autoUpdateService?.check()||{supported:false,phase:autoUpdateInitializationFailed?"error":"unavailable",errorCode:autoUpdateInitializationFailed?"UPDATER_INIT_FAILED":"",message:autoUpdateInitializationFailed?"更新モジュールを初期化できませんでした。":"自動更新を準備しています。"};
+   });
+   ipcMain.handle("app:auto-update-apply",event=>{
+     if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"許可されていない操作です。"};
+     if(autoUpdateService?.getStatus().phase!=="downloaded")return {ok:false,code:"UPDATE_NOT_READY",message:"更新ファイルのダウンロードが完了していません。"};
+     setImmediate(()=>app.quit());
+     return {ok:true,message:"コメントとリモート操作を終了後、更新を適用します。"};
    });
    ipcMain.handle("app:check-updates",event=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
@@ -2324,7 +2332,10 @@ app.whenReady().then(async()=>{
       notify:status=>{if(mainWindow&&!mainWindow.isDestroyed())mainWindow.webContents.send("app:auto-update-status",status);}
     });
     autoUpdateService.start();
-  }catch(error){console.error("Auto update startup failed:",error?.name||"Error");}
+   }catch(error){
+    autoUpdateInitializationFailed=true;
+    console.error("Auto update startup failed:",error?.code||error?.name||"Error");
+   }
   app.on("activate",()=>{if(BrowserWindow.getAllWindows().length===0)createMainWindow();});
 });
 app.on("before-quit",event=>{
@@ -2332,17 +2343,21 @@ app.on("before-quit",event=>{
   event.preventDefault();
   closeNiconicoLiveVideoView();
   finalQuitInProgress=true;
-  void Promise.all([
-    stopCommentStream("アプリを終了しました。"),
-    stopRemoteControlServer()
-  ]).finally(()=>{
+  void settleBeforeQuit([
+    ()=>stopCommentStream("アプリを終了しました。"),
+    ()=>stopRemoteControlServer()
+  ],7000).then(result=>{
+    if(result.timedOut)console.warn("Shutdown cleanup timed out; continuing to exit.");
+  }).finally(()=>{
     for(const pending of pendingRemoteRendererRequests.values()){
       clearTimeout(pending.timer);
       pending.resolve({ok:false,code:"APP_SHUTDOWN",message:"アプリを終了しました。"});
     }
     pendingRemoteRendererRequests.clear();
     closeVideoPlayer();
-    app.quit();
+    // The first 'before-quit' is cancelled for async shutdown cleanup.
+    // Explicitly hand off to the NSIS updater after cleanup is complete.
+    if(!autoUpdateService?.installReadyUpdate())app.quit();
   });
 });
 app.on("window-all-closed",()=>{if(process.platform!=="darwin")app.quit();});
