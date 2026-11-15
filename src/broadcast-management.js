@@ -60,7 +60,28 @@ function isBroadcastVerificationFresh(verification, programId, now = Date.now())
   return age >= 0 && age <= VERIFICATION_TTL_MS;
 }
 
+ 
+function evaluateAutoNextFrame(runtime, programs, lastTriggeredId = "") {
+  const validId = value => /^lv\d{1,20}$/.test(String(value || "").toLowerCase());
+  const armed = validId(runtime?.armedProgramId) ? String(runtime.armedProgramId).toLowerCase() : "";
+  const rows = (Array.isArray(programs) ? programs : []).filter(item => validId(item?.programId));
+  const id = item => String(item?.programId || "").toLowerCase();
+  const status = item => String(item?.programStatus || "").toUpperCase();
+  const live = rows.find(item => ["ON_AIR","ONAIR","TEST"].includes(status(item)));
+  if (live) return {armedProgramId:id(live),triggerProgramId:"",reason:"watching-live"};
+  if (!armed) return {armedProgramId:"",triggerProgramId:"",reason:"awaiting-live"};
+  const previous = rows.find(item => id(item) === armed);
+  if (!previous || !["ENDED","END","CLOSED"].includes(status(previous)))
+    return {armedProgramId:armed,triggerProgramId:"",reason:"awaiting-ended-status"};
+  if (rows.some(item => id(item) !== armed && ["RESERVED","RESERVE","SCHEDULED","WAITING"].includes(status(item))))
+    return {armedProgramId:"",triggerProgramId:"",reason:"next-already-exists"};
+  if (String(lastTriggeredId || "").toLowerCase() === armed)
+    return {armedProgramId:"",triggerProgramId:"",reason:"already-triggered"};
+  return {armedProgramId:armed,triggerProgramId:armed,reason:"ended"};
+}
+
 const api = Object.freeze({
+  evaluateAutoNextFrame,
   VERIFICATION_TTL_MS,
   normalizeProgramStatus,
   createBroadcastVerification,

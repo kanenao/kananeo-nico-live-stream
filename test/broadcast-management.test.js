@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
   VERIFICATION_TTL_MS,
+  evaluateAutoNextFrame,
   normalizeProgramStatus,
   createBroadcastVerification,
   isBroadcastVerificationFresh
@@ -53,4 +54,22 @@ test("requires a fresh verification for the exact target program ID", () => {
   assert.equal(isBroadcastVerificationFresh(verification, "", 100001), false);
   assert.equal(isBroadcastVerificationFresh(verification, "lv123456789", 99999), false);
   assert.equal(isBroadcastVerificationFresh(null, "lv123456789", 100001), false);
+});
+
+test("next-frame trigger requires observing an own live before ended", () => {
+  const row=(programId,programStatus)=>({programId,programStatus});
+  const first=evaluateAutoNextFrame({},[row("lv123","ENDED")]);
+  assert.equal(first.triggerProgramId,"");
+  const live=evaluateAutoNextFrame(first,[row("lv123","ON_AIR")]);
+  assert.equal(live.armedProgramId,"lv123");
+  assert.equal(evaluateAutoNextFrame(live,[], "").triggerProgramId,"");
+  assert.equal(evaluateAutoNextFrame(live,[row("lv123","ENDED")]).triggerProgramId,"lv123");
+  assert.equal(evaluateAutoNextFrame(live,[row("lv123","ENDED")],"lv123").triggerProgramId,"");
+});
+test("next frame is suppressed when another frame is already booked", () => {
+  const runtime={armedProgramId:"lv123"};
+  const rows=[{programId:"lv123",programStatus:"ENDED"},{programId:"lv456",programStatus:"RESERVED"}];
+  assert.equal(evaluateAutoNextFrame(runtime,rows).reason,"next-already-exists");
+  assert.equal(evaluateAutoNextFrame(runtime,[{programId:"lv123",programStatus:"UNKNOWN"}]).triggerProgramId,"");
+  assert.equal(evaluateAutoNextFrame(runtime,[{programId:"lv456",programStatus:"ON_AIR"}]).armedProgramId,"lv456");
 });
