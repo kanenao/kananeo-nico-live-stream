@@ -1,6 +1,6 @@
 "use strict";
 
-const { app, BrowserWindow, WebContentsView, shell, session, ipcMain, clipboard, dialog, Notification } = require("electron");
+const { app, BrowserWindow, WebContentsView, shell, session, ipcMain, clipboard, dialog, Notification, Menu } = require("electron");
 const path = require("node:path");
 const os = require("node:os");
 const fs = require("node:fs/promises");
@@ -43,6 +43,8 @@ const {
 const { selectNextPlaybackCandidate } = require("./playback-scheduler");
 const { buildBroadcasterCommentRequest, parseBroadcasterCommentResponse } = require("./broadcaster-comment-api");
 const { buildUpdateCheckResult } = require("./update-checker");
+const {loggedInId,broadcastHistoryUrl,parseHistory,programFromCreateUrl}=require("./own-broadcast");
+const {editingMenus,editingContextMenu}=require("./editing-support");
 const { createAutoUpdateService } = require("./auto-update-service");
 const {
   ALLOWED_BGM_EXTENSIONS, MAX_BGM_TRACK_BYTES, MAX_BGM_TRACKS,
@@ -58,6 +60,7 @@ let lastBroadcasterCommentAttemptAt = 0;
 let mainWindow = null;
 let loginWindow = null;
 let broadcastWindow = null;
+let recentlyCreatedId="";
 let liveVideoView = null;
 let liveVideoProgramId = "";
 let niconicoSession = null;
@@ -156,6 +159,32 @@ async function notifySessionStatus() {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("niconico:session-changed", status);
 }
 
+function setupEditMenu(win){
+ if(!win||win.isDestroyed())return;
+ win.webContents.on("context-menu",(_event,params)=>{
+  const items=editingContextMenu(params);
+  if(items.length)Menu.buildFromTemplate(items).popup({window:win});
+ });
+}
+async function getOwnBroadcast(){
+ const status=await getNiconicoSessionStatus();
+ if(!status.authenticated)return {ok:false,message:"まずニコニコにログインしてください。"};
+ let id="";
+ try{id=loggedInId(await niconicoSession.cookies.get({url:NICONICO_HOME}))||"";}catch{}
+ if(!id)return {ok:false,message:"ログイン中のユーザーIDを確認できません。再ログインしてください。"};
+ const url=broadcastHistoryUrl(id);
+ if(!url)return {ok:false,message:"ユーザーIDが正しくありません。"};
+ let res;try{res=await niconicoSession.fetch(url,{method:"GET",credentials:"include",redirect:"error",headers:{Accept:"application/json"},signal:AbortSignal.timeout(12000)});}
+ catch{return {ok:false,message:"自分の放送履歴にアクセスできませんでした。"};}
+ if(!res.ok)return {ok:false,message:"放送履歴の取得が拒否されました（HTTP "+res.status+"）。"};
+ return parseHistory(await res.text());
+}
+function detectCreatedProgram(url){
+ const id=programFromCreateUrl(url);
+ if(!id||id===recentlyCreatedId||!mainWindow||mainWindow.isDestroyed())return;
+ recentlyCreatedId=id;
+ mainWindow.webContents.send("niconico:created-broadcast",{programId:id});
+}
 function openNiconicoLoginWindow() {
   if (loginWindow && !loginWindow.isDestroyed()) {
     loginWindow.focus();
@@ -175,6 +204,7 @@ function openNiconicoLoginWindow() {
   loginWindow.webContents.on("will-navigate", (event,url) => {
     try { if (new URL(url).protocol !== "https:") event.preventDefault(); } catch { event.preventDefault(); }
   });
+  setupEditMenu(loginWindow);
   loginWindow.on("closed", () => { loginWindow=null; void notifySessionStatus(); });
   loginWindow.loadURL(NICONICO_HOME).catch(() => {
     if (loginWindow && !loginWindow.isDestroyed()) loginWindow.close();
@@ -210,6 +240,10 @@ function openNiconicoBroadcastWindow(mode, input = "") {
       try { if (new URL(url).protocol==="https:") shell.openExternal(url); } catch {}
     }
   });
+  setupEditMenu(broadcastWindow);
+  broadcastWindow.webContents.on("did-navigate",(_event,url)=>{if(mode==="create")detectCreatedProgram(url);});
+  broadcastWindow.webContents.on("did-navigate-in-page",(_event,url)=>{if(mode==="create")detectCreatedProgram(url);});
+  broadcastWindow.webContents.on("did-finish-load",()=>{if(mode==="create"&&broadcastWindow&&!broadcastWindow.isDestroyed())detectCreatedProgram(broadcastWindow.webContents.getURL());});
   broadcastWindow.on("closed",()=>{broadcastWindow=null;});
   broadcastWindow.loadURL(targetUrl).catch(()=>{
     if(broadcastWindow&&!broadcastWindow.isDestroyed())broadcastWindow.close();
@@ -2090,6 +2124,10 @@ function registerIpcHandlers() {
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     return closeNiconicoLiveVideoView();
   });
+  ipcMain.handle("niconico:own-broadcast",event=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,message:"この操作は許可されていません。"};
+    return getOwnBroadcast();
+  });
   ipcMain.handle("niconico:check-program",(event,input)=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     if(typeof input!=="string"||input.length>512) return {ok:false,code:"INVALID_INPUT",message:"放送IDまたはURLを入力してください。"};
@@ -2257,6 +2295,7 @@ function createMainWindow() {
     title:"kananeo nico live stream",backgroundColor:"#0a0f1d",autoHideMenuBar:true,
     webPreferences:{preload:path.join(__dirname,"preload.js"),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true}
   });
+  setupEditMenu(mainWindow);
   mainWindow.loadFile(path.join(__dirname,"index.html"));
   mainWindow.once("ready-to-show",()=>mainWindow&&mainWindow.show());
   mainWindow.webContents.setWindowOpenHandler(({url})=>{
@@ -2276,6 +2315,7 @@ app.whenReady().then(async()=>{
   niconicoSession.setPermissionRequestHandler((_webContents,_permission,callback)=>callback(false));
   niconicoSession.cookies.on("changed",()=>{void notifySessionStatus();});
   registerIpcHandlers();
+  Menu.setApplicationMenu(Menu.buildFromTemplate(editingMenus()));
   createMainWindow();
   try{
     const {autoUpdater}=require("electron-updater");
