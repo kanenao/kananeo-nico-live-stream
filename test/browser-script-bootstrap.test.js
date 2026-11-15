@@ -11,6 +11,7 @@ const html=fs.readFileSync(path.join(root,"index.html"),"utf8");
 const orderedScripts=[...html.matchAll(/<script\s+src="([^"]+)"\s*><\/script>/g)].map(match=>match[1]);
 const exportsExpected=[
  "KananeoQuoteScheduler",
+ "KananeoPollTiming",
  "KananeoUserProfiles",
  "KananeoCommentSpeech",
  "KananeoBroadcastManagement",
