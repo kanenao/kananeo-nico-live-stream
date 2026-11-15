@@ -4,7 +4,7 @@
 
 ## 現在のバージョン
 
-**0.2.0-alpha.50** — 監視設定変更・停止後に古い非同期確認結果が反映される競合を防止しました。
+**0.2.0-alpha.51** — α版のGitHub Releases自動公開に対応しました。
 
 ## バージョン運用ルール
 
@@ -18,6 +18,20 @@
 - 製品版の完成条件を満たすまでは、`beta` や正式版へ移行せずα版を継続する
 
 詳細は [docs/VERSIONING.md](docs/VERSIONING.md) を参照してください。
+
+## α51：GitHub Releasesでα版を自動公開
+
+- mainブランチへα版を更新してWindowsビルドとテストに成功した場合、GitHub Releasesへプレリリースとして自動公開
+- `v0.2.0-alpha.51` のようなバージョンタグを公開時に作成し、インストーラー（Setup）とPortable EXEを添付
+- α版は `prerelease: true` とし、正式版と区別（開発・動作検証用）
+- ビルドが失敗した場合やmainが別コミットへ進んだ場合は公開を中止
+- 同じタグが別コミットにある場合は上書きせず停止し、リリースの整合性を維持
+- 従来の手動タグ `v*` からのGitHub Release公開にも引き続き対応
+- 画面上の古いベータ版表記を現行のα版表示へ変更
+
+### α版のダウンロード
+
+[GitHub Releases](https://github.com/kanenao/kananeo-nico-live-stream/releases) から最新の `Pre-release` を開き、Windows x64用の `Setup`（インストール用）または `Portable`（インストール不要）をダウンロードします。**α版は開発中で、Windows実機での全機能検証はまだ完了していません。**
 
 ## α50：全ボタン無反応の起動原因を修正
 
