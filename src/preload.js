@@ -4,7 +4,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
-  version:"0.2.0-alpha.68",
+  version:"0.2.0-alpha.69",
   platform:process.platform,
   stage:"https-lan-remote-control",
   remote:Object.freeze({
@@ -67,6 +67,8 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   niconico:Object.freeze({
     openLogin:()=>ipcRenderer.invoke("niconico:open-login"),
     openBroadcastCreate:()=>ipcRenderer.invoke("niconico:open-broadcast-create"),
+    createProgramInApp:input=>ipcRenderer.invoke("niconico:create-program-in-app",input),
+    getVideoMetadata:videoId=>ipcRenderer.invoke("niconico:video-metadata",videoId),
     configureAutoNext:settings=>ipcRenderer.invoke("niconico:auto-next-configure",settings),
     checkAutoNext:()=>ipcRenderer.invoke("niconico:auto-next-check"),
     getAutoNextStatus:()=>ipcRenderer.invoke("niconico:auto-next-status"),

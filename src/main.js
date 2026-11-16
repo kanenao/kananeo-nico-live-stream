@@ -4,7 +4,7 @@ const { app, BrowserWindow, WebContentsView, shell, session, ipcMain, clipboard,
 const path = require("node:path");
 const os = require("node:os");
 const fs = require("node:fs/promises");
-const { randomUUID } = require("node:crypto");
+const { randomUUID, createHash } = require("node:crypto");
 const {
   createPairingChallenge, verifyPairingCode, createDeviceCredential,
   verifyDeviceToken, revokeRemoteDevice, sanitizeRemoteDevice,
@@ -51,6 +51,8 @@ const {createNextFrameMonitor}=require("./next-frame-monitor");
 const {createOwnBroadcastMonitor}=require("./own-broadcast-monitor");
 const {buildRegisteredUserHistoryUrl,createRegisteredUserMonitor}=require("./registered-user-monitor");
 const {validateProgramControl,canMutateProgram,buildProgramMutationRequest,summarizeProgramMutation}=require("./program-control");
+const {validateManualProgramInput}=require("./manual-program-create");
+const {buildVideoMetadataRequest,parseVideoMetadataResponse}=require("./video-metadata");
 const {buildPreviousProgramRequest,parsePreviousProgram,
   buildCreateProgramRequest,parseCreateProgramResponse}=require("./inherited-program");
 const {editingMenus,editingContextMenu}=require("./editing-support");
@@ -255,6 +257,76 @@ function getRegisteredUserMonitor(){
  }
  return registeredUserMonitor;
 }
+
+let manualCreatePending=false;
+async function createProgramFromApp(input){
+ const checked=validateManualProgramInput(input);
+ if(!checked.ok)return checked;
+ if(manualCreatePending)return {ok:false,code:"CREATION_BUSY",message:"番組の作成処理中です。結果を確認してください。"};
+ manualCreatePending=true;
+ try{
+  const mine=await getOwnBroadcast();
+  if(!mine?.ok||!/^\d{1,20}$/.test(String(mine.userId||"")))
+   return {ok:false,code:"LOGIN_REQUIRED",message:mine?.message||"ニコニコへのログインを確認できません。"};
+  if((mine.programs||[]).some(row=>["RESERVED","RESERVE","WAITING","SCHEDULED"].includes(String(row.programStatus).toUpperCase())))
+   return {ok:false,code:"PENDING_PROGRAM_EXISTS",message:"既に予約中の枠があります。番組履歴を確認してから作成してください。"};
+  let cookies;
+  try{cookies=await niconicoSession.cookies.get({url:NICONICO_HOME});}
+  catch{return {ok:false,code:"LOGIN_REQUIRED",message:"ニコニコのセッションを確認できません。"};}
+  const token=cookies.find(x=>x.name==="user_session")?.value||"";
+  if(loggedInId(cookies)!==mine.userId)
+   return {ok:false,code:"ACCOUNT_CHANGED",message:"番組作成前にログインアカウントが変更されました。"};
+  const request=buildCreateProgramRequest(checked.payload,token);
+  if(!request.ok)return request;
+  // Persist a fingerprint BEFORE POST, so an uncertain response cannot create
+  // duplicate programs by accidental double clicks or a retry after restart.
+  const file=path.join(app.getPath("userData"),"manual-create-attempts.json");
+  let items=[];
+  try{
+   const current=JSON.parse(await fs.readFile(file,"utf8"));
+   if(Array.isArray(current?.attempts))items=current.attempts.filter(x=>x&&Date.now()-Date.parse(x.at)<86400000).slice(-99);
+  }catch(err){
+   if(err?.code!=="ENOENT")return {ok:false,code:"JOURNAL_UNREADABLE",message:"作成記録を確認できないため番組を作成しません。"};
+  }
+  const digest=createHash("sha256").update(mine.userId+":"+JSON.stringify(checked.payload)).digest("hex");
+  if(items.some(x=>x.digest===digest&&Date.now()-Date.parse(x.at)<10*60*1000))
+   return {ok:false,code:"POSSIBLE_DUPLICATE",message:"同じ設定の作成要求を直近10分以内に送信しています。番組履歴を確認してください。"};
+  items.push({digest,userId:mine.userId,at:new Date().toISOString(),status:"pending"});
+  try{
+   const tmp=file+".tmp";
+   await fs.mkdir(path.dirname(file),{recursive:true});
+   await fs.writeFile(tmp,JSON.stringify({version:1,attempts:items}),{mode:0o600});
+   await fs.rename(tmp,file);
+  }catch{return {ok:false,code:"JOURNAL_WRITE_FAILED",message:"重複防止記録の保存に失敗したため作成を中止しました。"};}
+  let response;
+  try{response=await niconicoSession.fetch(request.url,request.options);}
+  catch{return {ok:false,code:"CREATE_RESULT_UNKNOWN",message:"番組作成要求の結果が不明です。二重作成防止のため再送せず、自分の番組履歴を確認してください。"};}
+  if(!isTrustedNiconicoUrl(response.url||request.url))
+   return {ok:false,code:"UNTRUSTED_RESPONSE",message:"公式の応答を確認できません。番組履歴を確認してください。"};
+  let result;
+  try{result=parseCreateProgramResponse(await response.text(),response.status);}
+  catch{return {ok:false,code:"CREATE_RESULT_UNKNOWN",message:"番組作成結果を読み取れません。履歴を確認してください。"};}
+  if(result.ok){
+   items[items.length-1]={...items[items.length-1],status:"created",programId:result.programId};
+   try{await fs.writeFile(file,JSON.stringify({version:1,attempts:items}),{mode:0o600});}catch{}
+  }
+  return {...result,message:result.ok?"アプリから番組 "+result.programId+" を作成しました。配信開始は別操作です。":result.message};
+ }finally{manualCreatePending=false;}
+}
+async function getNicoVideoMetadata(input){
+ const request=buildVideoMetadataRequest(input);
+ if(!request.ok)return request;
+ let response;
+ try{response=await niconicoSession.fetch(request.url,request.options);}
+ catch{return {ok:false,code:"METADATA_NETWORK_ERROR",message:"動画時間を自動取得できませんでした。動画の長さを手動で設定してください。"};}
+ if(!isTrustedNiconicoUrl(response.url||request.url))
+  return {ok:false,code:"METADATA_UNTRUSTED",message:"動画情報の応答先を確認できません。"};
+ let body;
+ try{body=await response.text();}
+ catch{return {ok:false,code:"METADATA_INVALID",message:"動画時間を読み取れませんでした。"};}
+ return parseVideoMetadataResponse(response.status,body,request.videoId);
+}
+
 async function createInheritedNextFrame(previousProgramId,expectedUserId){
  // Credentials never cross IPC into the renderer or persistent logs.
  if(!/^lv\d{1,20}$/.test(String(previousProgramId||""))||
@@ -2252,6 +2324,14 @@ function registerIpcHandlers() {
     catch{return {ok:false,code:"OPEN_FAILED",message:"ブラウザーで開けませんでした。"};}
   });
   ipcMain.handle("niconico:open-login",()=>openNiconicoLoginWindow());
+  ipcMain.handle("niconico:create-program-in-app",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    return createProgramFromApp(input);
+  });
+  ipcMain.handle("niconico:video-metadata",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    return getNicoVideoMetadata(input);
+  });
   ipcMain.handle("niconico:open-broadcast-create",event=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     return openNiconicoBroadcastWindow("create");

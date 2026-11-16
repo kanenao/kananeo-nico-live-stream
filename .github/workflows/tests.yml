@@ -44,6 +44,8 @@ jobs:
           node --check src/update-channel.js
           node --check src/release-history.js
           node --check src/bundled-changelog.js
+          node --check src/manual-program-create.js
+          node --check src/video-metadata.js
           node --check scripts/release-notes.js
           node --check scripts/generate-update-manifest.js
           node --check scripts/prepare-update-config.js
