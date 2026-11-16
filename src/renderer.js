@@ -79,7 +79,9 @@ let pollDeadlineTimer=null;
 let pollVideoId="";
 let pollTimingSummary="";
 let pollVerifiedRound=false;
-const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,stockAutoPlay:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoCreate:false,autoStartProgram:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,autoVideo:false,notifyOnLive:false,ownAccount:true,targets:[],history:[]},liveVideoZoom:{zoomMode:"auto",zoomPercent:70},logs:["β2 UIプロトタイプを起動しました"]};
+let quoteMetadataPending=null;
+let autoLiveQuotePending="";
+const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,stockAutoPlay:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,autoPlayOnOwnLive:false,lastAutoPlayProgramId:"",nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoCreate:false,autoStartProgram:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,autoVideo:false,notifyOnLive:false,ownAccount:true,targets:[],history:[]},liveVideoZoom:{zoomMode:"auto",zoomPercent:70},logs:["β2 UIプロトタイプを起動しました"]};
 let remoteAuditEntries=[],remoteAuditFilters={query:"",type:"all",from:"",to:""},remoteAuditNotificationEnabled=true;
 let state=load(),page="dashboard";
 let streamMonitorRuntime={busy:false,nextCheckAt:0,lastCheckAt:"",message:"監視は停止中です。",checked:0,generation:0};
@@ -124,9 +126,39 @@ function renderStreamMonitorUi(){
  const start=document.querySelector("[data-stream-monitor-start]"),stop=document.querySelector("[data-stream-monitor-stop]"),check=document.querySelector("[data-stream-monitor-check]");
  if(start)start.disabled=config.enabled||(!rows.length&&!config.ownAccount&&!(config.userIds||[]).length);if(stop)stop.disabled=!config.enabled;if(check)check.disabled=streamMonitorRuntime.busy||(!rows.length&&!config.ownAccount&&!(config.userIds||[]).length);
 }
+
+async function maybeAutoPlayOnOwnLive(info){
+ const id=String(info?.programId||"").toLowerCase();
+ if(!state.playback.autoPlayOnOwnLive||!/^lv\d{1,20}$/.test(id)||
+    !["ON_AIR","ONAIR"].includes(String(info.programStatus||"").toUpperCase()))return;
+ if(state.playback.lastAutoPlayProgramId===id||autoLiveQuotePending===id)return;
+ if(quotePlayback.active||!state.requests.some(x=>x.status==="queued")&&
+    !(state.playback.stockAutoPlay&&state.stocks.some(x=>x.status==="queued")))return;
+ autoLiveQuotePending=id;
+ try{
+  const verification=await window.kananeoApp.niconico.checkProgram(id);
+  if(!verification?.ok||!["ON_AIR","ONAIR"].includes(String(verification.programStatus||"").toUpperCase()))return;
+  if(!state.playback.autoPlayOnOwnLive||quotePlayback.active)return;
+  // Fail closed if the quotation is already active on Nico itself.
+  const current=await window.kananeoApp.niconico.getCurrentQuotation({programId:id});
+  if(!current?.ok||current.exists)return;
+  state.lastProgramId=id;
+  const original=state.playback.lastAutoPlayProgramId;
+  state.playback.lastAutoPlayProgramId=id;
+  save(); // one attempt per program, even if API times out
+  const played=await playNextQuoteItem({triggeredByAuto:true,skipConfirmation:true});
+  toast(played?"新しい自分の放送で動画リクエストの自動再生を開始しました。":
+   "自動再生を開始できませんでした。手動操作で状態を確認してください。");
+  if(!played)state.playback.lastAutoPlayProgramId=id; // do not flood the live with retries
+  save();
+ }catch(error){toast("放送開始後の自動再生を確認できませんでした。手動で確認してください。");}
+ finally{if(autoLiveQuotePending===id)autoLiveQuotePending="";}
+}
+
 function applyOwnMonitorStatus(status){
  if(!status||typeof status!=="object")return;
  ownMonitorStatus=status;
+ for(const item of status.activePrograms||[])void maybeAutoPlayOnOwnLive(item);
  if(page==="broadcast")renderStreamMonitorUi();
 }
 async function handleOwnBroadcastLive(info){
@@ -142,6 +174,7 @@ async function handleOwnBroadcastLive(info){
  state.streamMonitor.lastOwnNotifiedProgramId=programId;
  addStreamMonitorHistory("live",programId,"自分の放送開始を自動検知しました。");
  save();void adoptCreatedBroadcast(programId);
+ void maybeAutoPlayOnOwnLive(info);
  if(state.streamMonitor.autoComments){
   const active=["connecting","connected","recovering"].includes(commentConnection.state);
   if(!active)void startComments(programId);
@@ -1052,6 +1085,7 @@ state.player.quoteExpectedEndAt=state.player.quoteDurationMs>0?startedAt+state.p
 quotePlayback={active:true,verified:!!result.verified,programId,videoId:result.videoId,queueType,itemId:item.id,message:result.message};
 state.logs.unshift("ニコ生へ引用再生："+item.title);
 scheduleQuoteAutoNext(item,startedAt);
+if(storedQuoteDurationMs(item)<=0)void ensureCurrentQuoteDuration();
 save();
 if(page==="requests"||page==="stocks"||page==="player")render();
 toast(result.message||"引用再生の要求を送信しました。");
@@ -1179,6 +1213,28 @@ function suspendQuoteAutoForPoll(){
  quoteAutoMessage="アンケートの結果が確定するまで自動次動画の予定を保留しています。";
  save();updateQuoteScheduleUi();
 }
+
+async function ensureCurrentQuoteDuration(){
+ const id=String(quotePlayback.videoId||state.player.quoteVideoId||"").toLowerCase();
+ if(!/^(?:sm|nm|so)\d{1,12}$/.test(id))return false;
+ if(storedQuoteDurationMs(currentQueueItem())>0)return true;
+ if(quoteMetadataPending?.videoId===id)return quoteMetadataPending.promise;
+ const request=(async()=>{
+  const result=await window.kananeoApp.niconico.getVideoMetadata(id);
+  if(!result?.ok||quotePlayback.videoId!==id)return false;
+  const item=[...state.requests,...state.stocks].find(x=>x.videoId===id);
+  if(item)item.lengthMs=result.durationMs;
+  state.player.quoteDurationMs=result.durationMs;
+  save();
+  const started=Number(state.player.quoteStartedAt);
+  if(started>0&&!pollRuntime.active&&state.playback.quoteAutoNext)
+   scheduleQuoteAutoNext(item||{videoId:id,lengthMs:result.durationMs},started);
+  return true;
+ })().catch(()=>false).finally(()=>{if(quoteMetadataPending?.videoId===id)quoteMetadataPending=null;});
+ quoteMetadataPending={videoId:id,promise:request};
+ return request;
+}
+
 function activePollMedia(now=Date.now()){
  return {now,startedAt:Number(state.player.quoteStartedAt),
    durationMs:storedQuoteDurationMs(currentQueueItem()),
@@ -1273,6 +1329,11 @@ async function startAutomaticPoll(){
  const programId=state.lastProgramId||commentConnection.programId;
  if(!programId){toast("先に「放送・枠管理」で放送IDを確認してください。");return;}
  const input={programId,question:state.poll.question,choices:[state.poll.continue,state.poll.next],waitSeconds:Number(state.poll.wait),resultSeconds:Number(state.poll.result)};
+ if(!quotePlayback.active&&programId)await refreshQuotePlayback({silent:true});
+ if(quotePlayback.active&&storedQuoteDurationMs(currentQueueItem())<=0){
+  setPollRuntime("starting","動画の長さを自動取得しています…");
+  await ensureCurrentQuoteDuration();
+ }
  const media=activePollMedia();
  if(!quotePlayback.active||!media.videoId){
   pollTimingSummary="ニコ生で引用再生中の動画を確認できないため、アンケートを省略しました。";
