@@ -8,9 +8,9 @@ function createNextFrameMonitor({getOwnBroadcast, verifyProgram, openCreate, onS
  if([getOwnBroadcast,verifyProgram,openCreate,onStatus].some(fn=>typeof fn!=="function"))
   throw new TypeError("次枠監視の処理が不足しています。");
  let generation=0,timer=null,userId="",armedProgramId="",lastTriggeredId="";
- let enabled=false,busy=false,phase="disabled",message="自動次枠監視は停止中です。",lastCheckAt="",nextCheckAt=0;
+ let enabled=false,busy=false,autoCreate=false,nextProgramId="",phase="disabled",message="自動次枠監視は停止中です。",lastCheckAt="",nextCheckAt=0;
  const validId=value=>/^lv\d{1,20}$/i.test(String(value||""))?String(value).toLowerCase():"";
- const status=()=>({enabled,busy,armedProgramId,lastTriggeredId,phase,message,lastCheckAt,nextCheckAt});
+ const status=()=>({enabled,busy,autoCreate,nextProgramId,armedProgramId,lastTriggeredId,phase,message,lastCheckAt,nextCheckAt});
  const emit=()=>{try{onStatus(status());}catch{}};
  const active=token=>enabled&&token===generation;
  async function poll(force=false){
@@ -26,7 +26,7 @@ function createNextFrameMonitor({getOwnBroadcast, verifyProgram, openCreate, onS
    if(!/^\d{1,20}$/.test(account))throw Error("ログイン中のアカウントを確認できませんでした。");
    if(account!==userId){
     if(userId)lastTriggeredId="";
-    userId=account;armedProgramId="";
+    userId=account;armedProgramId="";nextProgramId="";
    }
    const plan=evaluateAutoNextFrame({armedProgramId},own.programs,lastTriggeredId);
    armedProgramId=plan.armedProgramId;
@@ -38,12 +38,15 @@ function createNextFrameMonitor({getOwnBroadcast, verifyProgram, openCreate, onS
     if(!info?.ok||validId(info.programId)!==plan.triggerProgramId||!ended){
      phase="verifying";message="番組終了を確定できません。次回再確認します。";
     }else{
-     const opened=await openCreate();
+     const opened=await openCreate(plan.triggerProgramId,account,autoCreate);
      if(!active(token))return status();
      if(!opened?.ok)throw Error(opened?.message||"番組作成画面を開けませんでした。");
      lastTriggeredId=plan.triggerProgramId;armedProgramId="";
+     nextProgramId=validId(opened.programId);
      phase="prepared";
-     message="放送 "+plan.triggerProgramId+" の終了を検知し、次枠の作成画面を開きました。作成確定は公式画面で行ってください。";
+     message=nextProgramId
+      ?"放送 "+plan.triggerProgramId+" の設定を引き継ぎ、次枠 "+nextProgramId+" を自動作成しました。"
+      :"放送 "+plan.triggerProgramId+" の終了を検知し、次枠の作成画面を開きました。作成確定は公式画面で行ってください。";
     }
    }else if(plan.reason==="watching-live"){
     phase="watching";message="放送 "+armedProgramId+" をアプリ本体で監視中（約5秒間隔）。";
@@ -68,9 +71,10 @@ function createNextFrameMonitor({getOwnBroadcast, verifyProgram, openCreate, onS
    return {ok:false,code:"INVALID_INPUT",message:"次枠監視設定を確認してください。"};
   if(!input.enabled){
    generation++;if(timer!==null)clearIntervalFn(timer);timer=null;
-   enabled=false;armedProgramId="";userId="";phase="disabled";message="自動次枠監視は停止中です。";nextCheckAt=0;
+   enabled=false;autoCreate=false;armedProgramId="";userId="";phase="disabled";message="自動次枠監視は停止中です。";nextCheckAt=0;
    emit();return {ok:true,status:status()};
   }
+  autoCreate=input.autoCreate===true;
   if(!enabled){
    generation++;enabled=true;lastTriggeredId=validId(input.lastTriggeredId);
    phase="waiting";message="自分の番組を確認しています…";nextCheckAt=0;
