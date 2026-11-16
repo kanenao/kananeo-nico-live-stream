@@ -45,6 +45,7 @@ const { buildBroadcasterCommentRequest, parseBroadcasterCommentResponse } = requ
 const { buildUpdateCheckResult } = require("./update-checker");
 const {loggedInId,broadcastHistoryUrl,parseHistory,programFromCreateUrl}=require("./own-broadcast");
 const {createNextFrameMonitor}=require("./next-frame-monitor");
+const {validateProgramControl,canMutateProgram,buildProgramMutationRequest,summarizeProgramMutation}=require("./program-control");
 const {buildPreviousProgramRequest,parsePreviousProgram,
   buildCreateProgramRequest,parseCreateProgramResponse}=require("./inherited-program");
 const {editingMenus,editingContextMenu}=require("./editing-support");
@@ -270,6 +271,36 @@ function getNextFrameMonitor(){
   });
  }
  return nextFrameMonitor;
+}
+async function controlOwnedNicoProgram(input){
+ const v=validateProgramControl(input?.programId,input?.action);
+ if(!v.ok)return v;
+ const own=await getOwnBroadcast();
+ if(!own?.ok)return {ok:false,code:"AUTH_REQUIRED",message:own?.message||"ログイン状態を確認してください。"};
+ const owned=(own.programs||[]).some(x=>x.programId===v.programId);
+ if(!owned)return {ok:false,code:"NOT_OWNER",message:"自分の放送履歴にない番組の開始・終了は操作できません。"};
+ const checked=await checkNiconicoProgram(v.programId);
+ if(!checked?.ok)return {ok:false,code:"PROGRAM_UNVERIFIED",message:checked?.message||"対象番組を確認できません。"};
+ const code=String(checked.programStatus||"").toUpperCase();
+ if(v.action==="start"&&["ON_AIR","ONAIR"].includes(code))
+  return {ok:true,already:true,verified:true,programId:v.programId,action:v.action,message:"この番組は既に放送中です。"};
+ if(v.action==="end"&&["ENDED","END","CLOSED"].includes(code))
+  return {ok:true,already:true,verified:true,programId:v.programId,action:v.action,message:"この番組は既に終了しています。"};
+ if(!canMutateProgram(checked.programStatus,v.action))
+  return {ok:false,code:"STATUS_NOT_ALLOWED",message:"現在の番組状態ではこの操作を実行できません："+(checked.programStatus||"未確認")};
+ const request=buildProgramMutationRequest(v.programId,v.action);
+ if(!request.ok)return request;
+ let response;
+ try{response=await niconicoSession.fetch(request.url,request.options);}
+ catch(error){return {ok:false,code:"MUTATION_UNKNOWN",message:"番組操作の応答が不明です。二重操作せず公式ページで状態を確認してください。"};}
+ if(!isTrustedNiconicoUrl(response.url||request.url))
+  return {ok:false,code:"UNTRUSTED_REDIRECT",message:"公式以外へ転送されたため番組操作を確認できません。"};
+ if(![200,201,204].includes(response.status))
+  return summarizeProgramMutation(response.status,null,v.action,v.programId);
+ // Server-side transition may be asynchronous. Never claim a confirmed start/end without rechecking.
+ let latest=await checkNiconicoProgram(v.programId);
+ if(!latest?.ok)latest=null;
+ return summarizeProgramMutation(response.status,latest,v.action,v.programId);
 }
 function detectCreatedProgram(url){
  const id=programFromCreateUrl(url);
@@ -2103,6 +2134,11 @@ function registerIpcHandlers() {
   ipcMain.handle("niconico:open-broadcast-create",event=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     return openNiconicoBroadcastWindow("create");
+  });
+  ipcMain.handle("niconico:program-control",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"操作権限がありません。"};
+    if(!input||typeof input!=="object")return {ok:false,code:"INVALID_INPUT",message:"番組操作を確認してください。"};
+    return controlOwnedNicoProgram(input);
   });
   ipcMain.handle("niconico:open-broadcast-manage",(event,input)=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
