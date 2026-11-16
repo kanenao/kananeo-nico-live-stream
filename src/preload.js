@@ -4,7 +4,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
-  version:"0.2.0-alpha.59",
+  version:"0.2.0-alpha.60",
   platform:process.platform,
   stage:"https-lan-remote-control",
   remote:Object.freeze({
@@ -65,6 +65,15 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   niconico:Object.freeze({
     openLogin:()=>ipcRenderer.invoke("niconico:open-login"),
     openBroadcastCreate:()=>ipcRenderer.invoke("niconico:open-broadcast-create"),
+    configureAutoNext:settings=>ipcRenderer.invoke("niconico:auto-next-configure",settings),
+    checkAutoNext:()=>ipcRenderer.invoke("niconico:auto-next-check"),
+    getAutoNextStatus:()=>ipcRenderer.invoke("niconico:auto-next-status"),
+    onAutoNextStatus:callback=>{
+      if(typeof callback!=="function")return ()=>{};
+      const listener=(_event,status)=>callback(status);
+      ipcRenderer.on("niconico:auto-next-status",listener);
+      return ()=>ipcRenderer.removeListener("niconico:auto-next-status",listener);
+    },
     openBroadcastManage:programId=>ipcRenderer.invoke("niconico:open-broadcast-manage",programId),
     openLiveVideo:programId=>ipcRenderer.invoke("niconico:live-view-open",programId),
     setLiveVideoBounds:bounds=>ipcRenderer.send("niconico:live-view-bounds",bounds),
