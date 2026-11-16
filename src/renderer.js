@@ -608,7 +608,7 @@ panel("番組枠の作成・終了","作成後の自動番組開始と、開始�
 '<div class="broadcast-live-layout">'+
 '<section class="panel broadcast-video-panel"><div class="broadcast-panel-heading"><div><h2>放送画面</h2><p>ニコ生公式の視聴ページをアプリ内に表示します。</p></div><span class="live-state-pill" id="broadcast-live-status">未表示</span></div>'+
 '<div class="field"><label>視聴する放送ID / URL</label><input class="input" id="broadcast-watch-id" value="'+esc(state.lastProgramId||commentConnection.programId||"")+'" placeholder="lv123456789" maxlength="512"></div>'+
-'<div id="broadcast-video-slot" class="broadcast-video-slot"><div class="broadcast-video-placeholder"><b>放送映像はまだ表示されていません</b><span>放送IDを入力して「放送画面を表示」を押してください。</span></div></div>'+
+'<div class="field"><label>ニコ生ページの表示倍率</label><select class="input" id="broadcast-video-zoom"><option value="auto" '+(state.liveVideoZoom.zoomMode==="auto"?"selected":"")+'>自動調整（表示領域に収める）</option>'+[40,50,60,70,80,90,100,110,125].map(value=>'<option value="'+value+'" '+(state.liveVideoZoom.zoomMode==="manual"&&state.liveVideoZoom.zoomPercent===value?"selected":"")+'>'+value+'%</option>').join("")+'</select><small class="muted">倍率は保存され、次回起動時にも適用されます。自動調整ではウィンドウサイズに合わせて再計算します。</small></div>'+'<div id="broadcast-video-slot" class="broadcast-video-slot"><div class="broadcast-video-placeholder"><b>放送映像はまだ表示されていません</b><span>放送IDを入力して「放送画面を表示」を押してください。</span></div></div>'+
 '<div class="actions"><button class="btn primary" data-live-video-open>▶ 放送画面を表示</button><button class="btn" data-live-video-close '+(!liveVideoState.open?"disabled":"")+'>画面を閉じる</button><button class="btn" data-broadcast-comment-start '+(["connecting","connected","recovering"].includes(commentConnection.state)?"disabled":"")+'>コメント受信を開始</button><button class="btn danger" data-broadcast-comment-stop '+(!["connecting","connected","recovering"].includes(commentConnection.state)?"disabled":"")+'>コメント切断</button></div>'+
 '<div class="muted" id="broadcast-live-message">'+esc(liveVideoState.message||"放送映像とコメント受信は個別に開始します。")+'</div></section>'+
 '<section class="panel broadcast-comments-panel"><div class="broadcast-panel-heading"><div><h2>コメント一覧</h2><p>NCV風の一覧表示・投稿者別絞り込み</p></div><span class="live-state-pill" id="broadcast-comment-status">'+esc(commentConnection.state==="connected"?"接続済み":commentConnection.state==="connecting"?"接続中":commentConnection.state==="recovering"?"再接続中":"未接続")+'</span></div>'+
@@ -2591,6 +2591,13 @@ document.addEventListener("change",e=>{
   state.playback.stockAutoPlay=e.target.checked;
   if(e.target.checked){state.playback.quoteAutoNext=true;if(state.playback.playStyle===0)state.playback.playStyle=1;}
   save();toast(e.target.checked?"ストックの自動再生を有効にしました。":"ストックの自動再生を無効にしました。");
+ }
+ if(e.target.id==="broadcast-video-zoom"){
+  const choice=e.target.value;
+  state.liveVideoZoom.zoomMode=choice==="auto"?"auto":"manual";
+  if(choice!=="auto")state.liveVideoZoom.zoomPercent=Number(choice)||70;
+  save();lastLiveVideoBoundsKey="";updateLiveVideoBounds();
+  toast(choice==="auto"?"放送画面の表示倍率を自動調整にしました。":"放送画面の表示倍率 "+state.liveVideoZoom.zoomPercent+"% を保存しました。");
  }
  if(e.target.id==="auto-start-program"){
   if(e.target.checked&&!confirm("枠を作成すると自動で番組の本番開始を要求します。OBSの配信開始は別途必要です。有効にしますか？")){e.target.checked=false;return;}
