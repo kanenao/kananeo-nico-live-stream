@@ -77,7 +77,7 @@ let pollDeadlineTimer=null;
 let pollVideoId="";
 let pollTimingSummary="";
 let pollVerifiedRound=false;
-const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,ownAccount:false,targets:[],history:[]},logs:["β2 UIプロトタイプを起動しました"]};
+const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoCreate:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,ownAccount:false,targets:[],history:[]},logs:["β2 UIプロトタイプを起動しました"]};
 let remoteAuditEntries=[],remoteAuditFilters={query:"",type:"all",from:"",to:""},remoteAuditNotificationEnabled=true;
 let state=load(),page="dashboard";
 let streamMonitorRuntime={busy:false,nextCheckAt:0,lastCheckAt:"",message:"監視は停止中です。",checked:0,generation:0};
@@ -236,7 +236,12 @@ function applyAutoNextStatus(status){
   state.automation.lastAutoNextProgramId=status.lastTriggeredId;
   state.logs.unshift("終了検知・次枠作成画面を自動起動："+status.lastTriggeredId);
   save();
-  toast("放送終了を検知しました。公式の次枠作成画面で確定してください。");
+  toast(status.nextProgramId?"次枠を自動作成しました："+status.nextProgramId:"放送終了を検知しました。公式の次枠作成画面で確定してください。");
+ }
+ if(status.nextProgramId&&state.automation.lastAutoCreatedProgramId!==status.nextProgramId){
+  state.automation.lastAutoCreatedProgramId=status.nextProgramId;
+  save();
+  void adoptCreatedBroadcast(status.nextProgramId);
  }
  showAutoNextStatus();
 }
@@ -244,7 +249,8 @@ async function syncAutoNextSettings(){
  const api=window.kananeoApp?.niconico?.configureAutoNext;
  if(typeof api!=="function")return;
  try{
-  const response=await api({enabled:!!state.automation.autoNext,lastTriggeredId:state.automation.lastAutoNextProgramId||""});
+  const response=await api({enabled:!!state.automation.autoNext,autoCreate:!!state.automation.autoCreate,
+    lastTriggeredId:state.automation.lastAutoNextProgramId||""});
   if(!response?.ok)throw Error(response?.message||"次枠監視を設定できませんでした。");
   applyAutoNextStatus(response.status);
  }catch(error){autoNextRuntime.message=String(error?.message||"次枠設定エラー");showAutoNextStatus();}
@@ -483,7 +489,7 @@ panel("投票時間・判定ルール","投票時間は3〜300秒、結果表示
 panel("自動アンケート実行","放送主権限のあるログインで、配信中の放送IDを指定してください。",'<div class="banner"><i class="led"></i><div><b id="poll-status-label">'+esc(pollRuntime.status==="idle"?"停止中":pollRuntime.status==="voting"?"投票中":pollRuntime.status==="results"?"結果表示中":pollRuntime.status==="repeating"?"再投票準備中":pollRuntime.status==="next"?"次動画へ進みました":pollRuntime.status==="error"?"エラー":"処理中")+'</b><small id="poll-status-message">'+esc(pollRuntime.message)+'</small></div></div><div id="poll-results" class="empty">'+(pollResults||"投票結果はまだありません。")+'</div><div id="poll-timing-summary" class="muted">'+esc(pollTimingSummary||"短い動画では自動アンケートを省略します。")+'</div><div class="actions"><button class="btn primary" data-poll-start '+(pollActive?"disabled":"")+'>自動アンケート開始</button><button class="btn" data-poll-stop '+(!pollActive?"disabled":"")+'>停止</button></div><div class="muted">結果がAPIから取得できない場合は自動スキップしません。動画の尺が短ければ投票を省略し、再投票は最大100回で停止します。</div>');
 }else if(page==="automation"){
 html=hero("AUTOMATION","自動枠取り・延長","次枠取得・無料延長と、動画の再生時間に合わせた配信運用を管理します。")+
-'<div class="grid2">'+panel("次枠管理","番組情報と再生状態を引き継ぐ",toggle("auto-next","放送終了時に次枠作成画面を自動起動","画面最小化中もアプリ本体で約5秒間隔に監視。作成確定は公式画面で行います。",state.automation.autoNext)+'<div class="muted" id="auto-next-status">'+esc(state.automation.autoNext?autoNextRuntime.message:"自動次枠監視はOFFです。")+'</div><button class="btn" data-auto-next-check '+(!state.automation.autoNext?"disabled":"")+'>今すぐ終了状態を確認</button>'+toggle("keep-position","再生位置を引き継ぐ","次枠でも現在位置を維持",state.automation.keepPosition))+
+'<div class="grid2">'+panel("次枠管理","番組情報と再生状態を引き継ぐ",toggle("auto-next","放送終了時に次枠取得を実行","アプリ本体で終了を監視し次枠取得を開始します。",state.automation.autoNext)+toggle("auto-create-next","前枠を引き継いで次枠を自動作成","タイトル・説明・タグ・公開設定を再利用して番組を自動作成（初期OFF）。作成された放送の本番開始は別操作です。",state.automation.autoCreate)+'<div class="muted" id="auto-next-status">'+esc(state.automation.autoNext?autoNextRuntime.message:"自動次枠監視はOFFです。")+'</div><button class="btn" data-auto-next-check '+(!state.automation.autoNext?"disabled":"")+'>今すぐ終了状態を確認</button>'+toggle("keep-position","再生位置を引き継ぐ","次枠でも現在位置を維持",state.automation.keepPosition))+
 panel("自動延長","動画の残り時間と枠の残り時間を同期",toggle("auto-extend","自動延長を有効にする","延長APIの仕様・条件を実機確認後に有効化します",state.automation.autoExtend)+toggle("adjust-video","動画の長さに合わせて延長時間を調整","動画終了後の黒画面・ロスタイムを抑える",state.automation.adjustVideo)+field("基本追加時間（秒）","extend",state.automation.extend)+'<button class="btn primary" data-save-auto>設定を保存</button>')+'</div>'+panel("延長可能な方法を確認","現在の放送で利用できる延長方法・分数を読み取ります。ここでは延長操作を実行しません。",'<div class="actions"><button class="btn primary" data-extension-check '+(extensionOptionsState.loading?"disabled":"")+ '>延長方法を確認</button><span class="muted" id="extension-updated">'+(extensionOptionsState.updatedAt?"更新："+new Date(extensionOptionsState.updatedAt).toLocaleTimeString("ja-JP"):"未確認")+'</span></div><div id="extension-options" class="empty">'+esc(extensionOptionsState.error||(extensionOptionsState.methods.length?extensionOptionsState.methods.map(x=>x.type+"："+x.minutes+"分").join(" / "):"放送IDを確認してから延長方法を取得してください。"))+'</div>');
 }else if(page==="external"){
 html=hero("EXTERNAL TOOLS","OBS・外部配信ツール","OBS Studio / N Air / XSplitの起動パスを登録します。外部操作は未実装です。")+
@@ -2306,7 +2312,17 @@ if(b.hasAttribute("data-comment-open-folder")){window.kananeoApp.niconico.openCo
 if(b.hasAttribute("data-comment-csv")){exportCommentsCsv();return;}
 if(b.hasAttribute("data-comment-clear")){receivedComments=[];renderComments();toast("コメント表示をクリアしました。");return;}
 if(b.hasAttribute("data-save-poll")){savePollSettings();toast("アンケート設定を保存しました");}
-if(b.hasAttribute("data-save-auto")){state.automation.autoNext=document.querySelector('[data-toggle="auto-next"]').checked;state.automation.keepPosition=document.querySelector('[data-toggle="keep-position"]').checked;state.automation.autoExtend=document.querySelector('[data-toggle="auto-extend"]').checked;state.automation.adjustVideo=document.querySelector('[data-toggle="adjust-video"]').checked;state.automation.extend=+document.getElementById("extend").value||30;save();void syncAutoNextSettings();toast("自動化設定を保存しました");}
+if(b.hasAttribute("data-save-auto")){
+ const enableAutoCreate=document.querySelector('[data-toggle="auto-create-next"]')?.checked===true;
+ if(enableAutoCreate&&!state.automation.autoCreate&&!confirm("前枠の放送内容を引き継ぎ、終了時にニコニコへ新しい番組を自動作成します。公式APIの変更などで失敗する可能性があります。有効化しますか？"))return;
+ state.automation.autoCreate=enableAutoCreate;
+ state.automation.autoNext=document.querySelector('[data-toggle="auto-next"]').checked||enableAutoCreate;
+ state.automation.keepPosition=document.querySelector('[data-toggle="keep-position"]').checked;
+ state.automation.autoExtend=document.querySelector('[data-toggle="auto-extend"]').checked;
+ state.automation.adjustVideo=document.querySelector('[data-toggle="adjust-video"]').checked;
+ state.automation.extend=+document.getElementById("extend").value||30;
+ save();void syncAutoNextSettings();render();toast(enableAutoCreate?"前枠引き継ぎ自動作成を有効にしました。":"自動化設定を保存しました。");
+}
 if(b.hasAttribute("data-save-paths")){state.external={obs:document.getElementById("obs").value,nair:document.getElementById("nair").value,xsplit:document.getElementById("xsplit").value};save();toast("外部ツールのパスを保存しました");}
 if(b.hasAttribute("data-up")){let i=+b.dataset.up;if(i>0)[state.requests[i-1],state.requests[i]]=[state.requests[i],state.requests[i-1]];save();render()}
 if(b.hasAttribute("data-down")){let i=+b.dataset.down;if(i<state.requests.length-1)[state.requests[i+1],state.requests[i]]=[state.requests[i],state.requests[i+1]];save();render()}
