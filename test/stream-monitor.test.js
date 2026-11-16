@@ -78,3 +78,8 @@ test("converts individual request failures into visible errors and continues",as
  assert.equal(results[0].ok,false);
  assert.equal(results[1].ok,true);
 });
+
+test("registered streamer user IDs stay normalized and distinct",()=>{
+ const result=normalizeMonitorUserIds("123\nuser/456\nhttps://www.nicovideo.jp/user/789\nhttps://example.com/user/9\n123");
+ assert.deepEqual(result,["123","456","789"]);
+});
