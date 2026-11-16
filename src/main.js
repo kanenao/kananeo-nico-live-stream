@@ -1811,11 +1811,11 @@ const UPDATE_RELEASES_API_URL = "https://api.github.com/repos/kanenao/kananeo-ni
 const UPDATE_RELEASES_PAGE_URL = "https://github.com/kanenao/kananeo-nico-live-stream/releases";
 const RELEASE_HISTORY_API_BASE = "https://api.github.com/repos/kanenao/kananeo-nico-live-stream/releases";
 const releaseHistoryCache=new Map();
-async function getReleaseHistory(page=1){
+async function getReleaseHistory(page=1,force=false){
  const number=Number(page);
  if(!Number.isInteger(number)||number<1||number>20)return {ok:false,code:"INVALID_PAGE",message:"履歴のページ番号は1〜20で指定してください。"};
  const cached=releaseHistoryCache.get(number);
- if(cached&&Date.now()-cached.time<5*60*1000)return cached.data;
+ if(cached&&!force&&Date.now()-cached.time<5*60*1000)return cached.data;
  try{
   const response=await fetch(RELEASE_HISTORY_API_BASE+"?per_page="+PAGE_SIZE+"&page="+number,{
    method:"GET",redirect:"error",
@@ -2525,9 +2525,9 @@ function registerIpcHandlers() {
      setImmediate(()=>app.quit());
      return {ok:true,message:"コメントとリモート操作を終了後、更新を適用します。"};
    });
-   ipcMain.handle("app:release-history",async(event,page)=>{
+   ipcMain.handle("app:release-history",async(event,page,force)=>{
      if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
-     return getReleaseHistory(page);
+     return getReleaseHistory(page,force===true);
    });
    ipcMain.handle("app:open-release",async(event,tag)=>{
      if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
