@@ -29,7 +29,7 @@ function normalizeStreamMonitorSettings(input){
   targets.push({programId:id,status:["onAir","ended","unknown"].includes(item.status)?item.status:"unknown",title:typeof item.title==="string"?item.title.slice(0,200):"",lastCheckedAt:typeof item.lastCheckedAt==="string"?item.lastCheckedAt:"",lastError:typeof item.lastError==="string"?item.lastError.slice(0,240):""});
  }
  const interval=Number(value.intervalSeconds);
- return {enabled:value.enabled===true,intervalSeconds:[30,60,120,300].includes(interval)?interval:60,autoComments:value.autoComments===true,autoVideo:value.autoVideo===true,ownAccount:value.ownAccount===true,userIds:normalizeMonitorUserIds(value.userIds),targets};
+ return {enabled:value.enabled===true,intervalSeconds:[30,60,120,300].includes(interval)?interval:60,autoComments:value.autoComments===true,autoVideo:value.autoVideo===true,notifyOnLive:value.notifyOnLive===true,ownAccount:value.ownAccount===true,userIds:normalizeMonitorUserIds(value.userIds),targets};
 }
 function applyProgramCheck(target,result,checkedAt=new Date().toISOString()){
  const previous=target&&typeof target==="object"?target:{};
