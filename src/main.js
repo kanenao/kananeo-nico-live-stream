@@ -229,6 +229,23 @@ function getRegisteredUserMonitor(){
    onLive:info=>{
     if(mainWindow&&!mainWindow.isDestroyed()&&!mainWindow.webContents.isDestroyed())
      mainWindow.webContents.send("niconico:registered-user-live",info);
+    // Windows notification works even while the app is minimized. Never notify
+    // without the user's explicit preference or for repeated detections.
+    if(registeredUserMonitor?.status().notifyOnLive&&Notification.isSupported()){
+     try{
+      const alert=new Notification({
+       title:"kanenaonico：登録配信者が放送を開始",
+       body:"ユーザー "+String(info.userId||"").slice(0,20)+"："+String(info.title||info.programId||"放送開始").slice(0,120)
+      });
+      alert.on("click",()=>{
+       if(mainWindow&&!mainWindow.isDestroyed()){
+        if(mainWindow.isMinimized())mainWindow.restore();
+        mainWindow.show();mainWindow.focus();
+       }
+      });
+      alert.show();
+     }catch(error){console.warn("登録配信者のWindows通知に失敗しました。",error?.name||"UNKNOWN");}
+    }
    },
    onStatus:status=>{
     if(mainWindow&&!mainWindow.isDestroyed()&&!mainWindow.webContents.isDestroyed())
