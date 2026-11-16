@@ -42,6 +42,7 @@ jobs:
           node --check src/own-broadcast-monitor.js
           node --check src/live-page-zoom.js
           node --check src/update-channel.js
+          node --check src/release-history.js
           node --check scripts/generate-update-manifest.js
           node --check scripts/prepare-update-config.js
           node --check src/live-view-layout.js
