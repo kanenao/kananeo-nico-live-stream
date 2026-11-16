@@ -74,3 +74,23 @@ test("reconfiguration does not forget observed program and timer can stop",async
  x.monitor.dispose();assert.equal(x.tick,null);
 });
 
+
+test("autoCreate mode invokes inherited creation callback with program and account",async()=>{
+ const events=[],rows=[{programId:"lv123",programStatus:"ON_AIR"}];
+ let created=0;
+ const monitor=createNextFrameMonitor({
+  getOwnBroadcast:async()=>({ok:true,userId:"7",programs:rows}),
+  verifyProgram:async()=>({ok:true,programId:"lv123",programStatus:"ENDED"}),
+  openCreate:async(id,userId,auto)=>{created++;assert.deepEqual([id,userId,auto],["lv123","7",true]);return {ok:true,programId:"lv456"};},
+  onStatus:s=>events.push(s),
+  setIntervalFn:()=>1,clearIntervalFn:()=>{}
+ });
+ monitor.configure({enabled:true,autoCreate:true});
+ await monitor.poll(true);
+ rows[0].programStatus="ENDED";
+ await monitor.poll(true);
+ assert.equal(created,1);
+ assert.equal(monitor.status().nextProgramId,"lv456");
+ assert.equal(monitor.status().lastTriggeredId,"lv123");
+ monitor.dispose();
+});
