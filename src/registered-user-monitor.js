@@ -81,7 +81,7 @@ function createRegisteredUserMonitor({getUserBroadcast,onLive=()=>{},onStatus=()
   try{
    await Promise.all(Array.from({length:Math.min(MAX_CONCURRENT_CHECKS,users.length)},()=>worker()));
    if(active(token)){
-    checkedUsers=checked;failedUsers=failed;liveCount=lives;
+    checkedUsers=checked-failed;failedUsers=failed;liveCount=lives;
     lastCheckAt=new Date(now()).toISOString();checkDurationMs=Math.max(0,now()-startedAt);
     message="登録配信者 "+checked+"/"+users.length+"人を確認。放送中 "+lives+"件"+
       (failed?"、取得失敗 "+failed+"人（"+lastFailure+"）":"")+
