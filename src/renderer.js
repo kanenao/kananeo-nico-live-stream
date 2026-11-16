@@ -895,8 +895,11 @@ node.textContent=message;
 function storedQuoteDurationMs(item){
 const itemValue=Number(item?.lengthMs??item?.durationMs??0);
 if(Number.isFinite(itemValue)&&itemValue>0)return itemValue;
+// Never use the previous quoted video's duration for a different video.
+const id=String(item?.videoId||item?.video_id||quotePlayback.videoId||"").toLowerCase();
+const storedId=String(state.player.quoteVideoId||"").toLowerCase();
 const storedValue=Number(state.player.quoteDurationMs||0);
-return Number.isFinite(storedValue)&&storedValue>0?storedValue:0;
+return id&&id===storedId&&Number.isFinite(storedValue)&&storedValue>0?storedValue:0;
 }
 function scheduleQuoteAutoNext(item,startedAt=Date.now(),options={}){
 if(pollRuntime.active||state.player.quotePollAutoSuspended){
