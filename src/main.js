@@ -31,6 +31,7 @@ const { isTrustedNdgrUri } = require("./ndgr-security");
 const { CommentRecorder } = require("./comment-recorder");
 const { normalizeNiconicoVideoUrl, extractRequestCandidate, findNextQueueItem } = require("./video-queue");
 const { normalizeLiveViewBounds } = require("./live-view-layout");
+const {normalizeLiveZoomSettings,calculateLivePageZoomFactor}=require("./live-page-zoom");
 const { evaluateCommentRequest } = require("./request-policy");
 const { decideEnqueteResult } = require("./poll-engine");
 const { buildEnqueteRequest, mapEnqueteHttpError, parseEnqueteResultResponse } = require("./enquete-api");
@@ -45,6 +46,7 @@ const { buildBroadcasterCommentRequest, parseBroadcasterCommentResponse } = requ
 const { buildUpdateCheckResult } = require("./update-checker");
 const {loggedInId,broadcastHistoryUrl,parseHistory,programFromCreateUrl}=require("./own-broadcast");
 const {createNextFrameMonitor}=require("./next-frame-monitor");
+const {createOwnBroadcastMonitor}=require("./own-broadcast-monitor");
 const {buildRegisteredUserHistoryUrl,createRegisteredUserMonitor}=require("./registered-user-monitor");
 const {validateProgramControl,canMutateProgram,buildProgramMutationRequest,summarizeProgramMutation}=require("./program-control");
 const {buildPreviousProgramRequest,parsePreviousProgram,
@@ -68,9 +70,11 @@ let loginWindow = null;
 let broadcastWindow = null;
 let recentlyCreatedId="";
 let nextFrameMonitor=null;
+let ownBroadcastMonitor=null;
 let registeredUserMonitor=null;
 let liveVideoView = null;
 let liveVideoProgramId = "";
+let liveVideoZoomSettings={zoomMode:"auto",zoomPercent:70};
 let niconicoSession = null;
 let commentProvider = null;
 let commentProgramId = "";
@@ -187,6 +191,22 @@ async function getOwnBroadcast(){
  catch{return {ok:false,message:"自分の放送履歴にアクセスできませんでした。"};}
  if(!res.ok)return {ok:false,message:"放送履歴の取得が拒否されました（HTTP "+res.status+"）。"};
  return {...parseHistory(await res.text()),userId:id};
+}
+function getOwnBroadcastMonitor(){
+ if(!ownBroadcastMonitor){
+  ownBroadcastMonitor=createOwnBroadcastMonitor({
+   getOwnBroadcast,
+   onStatus:status=>{
+    if(mainWindow&&!mainWindow.isDestroyed()&&!mainWindow.webContents.isDestroyed())
+     mainWindow.webContents.send("niconico:own-monitor-status",status);
+   },
+   onLive:info=>{
+    if(mainWindow&&!mainWindow.isDestroyed()&&!mainWindow.webContents.isDestroyed())
+     mainWindow.webContents.send("niconico:own-monitor-live",info);
+   }
+  });
+ }
+ return ownBroadcastMonitor;
 }
 async function getRegisteredUserBroadcast(userId){
  const url=buildRegisteredUserHistoryUrl(userId);
@@ -425,6 +445,14 @@ function closeNiconicoLiveVideoView() {
   return {ok:true,closed:true};
 }
 
+function applyNiconicoLiveVideoZoom(width){
+ if(!liveVideoView||liveVideoView.webContents?.isDestroyed())return;
+ try{
+  const factor=calculateLivePageZoomFactor(width,liveVideoZoomSettings);
+  const current=liveVideoView.webContents.getZoomFactor();
+  if(Math.abs(current-factor)>0.005)liveVideoView.webContents.setZoomFactor(factor);
+ }catch(error){console.warn("放送画面の倍率自動調整に失敗しました。",error?.code||error?.name||"UNKNOWN");}
+}
 function setNiconicoLiveVideoBounds(input) {
   if (!liveVideoView || !mainWindow || mainWindow.isDestroyed()) return {ok:false,code:"VIEW_NOT_OPEN"};
   const bounds = normalizeLiveViewBounds(input, mainWindow.getContentBounds());
@@ -433,9 +461,11 @@ function setNiconicoLiveVideoBounds(input) {
     liveVideoView.setVisible(false);
     return {ok:true,visible:false};
   }
+  liveVideoZoomSettings=normalizeLiveZoomSettings(input);
   liveVideoView.setBounds({x:bounds.x,y:bounds.y,width:bounds.width,height:bounds.height});
+  applyNiconicoLiveVideoZoom(bounds.width);
   liveVideoView.setVisible(true);
-  return {ok:true,visible:true};
+  return {ok:true,visible:true,zoomPercent:Math.round(calculateLivePageZoomFactor(bounds.width,liveVideoZoomSettings)*100)};
 }
 
 function openNiconicoLiveVideoView(input) {
@@ -488,6 +518,8 @@ function openNiconicoLiveVideoView(input) {
       });
       contents.on("did-finish-load",() => {
         if (liveVideoView?.webContents === contents) {
+          // Page navigation can reset Chromium's zoom; restore the stored fit policy.
+          applyNiconicoLiveVideoZoom(liveVideoView.getBounds()?.width);
           notifyLiveVideoState({
             status:"ready",programId:liveVideoProgramId,
             url:contents.getURL(),title:contents.getTitle() || "ニコニコ生放送"
@@ -2308,6 +2340,14 @@ function registerIpcHandlers() {
     if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
     return {ok:true,status:getRegisteredUserMonitor().status()};
   });
+  ipcMain.handle("niconico:own-monitor-status",event=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    return {ok:true,status:getOwnBroadcastMonitor().status()};
+  });
+  ipcMain.handle("niconico:own-monitor-check",event=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    return getOwnBroadcastMonitor().check(true);
+  });
   ipcMain.handle("niconico:own-broadcast",event=>{
     if(event.sender!==mainWindow?.webContents)return {ok:false,message:"この操作は許可されていません。"};
     return getOwnBroadcast();
@@ -2503,10 +2543,13 @@ app.whenReady().then(async()=>{
   app.setAppUserModelId("jp.kanenao.nicolivestream");
   niconicoSession=session.fromPartition(NICONICO_PARTITION);
   niconicoSession.setPermissionRequestHandler((_webContents,_permission,callback)=>callback(false));
-  niconicoSession.cookies.on("changed",()=>{void notifySessionStatus();});
+  niconicoSession.cookies.on("changed",()=>{void notifySessionStatus();void getOwnBroadcastMonitor().check(true);});
   registerIpcHandlers();
   Menu.setApplicationMenu(Menu.buildFromTemplate(editingMenus()));
   createMainWindow();
+  // Always monitor the signed-in broadcaster, irrespective of saved UI monitoring switches.
+  getOwnBroadcastMonitor().start();
+  void getOwnBroadcastMonitor().check(true);
   try{
     const {autoUpdater}=require("electron-updater");
     autoUpdateService=createAutoUpdateService({
@@ -2526,7 +2569,7 @@ app.on("before-quit",event=>{
   closeNiconicoLiveVideoView();
   finalQuitInProgress=true;
   void settleBeforeQuit([
-    ()=>{nextFrameMonitor?.dispose();registeredUserMonitor?.dispose();},
+    ()=>{nextFrameMonitor?.dispose();registeredUserMonitor?.dispose();ownBroadcastMonitor?.stop();},
     ()=>stopCommentStream("アプリを終了しました。"),
     ()=>stopRemoteControlServer()
   ],7000).then(result=>{
