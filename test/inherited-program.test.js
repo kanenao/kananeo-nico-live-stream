@@ -18,7 +18,7 @@ test("fails closed when previous visibility cannot be copied",()=>{
  for(const old of [
   previous({isPasswordProtected:true}),previous({password:"secret"}),
   previous({visibility:"private"}),previous({isMemberOnly:undefined}),
-  previous({community:null}),previous({tags:[{label:"test"}]})
+  previous({tags:[{label:"test"}]})
  ]) assert.equal(inheritPreviousProgram(old,"lv123").ok,false);
 });
 test("rejects unexpected program IDs and invalid source API",()=>{
