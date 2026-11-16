@@ -6,7 +6,7 @@ function buildVideoMetadataRequest(videoId,now=Date.now()){
  if(!Number.isSafeInteger(stamp)||stamp<=0)return {ok:false,code:"INVALID_TIME"};
  const id=videoId.toLowerCase();
  const url="https://www.nicovideo.jp/api/watch/v3_guest/"+id+
-  "?actionTrackId=kananeonico_"+String(stamp)+"&noSideEffect=true";
+  "?actionTrackId=kanenonico_"+String(stamp)+"&noSideEffect=true";
  return {ok:true,videoId:id,url,options:{method:"GET",credentials:"include",redirect:"error",
   headers:{Accept:"application/json","X-Frontend-Id":"6","X-Frontend-Version":"0"},
   signal:AbortSignal.timeout(8000)}};
