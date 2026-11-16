@@ -213,6 +213,17 @@ async function createInheritedNextFrame(previousProgramId,expectedUserId){
  if(!detail.ok)return detail;
  const create=buildCreateProgramRequest(detail.payload,userSession);
  if(!create.ok)return create;
+ // Do not initiate a new create POST if the user switched accounts or turned OFF
+ // automatic creation while the read-only previous-program GET was pending.
+ const currentMode=getNextFrameMonitor().status();
+ if(!currentMode.enabled||!currentMode.autoCreate||currentMode.armedProgramId!==previousProgramId)
+  return {ok:false,code:"AUTO_CREATE_CANCELLED",message:"設定変更または放送切替を検知したため、自動作成を中止しました。"};
+ try{
+  const latestCookies=await niconicoSession.cookies.get({url:NICONICO_HOME});
+  if(loggedInId(latestCookies)!==expectedUserId||
+     latestCookies.find(x=>x.name==="user_session")?.value!==userSession)
+   return {ok:false,code:"AUTH_CHANGED",message:"ログインセッションが切り替わったため、作成を中止しました。"};
+ }catch{return {ok:false,code:"AUTH_CHANGED",message:"作成直前の認証確認に失敗しました。"};}
  // Reserve the one-time action DURABLY *before* POST. A timeout may actually have
  // created a program; uncertain results must never be blindly POSTed again.
  const attemptPath=path.join(app.getPath("userData"),"auto-next-create-attempts.json");
