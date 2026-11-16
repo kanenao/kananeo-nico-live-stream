@@ -45,6 +45,7 @@ const { selectNextPlaybackCandidate } = require("./playback-scheduler");
 const { buildBroadcasterCommentRequest, parseBroadcasterCommentResponse } = require("./broadcaster-comment-api");
 const { buildUpdateCheckResult } = require("./update-checker");
 const {PAGE_SIZE,normalizeHistoryPage,releaseHistoryUrl}=require("./release-history");
+const {parseBundledChangelog,attachBundledDetails,localHistoryFallback}=require("./bundled-changelog");
 const {loggedInId,broadcastHistoryUrl,parseHistory,programFromCreateUrl}=require("./own-broadcast");
 const {createNextFrameMonitor}=require("./next-frame-monitor");
 const {createOwnBroadcastMonitor}=require("./own-broadcast-monitor");
@@ -1811,30 +1812,45 @@ const UPDATE_RELEASES_API_URL = "https://api.github.com/repos/kanenao/kananeo-ni
 const UPDATE_RELEASES_PAGE_URL = "https://github.com/kanenao/kananeo-nico-live-stream/releases";
 const RELEASE_HISTORY_API_BASE = "https://api.github.com/repos/kanenao/kananeo-nico-live-stream/releases";
 const releaseHistoryCache=new Map();
+async function loadBundledHistory(){
+ try{
+  const source=await fs.readFile(path.join(app.getAppPath(),"CHANGELOG.md"),"utf8");
+  return parseBundledChangelog(source);
+ }catch{return [];}
+}
 async function getReleaseHistory(page=1,force=false){
  const number=Number(page);
  if(!Number.isInteger(number)||number<1||number>20)return {ok:false,code:"INVALID_PAGE",message:"履歴のページ番号は1〜20で指定してください。"};
+ const localSections=await loadBundledHistory();
+ const fallback=(code,message)=>localHistoryFallback(localSections,number,message)||{ok:false,code,message};
  const cached=releaseHistoryCache.get(number);
- if(cached&&!force&&Date.now()-cached.time<5*60*1000)return cached.data;
+ if(cached&&!force&&Date.now()-cached.time<5*60*1000)
+  return attachBundledDetails(cached.data,localSections);
  try{
   const response=await fetch(RELEASE_HISTORY_API_BASE+"?per_page="+PAGE_SIZE+"&page="+number,{
    method:"GET",redirect:"error",
    headers:{Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","User-Agent":"kananeo-nico-live-stream"},
    signal:AbortSignal.timeout(12000)
   });
-  if(!response.ok)return {ok:false,code:response.status===403||response.status===429?"ACCESS_LIMIT":"HTTP_ERROR",
-   message:"更新履歴をGitHubから取得できませんでした（HTTP "+response.status+"）。時間を置いて再確認してください。"};
+  if(!response.ok)return fallback(
+   response.status===403||response.status===429?"ACCESS_LIMIT":"HTTP_ERROR",
+   "GitHubから更新履歴を取得できませんでした（HTTP "+response.status+"）。アプリ同梱の履歴を表示します。"
+  );
   const body=await response.text();
-  if(body.length>2*1024*1024)return {ok:false,code:"RESPONSE_TOO_LARGE",message:"更新履歴データが大きすぎるため読み込みを中止しました。"};
-  let json;try{json=JSON.parse(body);}catch{return {ok:false,code:"INVALID_JSON",message:"更新履歴の解析に失敗しました。"};}
+  if(body.length>2*1024*1024)
+   return fallback("RESPONSE_TOO_LARGE","GitHubの応答が大きすぎます。アプリ同梱の履歴を表示します。");
+  let json;
+  try{json=JSON.parse(body);}
+  catch{return fallback("INVALID_JSON","GitHubの履歴を解析できません。アプリ同梱の履歴を表示します。");}
   const result=normalizeHistoryPage(json,number);
-  if(result.ok){result.fetchedAt=new Date().toISOString();releaseHistoryCache.set(number,{time:Date.now(),data:result});}
-  return result;
- }catch(error){
-  return {ok:false,code:"NETWORK_ERROR",message:"GitHubの更新履歴に接続できません。ネットワークをご確認ください。"};
+  if(!result.ok)return fallback(result.code||"INVALID_HISTORY",result.message||"履歴の取得に失敗しました。");
+  result.fetchedAt=new Date().toISOString();
+  releaseHistoryCache.set(number,{time:Date.now(),data:result});
+  return attachBundledDetails(result,localSections);
+ }catch{
+  return fallback("NETWORK_ERROR","GitHubに接続できないため、アプリ同梱の更新履歴を表示しています。");
  }
 }
-
 async function checkApplicationUpdates() {
   const currentVersion=app.getVersion();
   try {
