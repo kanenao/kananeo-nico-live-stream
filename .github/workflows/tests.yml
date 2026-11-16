@@ -37,6 +37,7 @@ jobs:
           node --check src/broadcast-management.js
           node --check src/next-frame-monitor.js
           node --check src/inherited-program.js
+          node --check src/program-control.js
           node --check src/live-view-layout.js
           node --check src/comment-view-settings.js
       - name: Run unit tests
