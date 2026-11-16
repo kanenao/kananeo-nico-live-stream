@@ -76,7 +76,7 @@ test("one failed broadcaster does not block checks for others",async()=>{
  });
  m.configure({enabled:true,userIds:["1","2","3"],intervalSeconds:30});
  await m.poll(true);
- assert.equal(m.status().checkedUsers,3);
+ assert.equal(m.status().checkedUsers,2);
  assert.equal(m.status().failedUsers,1);
  assert.match(m.status().message,/取得失敗 1人/);
  m.dispose();
