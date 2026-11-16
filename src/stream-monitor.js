@@ -3,6 +3,22 @@
 (() => {
 const LIVE_STATUSES=new Set(["ON_AIR","onAir","LIVE","live"]);
 const ENDED_STATUSES=new Set(["ENDED","ended","CLOSED","closed"]);
+function normalizeMonitorUserIds(input){
+ const rows=Array.isArray(input)?input:String(input||"").split(/[\s,;]+/);
+ const result=[];
+ for(const entry of rows){
+  const text=String(entry||"").trim();
+  let id=/^\d{1,20}$/.test(text)?text:"";
+  if(!id)id=text.match(/^user\/(\d{1,20})\/?$/i)?.[1]||"";
+  if(!id)try{
+   const url=new URL(text);
+   if(url.protocol==="https:"&&["nicovideo.jp","www.nicovideo.jp","live.nicovideo.jp"].includes(url.hostname.toLowerCase()))
+    id=url.pathname.match(/^\/user\/(\d{1,20})\/?$/i)?.[1]||"";
+  }catch{}
+  if(id&&!result.includes(id)&&result.length<30)result.push(id);
+ }
+ return result;
+}
 function normalizeStreamMonitorSettings(input){
  const value=input&&typeof input==="object"?input:{};
  const seen=new Set(),targets=[];
@@ -13,7 +29,7 @@ function normalizeStreamMonitorSettings(input){
   targets.push({programId:id,status:["onAir","ended","unknown"].includes(item.status)?item.status:"unknown",title:typeof item.title==="string"?item.title.slice(0,200):"",lastCheckedAt:typeof item.lastCheckedAt==="string"?item.lastCheckedAt:"",lastError:typeof item.lastError==="string"?item.lastError.slice(0,240):""});
  }
  const interval=Number(value.intervalSeconds);
- return {enabled:value.enabled===true,intervalSeconds:[30,60,120,300].includes(interval)?interval:60,autoComments:value.autoComments===true,ownAccount:value.ownAccount===true,targets};
+ return {enabled:value.enabled===true,intervalSeconds:[30,60,120,300].includes(interval)?interval:60,autoComments:value.autoComments===true,autoVideo:value.autoVideo===true,ownAccount:value.ownAccount===true,userIds:normalizeMonitorUserIds(value.userIds),targets};
 }
 function applyProgramCheck(target,result,checkedAt=new Date().toISOString()){
  const previous=target&&typeof target==="object"?target:{};
@@ -53,6 +69,6 @@ async function checkStreamMonitorTargets(targets,checkProgram,onResult,options={
  return {checked,cancelled:!current()};
 }
 function statusLabel(status){return status==="onAir"?"放送中":status==="ended"?"終了":"状態未確認";}
-if(typeof module!=="undefined"&&module.exports)module.exports={normalizeStreamMonitorSettings,applyProgramCheck,isStreamMonitorGenerationCurrent,checkStreamMonitorTargets,statusLabel};
-if(typeof window!=="undefined")window.KananeoStreamMonitor={normalizeStreamMonitorSettings,applyProgramCheck,isStreamMonitorGenerationCurrent,checkStreamMonitorTargets,statusLabel};
+if(typeof module!=="undefined"&&module.exports)module.exports={normalizeMonitorUserIds,normalizeStreamMonitorSettings,applyProgramCheck,isStreamMonitorGenerationCurrent,checkStreamMonitorTargets,statusLabel};
+if(typeof window!=="undefined")window.KananeoStreamMonitor={normalizeMonitorUserIds,normalizeStreamMonitorSettings,applyProgramCheck,isStreamMonitorGenerationCurrent,checkStreamMonitorTargets,statusLabel};
 })();
