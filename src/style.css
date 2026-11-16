@@ -145,3 +145,8 @@ input[type="range"]{accent-color:#8c7cff;cursor:pointer}
 .release-notes li{overflow-wrap:anywhere}
 .release-history-item .muted{line-height:1.7}
 @media(max-width:850px){.release-history-heading{align-items:flex-start;flex-direction:column}}
+
+/* Detailed release history (bundled changelog and GitHub metadata are separate) */
+.release-history-source{color:#a9b6d2;font-size:9px;font-weight:700;letter-spacing:.02em;margin:12px 0 6px}
+.release-history-source+.release-notes{margin-bottom:8px}
+.release-history-heading .tag{font-size:8px;vertical-align:middle;display:inline-block;margin-left:8px;color:#c8c0ff}

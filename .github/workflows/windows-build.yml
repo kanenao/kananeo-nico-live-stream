@@ -7,6 +7,7 @@ on:
     tags: ["v*"]
     paths:
       - "package.json"
+      - "CHANGELOG.md"
       - "src/**"
       - "test/**"
       - "scripts/**"
@@ -96,6 +97,8 @@ jobs:
             const path = require("node:path");
             const { owner, repo } = context.repo;
             const version = JSON.parse(fs.readFileSync("package.json", "utf8")).version;
+            const { releaseBodyForVersion } = require(path.join(process.cwd(), "scripts", "release-notes.js"));
+            const releaseBody = releaseBodyForVersion(version, fs.readFileSync("CHANGELOG.md", "utf8"));
             const onMain = context.ref === "refs/heads/main";
             if (onMain && !/^\d+\.\d+\.\d+-alpha\.\d+$/.test(version)) {
               core.info("Skipping automatic release: only alpha builds are published from main.");
@@ -143,9 +146,7 @@ jobs:
                 tag_name: tag,
                 target_commitish: context.sha,
                 name: `kananeo nico live stream ${tag}`,
-                body: tag.includes("-alpha.")
-                  ? "開発中のα版です。機能・動作は未完成で、Windows実機でのすべての操作は未検証です。\n\nWindows x64版はSetup（インストール用）またはPortable（インストール不要）を選択してください。"
-                  : undefined,
+                body: releaseBody,
                 generate_release_notes: true,
                 draft: false,
                 prerelease: tag.includes("-")

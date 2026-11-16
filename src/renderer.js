@@ -54,7 +54,7 @@ let broadcastContextMenuComment=null;
 let dashboardStats={loading:false,watchCount:null,commentCount:null,updatedAt:"",error:""};
 let extensionOptionsState={loading:false,methods:[],updatedAt:"",error:""};
 let updateCheckState={loading:false,result:null,error:""};
-let releaseHistoryState={loading:false,page:0,items:[],hasMore:true,error:"",query:"",type:"all",fetchedAt:""};
+let releaseHistoryState={loading:false,page:0,items:[],hasMore:true,error:"",warning:"",offline:false,query:"",type:"all",fetchedAt:""};
 let autoUpdateState={supported:false,channel:"alpha",phase:"idle",message:"自動更新を確認中です。",percent:0,version:"",errorCode:"",checkedAt:""};
 let bgmTracks=[];
 let bgmLoading=false;
@@ -526,21 +526,35 @@ function renderReleaseHistoryRows(){
   const kind=/-alpha\./.test(item.version)?"alpha":/-(?:beta|rc)\./.test(item.version)?"beta":"stable";
   if(releaseHistoryState.type!=="all"&&releaseHistoryState.type!==kind)return false;
   if(!query)return true;
-  return [item.version,item.title,...item.notes].join(" ").toLocaleLowerCase("ja-JP").includes(query);
+  return [item.version,item.title,...(item.notes||[]),...(item.details||[])].join(" ").toLocaleLowerCase("ja-JP").includes(query);
  });
- if(status)status.textContent=releaseHistoryState.loading?"GitHub Releasesから履歴を取得しています…":
-  releaseHistoryState.error||"公開済み "+releaseHistoryState.items.length+" バージョンを読み込み済み"+(releaseHistoryState.hasMore?"（続きがあります）":"");
+ const scope=releaseHistoryState.offline?"アプリ同梱の履歴（公開状況は未確認）":"GitHub Releasesの公開履歴";
+ if(status)status.textContent=releaseHistoryState.loading?"変更履歴を取得しています…":
+  releaseHistoryState.error||((releaseHistoryState.warning?releaseHistoryState.warning+" ":"")+
+   scope+"：読み込み済み "+releaseHistoryState.items.length+" バージョン"+
+   (releaseHistoryState.hasMore?"（続きがあります）":""));
  list.innerHTML=items.map(item=>{
   const type=/-alpha\./.test(item.version)?"α開発版":/-(?:beta|rc)\./.test(item.version)?"βテスト版":"製品版";
-  const date=item.publishedAt?new Date(item.publishedAt).toLocaleString("ja-JP"):"公開日時不明";
-  const notes=item.notes.length?
-   '<ul class="release-notes">'+item.notes.map(note=>'<li>'+esc(note)+'</li>').join("")+'</ul>':
-   '<div class="muted">このバージョンの詳しい変更内容はリリースノートに登録されていません。GitHubで確認できます。</div>';
-  const installer=item.setupAvailable?"Setupあり":"Setup未確認";
+  const localOnly=item.localOnly===true;
+  const date=item.publishedAt?new Date(item.publishedAt).toLocaleString("ja-JP"):"公開日時未確認";
+  const details=Array.isArray(item.details)?item.details:[];
+  const notes=Array.isArray(item.notes)?item.notes:[];
+  const renderNotes=rows=>'<ul class="release-notes">'+rows.map(note=>'<li>'+esc(note)+'</li>').join("")+'</ul>';
+  const detailsHtml=details.length?'<div class="release-history-source">アプリ同梱の詳細更新履歴</div>'+renderNotes(details):"";
+  const notesHtml=notes.length?'<div class="release-history-source">GitHub Releasesの変更概要</div>'+renderNotes(notes):"";
+  const noDetails=!details.length&&!notes.length?
+   '<div class="muted">この版の詳しい変更内容は記録されていません。公開済みの情報をご確認ください。</div>':"";
+  const installer=localOnly?"配布情報未確認":item.setupAvailable?"Setupあり":"Setup未確認";
+  const link=localOnly
+   ?'<button class="btn" data-update-open-releases>GitHub公開一覧</button>'
+   :'<button class="btn" data-release-history-open="'+esc(item.tag)+'">GitHubで詳細</button>';
+  const installed=item.version===String(window.kananeoApp.version||"");
   return '<article class="release-history-item">'+
-   '<div class="release-history-heading"><div><b>'+esc(item.version)+'</b><small>'+esc(type)+" / "+esc(date)+" / "+installer+'</small></div>'+
-   '<button class="btn" data-release-history-open="'+esc(item.tag)+'">GitHubで詳細</button></div>'+
-   notes+'</article>';
+   '<div class="release-history-heading"><div><b>'+esc(item.version)+
+   (installed?' <span class="tag">使用中</span>':"")+
+   '</b><small>'+esc(type)+" / "+esc(date)+" / "+installer+
+   (localOnly?" / 公開未確認":"")+'</small></div>'+link+'</div>'+
+   detailsHtml+notesHtml+noDetails+'</article>';
  }).join("")||'<div class="empty">'+(releaseHistoryState.loading?"履歴を読み込み中です…":releaseHistoryState.items.length?"検索条件に一致するバージョンはありません。":"公開済みのバージョンを取得できませんでした。")+'</div>';
  if(more){more.hidden=!releaseHistoryState.hasMore;more.disabled=releaseHistoryState.loading;}
  const refresh=document.querySelector("[data-release-history-refresh]");
@@ -548,7 +562,7 @@ function renderReleaseHistoryRows(){
 }
 async function fetchReleaseHistory(reset=false){
  if(releaseHistoryState.loading)return;
- if(reset){releaseHistoryState.page=0;releaseHistoryState.items=[];releaseHistoryState.hasMore=true;}
+ if(reset){releaseHistoryState.page=0;releaseHistoryState.items=[];releaseHistoryState.hasMore=true;releaseHistoryState.offline=false;releaseHistoryState.warning="";}
  if(!releaseHistoryState.hasMore){renderReleaseHistoryRows();return;}
  const pageNumber=releaseHistoryState.page+1;
  releaseHistoryState.loading=true;releaseHistoryState.error="";
@@ -561,6 +575,8 @@ async function fetchReleaseHistory(reset=false){
   releaseHistoryState.page=pageNumber;
   releaseHistoryState.hasMore=response.hasMore===true&&pageNumber<20;
   releaseHistoryState.fetchedAt=response.fetchedAt||"";
+  releaseHistoryState.offline=response.offline===true;
+  releaseHistoryState.warning=String(response.warning||"").slice(0,200);
  }catch(error){
   releaseHistoryState.error=String(error?.message||"更新履歴の取得に失敗しました。").slice(0,180);
  }finally{releaseHistoryState.loading=false;renderReleaseHistoryRows();}

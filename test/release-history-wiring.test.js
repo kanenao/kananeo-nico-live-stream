@@ -27,6 +27,15 @@ test("history IPC is guarded and uses public GitHub release API",()=>{
 });
 test("version history release version increments and remains alpha",()=>{
  assert.match(pkg.version,/^\d+\.\d+\.\d+-alpha\.\d+$/);
- assert.equal(pkg.version,"0.2.0-alpha.66");
- assert.match(index,/ALPHA 66/);
+ assert.equal(pkg.version,"0.2.0-alpha.67");
+ assert.match(index,/ALPHA 67/);
+});
+
+test("version history displays bundled changes and distinguishes offline entries",()=>{
+ assert.match(main,/loadBundledHistory/);
+ assert.match(main,/attachBundledDetails/);
+ assert.match(main,/localHistoryFallback/);
+ assert.match(renderer,/アプリ同梱の詳細更新履歴/);
+ assert.match(renderer,/公開未確認/);
+ assert.match(renderer,/使用中/);
 });
