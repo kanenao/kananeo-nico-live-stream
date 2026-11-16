@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   }),
   updates:Object.freeze({
     check:()=>ipcRenderer.invoke("app:check-updates"),
+    history:page=>ipcRenderer.invoke("app:release-history",page),
+    openRelease:tag=>ipcRenderer.invoke("app:open-release",tag),
     getAutoStatus:()=>ipcRenderer.invoke("app:auto-update-status"),
     checkAuto:()=>ipcRenderer.invoke("app:auto-update-check"),
     applyAuto:()=>ipcRenderer.invoke("app:auto-update-apply"),
