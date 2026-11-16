@@ -44,6 +44,7 @@ const MAX_QUEUE_ITEMS=1000;
 let nicoStatus={authenticated:false,label:"状態を確認中"};
 let broadcastManageVerification=null;
 let liveVideoState={open:false,status:"closed",programId:"",message:"放送画面は未表示です。"};
+let ownMonitorStatus={running:false,phase:"starting",message:"起動時から自分の放送を監視しています。",activePrograms:[]};
 let lastLiveVideoBoundsKey="";
 let broadcastCommentSearch="";
 let broadcastCommentType="all";
@@ -77,7 +78,7 @@ let pollDeadlineTimer=null;
 let pollVideoId="";
 let pollTimingSummary="";
 let pollVerifiedRound=false;
-const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,stockAutoPlay:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoCreate:false,autoStartProgram:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,ownAccount:false,targets:[],history:[]},logs:["β2 UIプロトタイプを起動しました"]};
+const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,stockAutoPlay:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoCreate:false,autoStartProgram:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,ownAccount:true,targets:[],history:[]},liveVideoZoom:{zoomMode:"auto",zoomPercent:70},logs:["β2 UIプロトタイプを起動しました"]};
 let remoteAuditEntries=[],remoteAuditFilters={query:"",type:"all",from:"",to:""},remoteAuditNotificationEnabled=true;
 let state=load(),page="dashboard";
 let streamMonitorRuntime={busy:false,nextCheckAt:0,lastCheckAt:"",message:"監視は停止中です。",checked:0,generation:0};
@@ -88,7 +89,8 @@ try{
 const stored=JSON.parse(localStorage.getItem(key)||"{}");
 const loaded={...initial,...stored};
 loaded.player={...initial.player,...(stored.player||{})};
-loaded.streamMonitor={...window.KananeoStreamMonitor.normalizeStreamMonitorSettings(stored.streamMonitor),history:window.KananeoStreamMonitorHistory.normalizeHistory(stored.streamMonitor?.history)};
+loaded.streamMonitor={...window.KananeoStreamMonitor.normalizeStreamMonitorSettings(stored.streamMonitor),ownAccount:true,history:window.KananeoStreamMonitorHistory.normalizeHistory(stored.streamMonitor?.history)};
+loaded.liveVideoZoom={zoomMode:stored?.liveVideoZoom?.zoomMode==="manual"?"manual":"auto",zoomPercent:Number.isFinite(Number(stored?.liveVideoZoom?.zoomPercent))?Math.max(35,Math.min(125,Math.round(Number(stored.liveVideoZoom.zoomPercent)))):70};
 loaded.playback={...initial.playback,...(stored.playback||{})};
 loaded.automation={...initial.automation,...(stored.automation||{})};
 loaded.poll={...initial.poll,...(stored.poll||{})};
@@ -125,7 +127,7 @@ function saveStreamMonitorSettings(){
  const textarea=document.getElementById("stream-monitor-targets");
  const ids=parseStreamMonitorTargets(textarea?.value||"");
  const userIds=window.KananeoStreamMonitor.normalizeMonitorUserIds(document.getElementById("stream-monitor-users")?.value||"");
- const ownAccount=document.getElementById("stream-monitor-own-account")?.checked===true;
+ const ownAccount=true; // 自分の放送はアプリ起動時に必ず監視します。
  if(!ids.length&&!ownAccount&&!userIds.length){toast("監視するユーザーID・放送ID、または自分の放送を登録してください。");return;}
  const previous=new Map((state.streamMonitor.targets||[]).map(x=>[x.programId,x]));
  state.streamMonitor={...state.streamMonitor,userIds,targets:ids.map(programId=>previous.get(programId)||{programId,status:"unknown",title:"",lastCheckedAt:"",lastError:""})};
@@ -140,7 +142,7 @@ async function runStreamMonitorCheck(force=false){
  const config=state.streamMonitor;
  if(!config.enabled&&!force)return;
  if(streamMonitorRuntime.busy)return;
- if(!config.targets?.length&&!config.ownAccount){streamMonitorRuntime.message=(config.userIds||[]).length?"登録ユーザーの監視はアプリ本体で実行中です。":"監視対象が登録されていません。";streamMonitorRuntime.nextCheckAt=Date.now()+(config.intervalSeconds||60)*1000;renderStreamMonitorUi();return;}
+ if(!config.targets?.length){streamMonitorRuntime.message=(config.userIds||[]).length?"登録ユーザーの監視はアプリ本体で実行中です。":"監視対象が登録されていません。";streamMonitorRuntime.nextCheckAt=Date.now()+(config.intervalSeconds||60)*1000;renderStreamMonitorUi();return;}
  if(!force&&Date.now()<streamMonitorRuntime.nextCheckAt)return;
  streamMonitorRuntime.busy=true;
  const generation=++streamMonitorRuntime.generation;
@@ -150,7 +152,7 @@ async function runStreamMonitorCheck(force=false){
  streamMonitorRuntime.nextCheckAt=Date.now()+(config.intervalSeconds||60)*1000;
  const detected=[];
  try{
-  if(config.ownAccount){
+  if(false){ // メインプロセスの常時監視へ移行したため、旧renderer監視は無効化。
    const mine=await window.kananeoApp.niconico.getOwnBroadcast();
    if(!isCurrent())return;
    if(mine?.ok){
@@ -313,7 +315,7 @@ async function onRegisteredUserLive(info){
  if(page==="broadcast")renderStreamMonitorUi();
 }
 function startStreamMonitor(){
- if(!state.streamMonitor.targets?.length&&!state.streamMonitor.ownAccount&&!state.streamMonitor.userIds?.length){toast("先に監視するユーザーまたは番組を保存してください。");return;}
+ if(!state.streamMonitor.targets?.length&&!state.streamMonitor.userIds?.length){toast("自分の放送監視は常時稼働中です。追加のユーザーや番組を登録してください。");return;}
  state.streamMonitor.enabled=true;addStreamMonitorHistory("started","","放送監視を開始しました。");save();void syncRegisteredUserMonitor();streamMonitorRuntime.nextCheckAt=0;streamMonitorRuntime.message="監視を開始しました。";renderStreamMonitorUi();void runStreamMonitorCheck(true);toast("放送監視を開始しました。アプリ起動中に定期確認します。");
 }
 function stopStreamMonitor(){
@@ -1475,7 +1477,7 @@ function updateLiveVideoBounds(){
  let bounds={visible:false,x:0,y:0,width:0,height:0};
  if(page==="broadcast"&&slot&&liveVideoState.open){
   const rect=slot.getBoundingClientRect();
-  bounds={visible:rect.width>0&&rect.height>0,x:rect.left,y:rect.top,width:rect.width,height:rect.height};
+  bounds={visible:rect.width>0&&rect.height>0,x:rect.left,y:rect.top,width:rect.width,height:rect.height,zoomMode:state.liveVideoZoom.zoomMode,zoomPercent:state.liveVideoZoom.zoomPercent};
  }
  const key=JSON.stringify(bounds);
  if(key===lastLiveVideoBoundsKey)return;
