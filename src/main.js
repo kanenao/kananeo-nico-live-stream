@@ -45,6 +45,8 @@ const { buildBroadcasterCommentRequest, parseBroadcasterCommentResponse } = requ
 const { buildUpdateCheckResult } = require("./update-checker");
 const {loggedInId,broadcastHistoryUrl,parseHistory,programFromCreateUrl}=require("./own-broadcast");
 const {createNextFrameMonitor}=require("./next-frame-monitor");
+const {buildPreviousProgramRequest,parsePreviousProgram,
+  buildCreateProgramRequest,parseCreateProgramResponse}=require("./inherited-program");
 const {editingMenus,editingContextMenu}=require("./editing-support");
 const { createAutoUpdateService } = require("./auto-update-service");
 const { settleBeforeQuit } = require("./quit-helpers");
@@ -183,12 +185,73 @@ async function getOwnBroadcast(){
  if(!res.ok)return {ok:false,message:"放送履歴の取得が拒否されました（HTTP "+res.status+"）。"};
  return {...parseHistory(await res.text()),userId:id};
 }
+async function createInheritedNextFrame(previousProgramId,expectedUserId){
+ // Credentials never cross IPC into the renderer or persistent logs.
+ if(!/^lv\d{1,20}$/.test(String(previousProgramId||""))||
+    !/^\d{1,20}$/.test(String(expectedUserId||"")))
+   return {ok:false,code:"INVALID_INPUT",message:"引き継ぎ元の放送またはアカウントが不正です。"};
+ const current=await getOwnBroadcast();
+ if(!current?.ok||current.userId!==expectedUserId)
+   return {ok:false,code:"ACCOUNT_CHANGED",message:"ログインアカウントが変更されたため次枠作成を中止しました。"};
+ const other=(current.programs||[]).some(item=>item.programId!==previousProgramId&&
+   ["ON_AIR","ONAIR","TEST","RESERVED","RESERVE","WAITING","SCHEDULED"].includes(item.programStatus));
+ if(other)return {ok:false,code:"OTHER_PROGRAM_EXISTS",message:"別の放送中・予約中の枠があるため自動作成を中止しました。"};
+ let userSession="";
+ try{
+  const cookies=await niconicoSession.cookies.get({url:NICONICO_HOME});
+  userSession=cookies.find(item=>item.name==="user_session")?.value||"";
+  if(loggedInId(cookies)!==expectedUserId)throw Error("AUTH_CHANGED");
+ }catch{return {ok:false,code:"AUTH_CHANGED",message:"ニコニコのログイン状態を確認できません。"};}
+ const request=buildPreviousProgramRequest(previousProgramId,userSession);
+ if(!request.ok)return request;
+ let detailResponse;
+ try{detailResponse=await niconicoSession.fetch(request.url,request.options);}
+ catch{return {ok:false,code:"SOURCE_FETCH_FAILED",message:"前枠の番組設定を取得できませんでした。"};}
+ if(!isTrustedNiconicoUrl(detailResponse.url||request.url))
+  return {ok:false,code:"UNTRUSTED_REDIRECT",message:"公式以外の送信先へ転送されました。"};
+ const detail=parsePreviousProgram(await detailResponse.text(),detailResponse.status,previousProgramId);
+ if(!detail.ok)return detail;
+ const create=buildCreateProgramRequest(detail.payload,userSession);
+ if(!create.ok)return create;
+ // Reserve the one-time action DURABLY *before* POST. A timeout may actually have
+ // created a program; uncertain results must never be blindly POSTed again.
+ const attemptPath=path.join(app.getPath("userData"),"auto-next-create-attempts.json");
+ let records=[];
+ try{const stored=JSON.parse(await fs.readFile(attemptPath,"utf8"));if(Array.isArray(stored?.attempts))records=stored.attempts.slice(-99);}
+ catch(error){if(error?.code!=="ENOENT")return {ok:false,code:"JOURNAL_UNREADABLE",message:"次枠の重複防止記録を読み取れません。自動作成を中止しました。"};}
+ const key=expectedUserId+":"+previousProgramId;
+ if(records.some(item=>item?.key===key))
+  return {ok:false,code:"ALREADY_ATTEMPTED",message:"この放送の次枠作成は実行済み、または結果未確認です。重複防止のため再実行しません。"};
+ records.push({key,fromProgramId:previousProgramId,userId:expectedUserId,attemptedAt:new Date().toISOString()});
+ async function saveJournal(){
+  const temporary=attemptPath+".tmp";
+  await fs.mkdir(path.dirname(attemptPath),{recursive:true});
+  await fs.writeFile(temporary,JSON.stringify({version:1,attempts:records},null,2)+"\n",{encoding:"utf8",mode:0o600});
+  await fs.rename(temporary,attemptPath);
+ }
+ try{await saveJournal();}
+ catch{return {ok:false,code:"JOURNAL_WRITE_FAILED",message:"次枠重複防止記録の保存に失敗したため、作成は実行しませんでした。"};}
+ let postResponse;
+ try{postResponse=await niconicoSession.fetch(create.url,create.options);}
+ catch{return {ok:false,code:"CREATE_RESULT_UNKNOWN",message:"次枠作成要求の結果を確認できません。既に作成された可能性があるため自動再試行しません。放送履歴を確認してください。"};}
+ if(!isTrustedNiconicoUrl(postResponse.url||create.url))
+  return {ok:false,code:"UNTRUSTED_CREATE_REDIRECT",message:"安全確認できない応答を受信しました。放送履歴を確認してください。"};
+ let result;
+ try{result=parseCreateProgramResponse(await postResponse.text(),postResponse.status);}
+ catch{return {ok:false,code:"CREATE_RESULT_UNKNOWN",message:"次枠作成結果を読み取れません。放送履歴を確認してください。"};}
+ if(!result.ok)return result;
+ records[records.length-1].newProgramId=result.programId;
+ try{await saveJournal();}catch{console.warn("Next-frame attempt journal update failed");}
+ return {ok:true,programId:result.programId};
+}
 function getNextFrameMonitor(){
  if(!nextFrameMonitor){
   nextFrameMonitor=createNextFrameMonitor({
    getOwnBroadcast,
    verifyProgram:checkNiconicoProgram,
-   openCreate:()=>openNiconicoBroadcastWindow("create"),
+   openCreate:(previousId,userId,autoCreate)=>autoCreate
+     ?createInheritedNextFrame(previousId,userId)
+     :openNiconicoBroadcastWindow("create"),
    onStatus:status=>{
     if(mainWindow&&!mainWindow.isDestroyed()&&!mainWindow.webContents.isDestroyed())
       mainWindow.webContents.send("niconico:auto-next-status",status);
