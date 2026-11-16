@@ -77,7 +77,7 @@ let pollDeadlineTimer=null;
 let pollVideoId="";
 let pollTimingSummary="";
 let pollVerifiedRound=false;
-const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoCreate:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,ownAccount:false,targets:[],history:[]},logs:["β2 UIプロトタイプを起動しました"]};
+const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,stockAutoPlay:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoCreate:false,autoStartProgram:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,ownAccount:false,targets:[],history:[]},logs:["β2 UIプロトタイプを起動しました"]};
 let remoteAuditEntries=[],remoteAuditFilters={query:"",type:"all",from:"",to:""},remoteAuditNotificationEnabled=true;
 let state=load(),page="dashboard";
 let streamMonitorRuntime={busy:false,nextCheckAt:0,lastCheckAt:"",message:"監視は停止中です。",checked:0,generation:0};
@@ -222,6 +222,14 @@ async function refreshOwnBroadcast(showMessage=false){
  if(showMessage)toast("自分の番組を取得しました："+mine.programId);
 }
 
+async function maybeStartNewProgram(programId){
+ if(!state.automation.autoStartProgram||!/^lv\d{1,20}$/.test(String(programId||"")))return;
+ if(state.automation.lastAutoStartAttemptId===programId)return;
+ state.automation.lastAutoStartAttemptId=programId;save();
+ const result=await window.kananeoApp.niconico.controlProgram(programId,"start");
+ toast(result?.message||"新規番組の自動開始に失敗しました。");
+ if(result?.ok)void adoptCreatedBroadcast(programId);
+}
 function showAutoNextStatus(){
  const node=document.getElementById("auto-next-status");
  if(node)node.textContent=state.automation.autoNext?autoNextRuntime.message:"自動次枠監視はOFFです。";
@@ -241,7 +249,7 @@ function applyAutoNextStatus(status){
  if(status.nextProgramId&&state.automation.lastAutoCreatedProgramId!==status.nextProgramId){
   state.automation.lastAutoCreatedProgramId=status.nextProgramId;
   save();
-  void adoptCreatedBroadcast(status.nextProgramId);
+  void adoptCreatedBroadcast(status.nextProgramId).then(()=>maybeStartNewProgram(status.nextProgramId));
  }
  showAutoNextStatus();
 }
@@ -471,6 +479,7 @@ const waiting=state.stocks.filter(x=>!["completed","skipped","rejected"].include
 const stockRows=state.stocks.map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+(x.status==="playing"?"再生中":x.status==="completed"?"再生済み":x.status==="skipped"?"スキップ":x.status==="rejected"?"引用不可":"待機中")+'</td><td>'+esc(x.title)+'</td><td>'+esc(x.videoId||x.url)+'</td><td><button class="btn" data-preview-stock="'+esc(x.id)+'">プレビュー</button> <button class="btn primary" data-quote-stock="'+esc(x.id)+'">ニコ生へ送る</button> <button class="btn" data-stock-up="'+i+'" '+(i===0?"disabled":"")+'>&uarr;</button> <button class="btn" data-stock-down="'+i+'" '+(i===state.stocks.length-1?"disabled":"")+'>&darr;</button> <button class="btn" data-stock-remove="'+esc(x.id)+'">削除</button></td></tr>').join("");
 html=hero("STOCK LIBRARY","ストック","運営が事前に用意した動画をリクエストとは別に管理します。リクエストが空になった場合の次候補として使います。")+
 panel("ストックを追加","動画ID・watch URLと動画時間を登録します。マイリスト一括取込は次段階で対応します。",'<form id="stock-form" class="grid3">'+field("動画タイトル（任意）","stock-title","","未入力なら動画IDを表示")+field("動画URL / ID","stock-url","","sm12345678 または動画URL")+field("動画時間（秒・任意）","stock-duration","","例：240")+'<button class="btn primary">ストックに追加</button></form>')+
+panel("ストックの自動再生","リクエストがなくなったらストックへ自動で進みます。",'<label class="switchrow"><span><b>ストックの自動再生</b><small>リクエストを優先し、次にストックから自動再生します。動画時間を登録してください。</small></span><input type="checkbox" id="stock-auto-play" '+(state.playback.stockAutoPlay?"checked":"")+'></label><div class="muted">ONにすると引用再生の自動切替も有効になります。ストックが空のときは自動で次動画へ進みません。</div>')+
 panel("ストックキュー",waiting+" 件が未再生",state.stocks.length?'<table class="table"><thead><tr><th>#</th><th>状態</th><th>タイトル</th><th>動画ID</th><th>操作</th></tr></thead><tbody>'+stockRows+'</tbody></table><div class="actions"><button class="btn primary" data-quote-next>次の候補をニコ生へ引用再生</button><button class="btn" data-stock-clear>ストックを全消去</button></div>':'<div class="empty">ストックは空です。</div>');
 }else if(page==="library"){
 const historyRows=videoLibraryData.history.slice(0,20).map(item=>'<tr><td>'+esc(item.title)+'</td><td>'+esc(item.videoId)+'</td><td>'+new Date(item.playedAt).toLocaleString("ja-JP")+'</td><td>'+((item.playbackType==="quotation")?"引用再生":"プレビュー")+'</td></tr>').join("");
@@ -535,7 +544,7 @@ html=hero("LIVE SESSION","放送・枠管理","放送映像を左側に表示し
 '<div class="grid2">'+
 panel("ニコニコアカウント接続","公式ログインを専用セッションで開く",'<div class="empty" id="auth-status"><b>'+authTitle+'</b><br>'+authText+'</div><div class="actions"><button class="btn primary" data-nico-login>公式ログインを開く</button><button class="btn" data-nico-refresh>状態を再確認</button><button class="btn" data-nico-logout>このアプリからログアウト</button></div>')+
 panel("番組ページを確認","放送IDまたはニコ生番組URLを入力",'<div class="field"><label>放送ID / URL</label><input class="input" id="live-id" value="'+esc(state.lastProgramId||"")+'" placeholder="lv123456789 または放送URL" maxlength="512"></div><div class="actions"><button class="btn primary" data-nico-check>番組ページを確認</button></div><div class="empty" id="program-result">確認結果はここに表示します。</div>')+
-panel("番組枠の作成・終了","公式の番組作成・管理画面を利用します。作成後の放送ID付き画面へ移動すると自動取得します。",'<div class="actions"><button class="btn primary" data-broadcast-create>＋ 新規番組枠を作成</button><button class="btn" data-broadcast-own-fetch>自分の最新番組を取得</button></div><div class="field"><label>管理する放送ID</label><input class="input" id="broadcast-manage-id" value="'+esc(state.lastProgramId||"")+'" placeholder="lv123456789" maxlength="512"></div><div class="actions"><button class="btn" data-broadcast-verify>放送ID・状態を確認</button><button class="btn danger" data-broadcast-manage disabled>番組管理画面を開く（配信終了）</button></div><div class="empty" id="broadcast-manage-result">確認結果は90秒間有効です。</div><div class="muted">枠の作成・配信終了はニコニコ公式画面で確定します。直接API操作は未実装です。</div>')+
+panel("番組枠の作成・終了","作成後の自動番組開始と、開始・終了ボタンを利用できます。",'<div class="actions"><button class="btn primary" data-broadcast-create>＋ 新規番組枠を作成</button><button class="btn" data-broadcast-own-fetch>自分の最新番組を取得</button></div><div class="field"><label>管理する放送ID</label><input class="input" id="broadcast-manage-id" value="'+esc(state.lastProgramId||"")+'" placeholder="lv123456789" maxlength="512"></div><div class="actions"><button class="btn" data-broadcast-verify>放送ID・状態を確認</button><button class="btn primary" data-program-start>▶ 番組開始</button><button class="btn danger" data-program-end>■ 番組終了</button><button class="btn" data-broadcast-manage disabled>番組管理画面を開く</button></div><div class="empty" id="broadcast-manage-result">確認結果は90秒間有効です。</div><label class="switchrow"><span><b>枠作成直後に番組開始を自動実行</b><small>新しい自分の番組だけが対象です。OBSや映像送出は別途必要です（実験的）。</small></span><input id="auto-start-program" type="checkbox" '+(state.automation.autoStartProgram?"checked":"")+'></label><div class="muted">番組開始・終了はログイン中の自分の番組だけを操作します。ニコニコのAPI仕様変更で操作できない場合があります。</div>')+
 '</div>'+
 '<div class="broadcast-live-layout">'+
 '<section class="panel broadcast-video-panel"><div class="broadcast-panel-heading"><div><h2>放送画面</h2><p>ニコ生公式の視聴ページをアプリ内に表示します。</p></div><span class="live-state-pill" id="broadcast-live-status">未表示</span></div>'+
@@ -736,8 +745,8 @@ state.player.quoteDurationMs=durationMs;
 state.player.quoteVideoId=String(item?.videoId||item?.video_id||quotePlayback.videoId||"");
 state.player.quoteProgramId=String(quotePlayback.programId||state.lastProgramId||"");
 state.player.quoteExpectedEndAt=0;
-if(!state.playback.quoteAutoNext){
-quoteAutoMessage="引用再生の自動次動画はOFFです。";
+if(!state.playback.quoteAutoNext||(quotePlayback.queueType==="stock"&&!state.playback.stockAutoPlay)){
+quoteAutoMessage=quotePlayback.queueType==="stock"?"ストックの自動再生はOFFです。":"引用再生の自動次動画はOFFです。";
 save();updateQuoteScheduleUi();return false;
 }
 if(state.playback.playStyle===0){
@@ -945,7 +954,7 @@ const endAt=Number(state.lastProgramEndAt);
 const remainingMs=endAt>0?endAt*1000-Date.now():null;
 const selected=await window.kananeoApp.niconico.selectPlaybackCandidate({
 requests:state.requests.map(x=>({...x,lengthMs:Number(x.lengthMs)||0})),
-stocks:state.stocks.map(x=>({...x,lengthMs:Number(x.lengthMs)||0})),
+stocks:(options.triggeredByAuto&&!state.playback.stockAutoPlay?[]:state.stocks).map(x=>({...x,lengthMs:Number(x.lengthMs)||0})),
 playStyle:state.playback.playStyle,
 randomStock:state.playback.randomStock,
 remainingMs
@@ -2126,6 +2135,17 @@ if(b.hasAttribute("data-remote-copy-url")){const url=remoteControlUi.status.url;
 if(b.hasAttribute("data-broadcast-context-action")){void handleBroadcastCommentContextAction(b.dataset.broadcastContextAction);return;}
 if(b.hasAttribute("data-nico-login")){window.kananeoApp.niconico.openLogin().then(()=>toast("ニコニコ公式ログイン画面を開きました"));return;}
 if(b.hasAttribute("data-auto-next-check")){void checkAutoNextFrame(true);return;}
+if(b.hasAttribute("data-program-start")||b.hasAttribute("data-program-end")){
+ const action=b.hasAttribute("data-program-start")?"start":"end";
+ const id=document.getElementById("broadcast-manage-id")?.value?.trim()||state.lastProgramId||"";
+ if(!/^lv\d{1,20}$/i.test(id)){toast("管理する放送IDを確認してください。");return;}
+ const label=action==="start"?"開始":"終了";
+ if(!confirm("放送 "+id+" を"+label+"します。ニコニコ側で実際に番組状態が変更されます。続けますか？"))return;
+ const response=await window.kananeoApp.niconico.controlProgram(id,action);
+ toast(response?.message||(label+"の操作に失敗しました。"));
+ if(response?.ok)await adoptCreatedBroadcast(id);
+ return;
+}
 if(b.hasAttribute("data-broadcast-create")){
  const result=await window.kananeoApp.niconico.openBroadcastCreate();
  toast(result?.ok?"アプリ内に番組作成画面を開きました。内容を確認して作成してください。":(result?.message||"番組作成画面を開けませんでした。"));
@@ -2506,12 +2526,24 @@ if(e.target.id==="ng-word-form"){state.ngWords.push(document.getElementById("ng-
 if(e.target.id==="ng-user-form"){state.ngUsers.push(document.getElementById("ng-user").value.trim());save();render()}
 if(e.target.id==="track-form"){state.playlist.push(document.getElementById("track").value.trim());save();render()}
 }
+document.addEventListener("change",e=>{
+ if(e.target.id==="stock-auto-play"){
+  state.playback.stockAutoPlay=e.target.checked;
+  if(e.target.checked){state.playback.quoteAutoNext=true;if(state.playback.playStyle===0)state.playback.playStyle=1;}
+  save();toast(e.target.checked?"ストックの自動再生を有効にしました。":"ストックの自動再生を無効にしました。");
+ }
+ if(e.target.id==="auto-start-program"){
+  if(e.target.checked&&!confirm("枠を作成すると自動で番組の本番開始を要求します。OBSの配信開始は別途必要です。有効にしますか？")){e.target.checked=false;return;}
+  state.automation.autoStartProgram=e.target.checked;save();
+  toast(e.target.checked?"新規番組の自動開始を有効にしました。":"新規番組の自動開始を無効にしました。");
+ }
+});
 window.addEventListener("focus",()=>{if(state.streamMonitor.enabled){streamMonitorRuntime.nextCheckAt=0;void runStreamMonitorCheck(true);}});
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&state.streamMonitor.enabled){streamMonitorRuntime.nextCheckAt=0;void runStreamMonitorCheck(true);}});
 if(window.speechSynthesis&&typeof window.speechSynthesis.addEventListener==="function"){window.speechSynthesis.addEventListener("voiceschanged",()=>{if(page==="voice")renderSpeechVoices();});}
 if(window.kananeoApp?.niconico){window.kananeoApp.niconico.getSessionStatus().then(applyNicoStatus).catch(()=>{});window.kananeoApp.niconico.onSessionChanged(applyNicoStatus);
     window.kananeoApp.niconico.onLiveVideoState(applyLiveVideoState);
-    window.kananeoApp.niconico.onCreatedBroadcast?.(value=>{if(value?.programId){void adoptCreatedBroadcast(value.programId);toast("作成した番組IDを検知："+value.programId);}});
+    window.kananeoApp.niconico.onCreatedBroadcast?.(value=>{if(value?.programId){void adoptCreatedBroadcast(value.programId).then(()=>maybeStartNewProgram(value.programId));toast("作成した番組IDを検知："+value.programId);}});
     window.kananeoApp.niconico.onAutoNextStatus?.(applyAutoNextStatus);
     void syncAutoNextSettings();
     void refreshVideoLibrary(true);
