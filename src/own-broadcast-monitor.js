@@ -22,7 +22,7 @@ function createOwnBroadcastMonitor({getOwnBroadcast,onLive=()=>{},onStatus=()=>{
     if(account!==userId){userId=account;seen.clear();}
     const rows=Array.isArray(own.programs)?own.programs:[];
     activePrograms=rows.filter(x=>/^lv\d{1,20}$/i.test(String(x?.programId||""))&&LIVE.has(String(x?.programStatus||"").toUpperCase())).map(x=>({
-     programId:String(x.programId).toLowerCase(),title:String(x.title||x.programId).slice(0,200),userId:account
+     programId:String(x.programId).toLowerCase(),title:String(x.title||x.programId).slice(0,200),userId:account,programStatus:String(x.programStatus||"").toUpperCase()
     }));
     for(const item of activePrograms){
      if(token!==epoch||!running)break;
