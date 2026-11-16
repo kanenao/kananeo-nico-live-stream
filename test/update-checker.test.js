@@ -46,6 +46,26 @@ test("ignores draft and malformed releases and selects the newest valid version"
   assert.equal(result.release.releaseUrl,"https://github.com/kanenao/kananeo-nico-live-stream/releases/tag/v0.1.0-beta.23");
 });
 
+test("does not recommend alpha to stable users; beta can graduate to stable",()=>{
+ const assets=[{name:"app-Setup-x64.exe"},{name:"latest.yml"},{name:"beta.yml"},{name:"alpha.yml"}];
+ const entries=[
+  {tag_name:"v1.1.0-alpha.100",assets},
+  {tag_name:"v1.0.1",assets}
+ ];
+ const stable=buildUpdateCheckResult("1.0.0",entries);
+ assert.equal(stable.latestVersion,"1.0.1");
+ assert.equal(stable.automaticUpdateAvailable,true);
+ const beta=buildUpdateCheckResult("1.0.0-beta.4",entries);
+ assert.equal(beta.latestVersion,"1.0.1");
+ const alpha=buildUpdateCheckResult("1.0.0-alpha.4",entries);
+ assert.equal(alpha.latestVersion,"1.1.0-alpha.100");
+});
+test("missing installer manifest does not count as automatic installation ready",()=>{
+ const r=buildUpdateCheckResult("0.2.0-alpha.10",[{tag_name:"v0.2.0-alpha.11",assets:[{name:"app-Setup-x64.exe"}]}]);
+ assert.equal(r.updateAvailable,true);
+ assert.equal(r.automaticUpdateAvailable,false);
+ assert.match(r.message,/自動更新用ファイル/);
+});
 test("reports when no public releases are available",()=>{
   const result=buildUpdateCheckResult("0.1.0-beta.23",[]);
   assert.equal(result.ok,true);

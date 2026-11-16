@@ -41,6 +41,9 @@ jobs:
           node --check src/registered-user-monitor.js
           node --check src/own-broadcast-monitor.js
           node --check src/live-page-zoom.js
+          node --check src/update-channel.js
+          node --check scripts/generate-update-manifest.js
+          node --check scripts/prepare-update-config.js
           node --check src/live-view-layout.js
           node --check src/comment-view-settings.js
       - name: Run unit tests

@@ -1,4 +1,5 @@
 "use strict";
+const {getReleaseChannel}=require("./update-channel");
 
 /** Windows NSIS alpha-updater; never forces a restart during a live broadcast. */
 function describeUpdateError(error){
@@ -6,7 +7,7 @@ function describeUpdateError(error){
  const code=/^[A-Z][A-Z0-9_]{1,69}$/.test(rawCode)?rawCode:"UPDATE_FAILED";
  const detail=String(error?.message||"");
  if(/CHANNEL_FILE_NOT_FOUND|Cannot find.*\.yml|(?:HTTP|status)\s*404|404 Not Found/i.test(code+" "+detail))
-  return {code:"UPDATE_METADATA_NOT_FOUND",message:"GitHubにα版の更新情報が見つかりません。公開ページのalpha.ymlを確認してください。"};
+  return {code:"UPDATE_METADATA_NOT_FOUND",message:"GitHubに自動更新用のチャンネル情報が見つかりません。対象リリースの更新用YMLファイルを確認してください。"};
  if(/403|429|RATE_LIMIT|FORBIDDEN/i.test(code+" "+detail))
   return {code:"UPDATE_ACCESS_LIMIT",message:"GitHubのアクセス制限により更新を確認できません。時間を置いて再試行してください。"};
  if(/ENOTFOUND|ETIMEDOUT|ECONN|EAI_AGAIN|ERR_NETWORK|network|net::|timeout/i.test(code+" "+detail))
@@ -18,9 +19,10 @@ function describeUpdateError(error){
  return {code,message:"自動更新でエラーが発生しました（"+code+"）。設定から再確認するかGitHub Releasesで更新してください。"};
 }
 function createAutoUpdateService({app,updater,platform=process.platform,portable=false,notify=()=>{},schedule=setTimeout,repeat=setInterval}){
+ const channel=getReleaseChannel(app?.getVersion?.()||"0.2.0-alpha.0")||"alpha";
  const supported=platform==="win32"&&!!app?.isPackaged&&!portable&&!!updater;
  let status={
-  supported,phase:supported?"idle":"unavailable",version:"",percent:0,errorCode:"",checkedAt:"",
+  supported,channel,phase:supported?"idle":"unavailable",version:"",percent:0,errorCode:"",checkedAt:"",
   message:supported?"自動更新の初期化が完了しました。":
    portable?"Portable版は自動インストールできません。Setup版をインストールしてください。":
    !app?.isPackaged?"開発版からは自動更新できません。Windows Setup版でご利用ください。":
@@ -40,7 +42,7 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
  async function check(){
   if(!supported||busy||["downloading","downloaded","installing"].includes(status.phase))return getStatus();
   busy=true;
-  publish({phase:"checking",errorCode:"",checkedAt:new Date().toISOString(),message:"GitHub Releasesからα版の更新を確認しています。"});
+  publish({phase:"checking",errorCode:"",checkedAt:new Date().toISOString(),message:"GitHub Releasesから"+channel+"チャンネルの更新を確認しています。"});
   try{
    const result=await updater.checkForUpdates();
    if(status.phase==="checking"&&result?.isUpdateAvailable===false)
@@ -70,16 +72,16 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
   if(!supported){publish({});return getStatus();}
   updater.autoDownload=true;
   updater.autoInstallOnAppQuit=true; // fallback if the normal quit route is used
-  updater.allowPrerelease=true;
-  updater.channel="alpha";
+  updater.allowPrerelease=channel!=="latest";
+  updater.channel=channel;
   updater.allowDowngrade=false;
   // Releases publish full NSIS EXEs and alpha.yml, but not differential blockmaps.
   // Avoid depending on missing .blockmap assets or HTTP range support.
   updater.disableDifferentialDownload=true;
-  updater.on("checking-for-update",()=>publish({phase:"checking",message:"α版の更新を確認しています。"}));
+  updater.on("checking-for-update",()=>publish({phase:"checking",message:channel+"チャンネルの更新を確認しています。"}));
   updater.on("update-available",info=>publish({
    phase:"downloading",version:String(info?.version||"").slice(0,70),percent:0,errorCode:"",
-   message:"新しいα版をダウンロードしています。"
+   message:"新しいバージョンを自動ダウンロードしています。"
   }));
   updater.on("update-not-available",()=>publish({phase:"current",message:"公開済みの最新版です。"}));
   updater.on("download-progress",info=>publish({
@@ -92,7 +94,7 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
   }));
   updater.on("error",reportError);
   schedule(()=>{void check();},12000);
-  repeat(()=>{void check();},4*60*60*1000);
+  repeat(()=>{void check();},30*60*1000);
   publish({});
   return getStatus();
  }

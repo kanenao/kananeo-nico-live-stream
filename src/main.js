@@ -1806,7 +1806,7 @@ async function fetchNiconicoLibraryVideos(input = {}) {
   }
 }
 
-const UPDATE_RELEASES_API_URL = "https://api.github.com/repos/kanenao/kananeo-nico-live-stream/releases?per_page=20";
+const UPDATE_RELEASES_API_URL = "https://api.github.com/repos/kanenao/kananeo-nico-live-stream/releases?per_page=100";
 const UPDATE_RELEASES_PAGE_URL = "https://github.com/kanenao/kananeo-nico-live-stream/releases";
 
 async function checkApplicationUpdates() {
