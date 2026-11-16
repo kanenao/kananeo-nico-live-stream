@@ -14,6 +14,8 @@ test("alpha releases publish from main only after the Windows build",()=>{
  assert.match(workflow,/getBranch\(\{owner, repo, branch:"main"\}\)/);
  assert.match(workflow,/prerelease: tag\.includes\("-"\)/);
  assert.match(workflow,/installer \|\| !portable/);
+ assert.match(workflow,/manifests\.some\(file => !files\.includes\(file\)\)/);
+ assert.match(workflow,/dist\/\*\.yml/);
 });
 test("alpha release still maintains tag-initiated publication",()=>{
  assert.match(workflow,/startsWith\(github\.ref, 'refs\/tags\/v'\)/);
