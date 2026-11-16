@@ -633,6 +633,7 @@ panel("システムログ","ローカルに記録した直近の操作",state.lo
 const waiting=state.requests.filter(x=>!["completed","skipped","rejected"].includes(x.status)).length;
 const requestRows=state.requests.map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+(x.status==="playing"?"再生中":x.status==="completed"?"再生済み":x.status==="skipped"?"スキップ":x.status==="rejected"?"引用不可":"待機中")+'</td><td>'+esc(x.title)+(x.requestUserId?'<div class="muted">リクエスト者：'+esc(getRequesterDisplayName(x))+'</div>':"")+'</td><td>'+esc(x.videoId||x.url)+'</td><td><button class="btn" data-play="'+esc(x.id)+'">プレビュー</button> <button class="btn primary" data-quote-request="'+esc(x.id)+'">ニコ生へ送る</button> <button class="btn" data-up="'+i+'" '+(i===0?"disabled":"")+'>&uarr;</button> <button class="btn" data-down="'+i+'" '+(i===state.requests.length-1?"disabled":"")+'>&darr;</button> <button class="btn" data-remove="'+esc(x.id)+'">削除</button></td></tr>').join("");
 html=hero("VIEWER REQUESTS","動画リクエスト","視聴者から受け付けた動画を管理します。プレビューとニコ生への引用再生は別操作です。")+
+panel("放送開始時の動画リクエスト自動再生","自分の番組がON_AIRになったら先頭のリクエストを一度だけ引用再生します。",'<label class="switchrow"><span><b>番組開始時に動画を自動再生</b><small>初期OFF。自分の放送のみ。リクエスト優先、ストックはストック自動再生ON時だけ利用。番組ごとに一回だけ試行します。</small></span><input type="checkbox" id="request-auto-on-live" '+(state.playback.autoPlayOnOwnLive?"checked":"")+'></label><div class="muted">配信開始の検知後に放送状態と引用状態を確認します。すでに別の動画を引用再生中の場合は変更しません。</div>')+
 panel("動画リクエストを追加","動画ID・watch URLと、分かる場合は動画時間も登録します。",'<form id="request-form" class="grid3">'+field("動画タイトル（任意）","req-title","","未入力なら動画IDを表示")+field("動画URL / ID","req-url","","sm12345678 または動画URL")+field("動画時間（秒・任意）","req-duration","","例：240")+'<button class="btn primary">キューに追加</button></form><label class="switchrow"><span><b>コメントからリクエスト自動受付</b><small>明示コマンドのみ受付。NGユーザー・NGワード・重複・上限を順に確認します。</small></span><input type="checkbox" id="request-from-comments" '+(state.requestSettings.acceptComments?"checked":"")+'></label><div class="field"><label>1ユーザーあたりの未再生リクエスト上限（1〜50）</label><input class="input" id="request-max-per-user" type="number" min="1" max="50" value="'+(state.requestSettings.maxPerUser||5)+'"></div><label class="switchrow"><span><b>受付結果を運営コメントで自動返信</b><small>初期設定OFF。配信主権限が必要で、送信間隔は最低5秒に制限します。</small></span><input type="checkbox" id="request-reply-enabled" '+(state.requestSettings.replyEnabled?"checked":"")+'></label><div class="field"><label>受付時の返信（80文字以内）</label><textarea class="input" id="request-reply-accepted" rows="2" maxlength="80">'+esc(state.requestSettings.replyAccepted||initial.requestSettings.replyAccepted)+'</textarea></div><div class="field"><label>却下時の返信（80文字以内）</label><textarea class="input" id="request-reply-rejected" rows="2" maxlength="80">'+esc(state.requestSettings.replyRejected||initial.requestSettings.replyRejected)+'</textarea></div><div class="muted">使用できる置換：{video_id}、{comment_no}、{reason}。受付返信はキュー登録後、却下返信はNG・重複・上限などの判定後に送信します。一般コメントとしてではなく、ニコ生の運営コメントとして投稿されます。</div><div class="muted">「プレビュー」は動画ページを開くだけです。「ニコ生へ送る」は放送中の番組に引用再生を要求します。</div>')+
 panel("リクエストキュー",waiting+" 件が未再生",state.requests.length?'<table class="table"><thead><tr><th>#</th><th>状態</th><th>タイトル</th><th>動画ID</th><th>操作</th></tr></thead><tbody>'+requestRows+'</tbody></table><div class="actions"><button class="btn" data-player-next>次の動画をプレビュー</button><button class="btn primary" data-quote-next>次の動画をニコ生へ引用再生</button><button class="btn" data-clear>リクエストを全消去</button><button class="btn" data-go="stocks">ストックを管理</button></div>':'<div class="empty">リクエストキューは空です。</div>');
 }else if(page==="stocks"){
@@ -656,7 +657,7 @@ const pollResults=(pollRuntime.result||[]).map(item=>esc(item.name)+"："+Number
 html=hero("AUTOMATIC POLL","自動アンケート","投票を作成し、設定時間後に結果を取得。継続票が最多なら再投票、次動画票が最多ならリクエスト優先でニコ生へ引用再生します。")+
 '<div class="grid2">'+panel("アンケート内容","選択肢は2つです。表示名は投票結果と完全一致させます。",field("質問","poll-question",state.poll.question)+field("継続の選択肢","poll-continue",state.poll.continue)+field("次動画の選択肢","poll-next",state.poll.next))+
 panel("投票時間・判定ルール","投票時間は3〜300秒、結果表示は0〜120秒",field("投票待ち時間（秒）","poll-wait",state.poll.wait)+field("結果表示時間（秒）","poll-result",state.poll.result)+'<div class="muted">再投票の待機時間は結果から自動計算：継続票最多10〜60秒／同票10秒／無投票5秒。初回開始待ち5秒、安全余裕5秒。</div>'+'<button class="btn" data-save-poll>設定を保存</button>')+'</div>'+
-panel("自動アンケート実行","放送主権限のあるログインで、配信中の放送IDを指定してください。",'<div class="banner"><i class="led"></i><div><b id="poll-status-label">'+esc(pollRuntime.status==="idle"?"停止中":pollRuntime.status==="voting"?"投票中":pollRuntime.status==="results"?"結果表示中":pollRuntime.status==="repeating"?"再投票準備中":pollRuntime.status==="next"?"次動画へ進みました":pollRuntime.status==="error"?"エラー":"処理中")+'</b><small id="poll-status-message">'+esc(pollRuntime.message)+'</small></div></div><div id="poll-results" class="empty">'+(pollResults||"投票結果はまだありません。")+'</div><div id="poll-timing-summary" class="muted">'+esc(pollTimingSummary||"短い動画では自動アンケートを省略します。")+'</div><div class="actions"><button class="btn primary" data-poll-start '+(pollActive?"disabled":"")+'>自動アンケート開始</button><button class="btn" data-poll-stop '+(!pollActive?"disabled":"")+'>停止</button></div><div class="muted">結果がAPIから取得できない場合は自動スキップしません。動画の尺が短ければ投票を省略し、再投票は最大100回で停止します。</div>');
+panel("自動アンケート実行","放送主権限のあるログインで、配信中の放送IDを指定してください。",'<div class="banner"><i class="led"></i><div><b id="poll-status-label">'+esc(pollRuntime.status==="idle"?"停止中":pollRuntime.status==="voting"?"投票中":pollRuntime.status==="results"?"結果表示中":pollRuntime.status==="repeating"?"再投票準備中":pollRuntime.status==="next"?"次動画へ進みました":pollRuntime.status==="error"?"エラー":"処理中")+'</b><small id="poll-status-message">'+esc(pollRuntime.message)+'</small></div></div><div id="poll-results" class="empty">'+(pollResults||"投票結果はまだありません。")+'</div><div id="poll-timing-summary" class="muted">'+esc(pollTimingSummary||"短い動画では自動アンケートを省略します。")+'</div><div class="field"><label>動画の長さ（秒）を手動で補完（自動取得できない場合）</label><input class="input" id="poll-manual-duration" type="number" min="1" max="86400" placeholder="例：240"></div><div class="actions"><button class="btn" data-poll-duration-fetch>動画時間を自動取得</button><button class="btn" data-poll-duration-set>動画時間を登録</button></div><div class="muted">アプリ外から再生された動画は開始時刻を確認できない場合があります。そのときはアプリから引用再生を開始し直してください。</div><div class="actions"><button class="btn primary" data-poll-start '+(pollActive?"disabled":"")+'>自動アンケート開始</button><button class="btn" data-poll-stop '+(!pollActive?"disabled":"")+'>停止</button></div><div class="muted">結果がAPIから取得できない場合は自動スキップしません。動画の尺が短ければ投票を省略し、再投票は最大100回で停止します。</div>');
 }else if(page==="automation"){
 html=hero("AUTOMATION","自動枠取り・延長","次枠取得・無料延長と、動画の再生時間に合わせた配信運用を管理します。")+
 '<div class="grid2">'+panel("次枠管理","番組情報と再生状態を引き継ぐ",toggle("auto-next","放送終了時に次枠取得を実行","アプリ本体で終了を監視し次枠取得を開始します。",state.automation.autoNext)+toggle("auto-create-next","前枠を引き継いで次枠を自動作成","タイトル・説明・タグ・公開設定を再利用して番組を自動作成（初期OFF）。作成された放送の本番開始は別操作です。",state.automation.autoCreate)+'<div class="muted" id="auto-next-status">'+esc(state.automation.autoNext?autoNextRuntime.message:"自動次枠監視はOFFです。")+'</div><button class="btn" data-auto-next-check '+(!state.automation.autoNext?"disabled":"")+'>今すぐ終了状態を確認</button>'+toggle("keep-position","再生位置を引き継ぐ","次枠でも現在位置を維持",state.automation.keepPosition))+
@@ -705,7 +706,7 @@ html=hero("LIVE SESSION","放送・枠管理","放送映像を左側に表示し
 '<div class="grid2">'+
 panel("ニコニコアカウント接続","公式ログインを専用セッションで開く",'<div class="empty" id="auth-status"><b>'+authTitle+'</b><br>'+authText+'</div><div class="actions"><button class="btn primary" data-nico-login>公式ログインを開く</button><button class="btn" data-nico-refresh>状態を再確認</button><button class="btn" data-nico-logout>このアプリからログアウト</button></div>')+
 panel("番組ページを確認","放送IDまたはニコ生番組URLを入力",'<div class="field"><label>放送ID / URL</label><input class="input" id="live-id" value="'+esc(state.lastProgramId||"")+'" placeholder="lv123456789 または放送URL" maxlength="512"></div><div class="actions"><button class="btn primary" data-nico-check>番組ページを確認</button></div><div class="empty" id="program-result">確認結果はここに表示します。</div>')+
-panel("番組枠の作成・終了","作成後の自動番組開始と、開始・終了ボタンを利用できます。",'<div class="actions"><button class="btn primary" data-broadcast-create>＋ 新規番組枠を作成</button><button class="btn" data-broadcast-own-fetch>自分の最新番組を取得</button></div><div class="field"><label>管理する放送ID</label><input class="input" id="broadcast-manage-id" value="'+esc(state.lastProgramId||"")+'" placeholder="lv123456789" maxlength="512"></div><div class="actions"><button class="btn" data-broadcast-verify>放送ID・状態を確認</button><button class="btn primary" data-program-start>▶ 番組開始</button><button class="btn danger" data-program-end>■ 番組終了</button><button class="btn" data-broadcast-manage disabled>番組管理画面を開く</button></div><div class="empty" id="broadcast-manage-result">確認結果は90秒間有効です。</div><label class="switchrow"><span><b>枠作成直後に番組開始を自動実行</b><small>新しい自分の番組だけが対象です。OBSや映像送出は別途必要です（実験的）。</small></span><input id="auto-start-program" type="checkbox" '+(state.automation.autoStartProgram?"checked":"")+'></label><div class="muted">番組開始・終了はログイン中の自分の番組だけを操作します。ニコニコのAPI仕様変更で操作できない場合があります。</div>')+
+panel("番組枠の作成・終了","作成後の自動番組開始と、開始・終了ボタンを利用できます。",'<div class="field"><label>番組タイトル</label><input class="input" id="create-program-title" maxlength="200" placeholder="例：配信タイトル"></div><div class="field"><label>番組説明</label><textarea class="input" id="create-program-description" maxlength="10000" rows="3" placeholder="番組の説明"></textarea></div><div class="grid2"><div class="field"><label>番組カテゴリ</label><input class="input" id="create-program-category" maxlength="100" value="一般" placeholder="例：一般"></div><div class="field"><label>タグ（カンマ区切り、最大10件）</label><input class="input" id="create-program-tags" maxlength="1000" placeholder="例：雑談, 生放送"></div></div><label class="switchrow"><span><b>会員限定で作成</b><small>OFFは一般公開の枠になります。合言葉・非公開枠は公式作成画面で設定してください。</small></span><input type="checkbox" id="create-program-member-only"></label><div class="actions"><button class="btn primary" data-create-program-in-app>アプリから番組を作成（実験的）</button><button class="btn" data-broadcast-create>公式番組作成画面を開く</button><button class="btn" data-broadcast-own-fetch>自分の最新番組を取得</button></div><div class="muted">番組作成APIは仕様変更の可能性があります。作成に失敗した場合は公式画面を使用してください。送信前に確認し、同じ内容の重複送信を防止します。</div><div class="field"><label>管理する放送ID</label><input class="input" id="broadcast-manage-id" value="'+esc(state.lastProgramId||"")+'" placeholder="lv123456789" maxlength="512"></div><div class="actions"><button class="btn" data-broadcast-verify>放送ID・状態を確認</button><button class="btn primary" data-program-start>▶ 番組開始</button><button class="btn danger" data-program-end>■ 番組終了</button><button class="btn" data-broadcast-manage disabled>番組管理画面を開く</button></div><div class="empty" id="broadcast-manage-result">確認結果は90秒間有効です。</div><label class="switchrow"><span><b>枠作成直後に番組開始を自動実行</b><small>新しい自分の番組だけが対象です。OBSや映像送出は別途必要です（実験的）。</small></span><input id="auto-start-program" type="checkbox" '+(state.automation.autoStartProgram?"checked":"")+'></label><div class="muted">番組開始・終了はログイン中の自分の番組だけを操作します。ニコニコのAPI仕様変更で操作できない場合があります。</div>')+
 '</div>'+
 '<div class="broadcast-live-layout">'+
 '<section class="panel broadcast-video-panel"><div class="broadcast-panel-heading"><div><h2>放送画面</h2><p>ニコ生公式の視聴ページをアプリ内に表示します。</p></div><span class="live-state-pill" id="broadcast-live-status">未表示</span></div>'+
@@ -2340,6 +2341,27 @@ if(b.hasAttribute("data-program-start")||b.hasAttribute("data-program-end")){
  if(response?.ok)await adoptCreatedBroadcast(id);
  return;
 }
+if(b.hasAttribute("data-create-program-in-app")){
+ const title=document.getElementById("create-program-title")?.value?.trim()||"";
+ const description=document.getElementById("create-program-description")?.value||"";
+ const category=document.getElementById("create-program-category")?.value?.trim()||"";
+ const tags=(document.getElementById("create-program-tags")?.value||"").split(/[,、]/).map(x=>x.trim()).filter(Boolean);
+ const isMemberOnly=document.getElementById("create-program-member-only")?.checked===true;
+ if(!title||!category){toast("番組タイトルとカテゴリを入力してください。");return;}
+ if(!confirm("ニコニコに番組「"+title+"」を"+(isMemberOnly?"会員限定":"一般公開")+"で作成します。\n\n番組の公開範囲と内容を確認してください。作成後の取り消しは自動では行いません。続けますか？"))return;
+ const button=document.querySelector("[data-create-program-in-app]");if(button)button.disabled=true;
+ try{
+  const result=await window.kananeoApp.niconico.createProgramInApp({title,description,category,tags,isMemberOnly,confirmed:true});
+  toast(result?.message||"番組作成の結果を確認できませんでした。");
+  if(result?.ok&&result.programId){
+   await adoptCreatedBroadcast(result.programId);
+   if(state.automation.autoStartProgram)void maybeStartNewProgram(result.programId);
+   render();
+  }
+ }catch{toast("番組作成の通信に失敗しました。再送せず、自分の番組履歴を確認してください。");}
+ finally{if(button&&button.isConnected)button.disabled=false;}
+ return;
+}
 if(b.hasAttribute("data-broadcast-create")){
  const result=await window.kananeoApp.niconico.openBroadcastCreate();
  toast(result?.ok?"アプリ内に番組作成画面を開きました。内容を確認して作成してください。":(result?.message||"番組作成画面を開けませんでした。"));
@@ -2525,6 +2547,26 @@ if(b.hasAttribute("data-save-playback")){const selectedStyle=Number(document.get
 if(b.hasAttribute("data-player-next")){void playNextQueueItem(true);return;}
 if(b.hasAttribute("data-player-focus")){window.kananeoApp.niconico.focusVideo().then(r=>toast(r?.message||"プレイヤーを開けませんでした。"));return;}
 if(b.hasAttribute("data-player-close")){window.kananeoApp.niconico.closeVideo().then(r=>{playerState={state:"closed",message:r?.message||"プレイヤーを閉じました。"};updateVideoPlayerState(playerState);toast(r?.message||"プレイヤーを閉じました。");});return;}
+if(b.hasAttribute("data-poll-duration-fetch")){
+ const id=String(quotePlayback.videoId||state.player.quoteVideoId||"");
+ if(!id){toast("先にニコ生で引用再生中の動画を確認してください。");return;}
+ const ok=await ensureCurrentQuoteDuration();
+ toast(ok?"動画の長さを取得して保存しました。":"取得できませんでした。動画時間を手動で入力してください。");
+ return;
+}
+if(b.hasAttribute("data-poll-duration-set")){
+ const seconds=Number(document.getElementById("poll-manual-duration")?.value);
+ const id=String(quotePlayback.videoId||state.player.quoteVideoId||"");
+ if(!quotePlayback.active||!/^(?:sm|nm|so)\d{1,12}$/.test(id)){toast("先に動画の引用再生状態を確認してください。");return;}
+ if(!Number.isInteger(seconds)||seconds<1||seconds>86400){toast("動画の長さを1〜86400秒で入力してください。");return;}
+ const item=[...state.requests,...state.stocks].find(x=>x.videoId===id);
+ if(item)item.lengthMs=seconds*1000;
+ state.player.quoteDurationMs=seconds*1000;save();
+ if(state.player.quoteStartedAt>0&&state.playback.quoteAutoNext&&!pollRuntime.active)
+  scheduleQuoteAutoNext(item||{videoId:id,lengthMs:seconds*1000},state.player.quoteStartedAt);
+ toast("動画の長さを"+seconds+"秒に設定しました。");
+ return;
+}
 if(b.hasAttribute("data-poll-start")){void startAutomaticPoll();return;}
 if(b.hasAttribute("data-poll-stop")){void stopAutomaticPoll();return;}
 if(b.hasAttribute("data-comment-start")){void startComments();return;}
@@ -2641,6 +2683,16 @@ document.addEventListener("input",e=>{if(e.target.id==="release-history-search")
 document.addEventListener("input",e=>{
  if(e.target.id==="bgm-volume"){state.playback.bgmVolume=clampBgmVolume(e.target.value);if(bgmAudio)bgmAudio.volume=state.playback.bgmVolume;updateBgmPlaybackUi();}
  if(e.target.id==="bgm-progress"&&bgmAudio&&Number.isFinite(bgmAudio.duration)){bgmAudio.currentTime=bgmAudio.duration*(Math.max(0,Math.min(1000,Number(e.target.value)||0))/1000);updateBgmPlaybackUi();}
+});
+document.addEventListener("change",e=>{
+ if(e.target.id==="request-auto-on-live"){
+  const enabled=e.target.checked===true;
+  if(enabled&&!state.playback.autoPlayOnOwnLive&&!confirm("自分の番組開始を検知したら、視聴者へ動画リクエストを自動で引用再生します。有効にしますか？")){e.target.checked=false;return;}
+  state.playback.autoPlayOnOwnLive=enabled;
+  if(enabled)state.playback.lastAutoPlayProgramId="";
+  save();toast(enabled?"放送開始時の動画自動再生をONにしました。":"放送開始時の動画自動再生をOFFにしました。");
+  if(enabled){for(const item of ownMonitorStatus.activePrograms||[])void maybeAutoPlayOnOwnLive(item);}
+ }
 });
 document.addEventListener("change",e=>{if(e.target.id==="release-history-type"){releaseHistoryState.type=e.target.value;renderReleaseHistoryRows();}if(e.target.id==="stream-monitor-interval"||e.target.id==="stream-monitor-auto-comments"){if(e.target.id==="stream-monitor-interval")state.streamMonitor.intervalSeconds=Number(e.target.value)||60;else state.streamMonitor.autoComments=e.target.checked;save();}if(e.target.id==="remote-audit-notification-enabled"){const enabled=e.target.checked;void window.kananeoApp.remote.setNotificationSettings({enabled}).then(result=>{if(result?.ok){remoteAuditNotificationEnabled=enabled;toast(enabled?"異常アクセス通知をONにしました。":"異常アクセス通知をOFFにしました。");}else{e.target.checked=remoteAuditNotificationEnabled;toast(result?.message||"通知設定を保存できませんでした。");}}).catch(()=>{e.target.checked=remoteAuditNotificationEnabled;toast("通知設定を保存できませんでした。");});}});
 document.addEventListener("change",e=>{if(e.target.id==="broadcast-comment-type"){broadcastCommentType=e.target.value;renderBroadcastComments();}if(e.target.id==="library-sort"){librarySort=e.target.value;renderVideoLibraryRows();}if(e.target.id==="library-source"){librarySource=e.target.value;renderVideoLibraryRows();}});
