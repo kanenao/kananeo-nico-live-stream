@@ -44,6 +44,7 @@ const { selectNextPlaybackCandidate } = require("./playback-scheduler");
 const { buildBroadcasterCommentRequest, parseBroadcasterCommentResponse } = require("./broadcaster-comment-api");
 const { buildUpdateCheckResult } = require("./update-checker");
 const {loggedInId,broadcastHistoryUrl,parseHistory,programFromCreateUrl}=require("./own-broadcast");
+const {createNextFrameMonitor}=require("./next-frame-monitor");
 const {editingMenus,editingContextMenu}=require("./editing-support");
 const { createAutoUpdateService } = require("./auto-update-service");
 const { settleBeforeQuit } = require("./quit-helpers");
@@ -62,6 +63,7 @@ let mainWindow = null;
 let loginWindow = null;
 let broadcastWindow = null;
 let recentlyCreatedId="";
+let nextFrameMonitor=null;
 let liveVideoView = null;
 let liveVideoProgramId = "";
 let niconicoSession = null;
@@ -179,7 +181,21 @@ async function getOwnBroadcast(){
  let res;try{res=await niconicoSession.fetch(url,{method:"GET",credentials:"include",redirect:"error",headers:{Accept:"application/json"},signal:AbortSignal.timeout(12000)});}
  catch{return {ok:false,message:"自分の放送履歴にアクセスできませんでした。"};}
  if(!res.ok)return {ok:false,message:"放送履歴の取得が拒否されました（HTTP "+res.status+"）。"};
- return parseHistory(await res.text());
+ return {...parseHistory(await res.text()),userId:id};
+}
+function getNextFrameMonitor(){
+ if(!nextFrameMonitor){
+  nextFrameMonitor=createNextFrameMonitor({
+   getOwnBroadcast,
+   verifyProgram:checkNiconicoProgram,
+   openCreate:()=>openNiconicoBroadcastWindow("create"),
+   onStatus:status=>{
+    if(mainWindow&&!mainWindow.isDestroyed()&&!mainWindow.webContents.isDestroyed())
+      mainWindow.webContents.send("niconico:auto-next-status",status);
+   }
+  });
+ }
+ return nextFrameMonitor;
 }
 function detectCreatedProgram(url){
  const id=programFromCreateUrl(url);
@@ -2126,6 +2142,20 @@ function registerIpcHandlers() {
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     return closeNiconicoLiveVideoView();
   });
+  ipcMain.handle("niconico:auto-next-configure",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    const result=getNextFrameMonitor().configure(input);
+    if(result.ok&&input.enabled)void getNextFrameMonitor().poll(true);
+    return result;
+  });
+  ipcMain.handle("niconico:auto-next-check",event=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    return getNextFrameMonitor().poll(true);
+  });
+  ipcMain.handle("niconico:auto-next-status",event=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    return {ok:true,status:getNextFrameMonitor().status()};
+  });
   ipcMain.handle("niconico:own-broadcast",event=>{
     if(event.sender!==mainWindow?.webContents)return {ok:false,message:"この操作は許可されていません。"};
     return getOwnBroadcast();
@@ -2344,6 +2374,7 @@ app.on("before-quit",event=>{
   closeNiconicoLiveVideoView();
   finalQuitInProgress=true;
   void settleBeforeQuit([
+    ()=>{nextFrameMonitor?.dispose();},
     ()=>stopCommentStream("アプリを終了しました。"),
     ()=>stopRemoteControlServer()
   ],7000).then(result=>{
