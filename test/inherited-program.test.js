@@ -43,3 +43,10 @@ test("only confirmed HTTP 201 and matching response ID constitutes success",()=>
  assert.equal(parseCreateProgramResponse("bad",201).ok,false);
  assert.equal(parseCreateProgramResponse(JSON.stringify({meta:{status:400,errorCode:"INVALID"}}),400).ok,false);
 });
+
+test("user broadcasts without legacy community ID can inherit safely",()=>{
+ const original=previous({community:null,communityId:undefined});
+ const plan=inheritPreviousProgram(original,"lv123");
+ assert.equal(plan.ok,true);
+ assert.equal(Object.hasOwn(plan.payload,"communityId"),false);
+});

@@ -21,7 +21,7 @@ function inheritPreviousProgram(data,expectedId){
   return {ok:false,code:"SOURCE_MISMATCH",message:"前枠とは異なる番組が返されました。"};
  const title=getString(data.title,200),description=typeof data.description==="string"&&data.description.length<=10000?data.description:null;
  const category=getString(data.category,100),communityId=getString(data.community?.id||data.communityId,100);
- if(!title||description===null||!category||!communityId)
+ if(!title||description===null||!category)
   return {ok:false,code:"SOURCE_FIELDS_MISSING",message:"タイトル・説明・カテゴリ・コミュニティの引き継ぎ情報が不足しています。自動作成を中止しました。"};
  // An unknown password/visibility setting must never be converted to public.
  const protectedKeys=["isPasswordProtected","isPasswordEnabled","hasPassword","isLimited","isPrivate","isHidden"];
@@ -39,9 +39,11 @@ function inheritPreviousProgram(data,expectedId){
  if(tags.includes(null)||(data.tags||[]).length>30)
   return {ok:false,code:"TAGS_INVALID",message:"前枠のタグを完全に引き継げません。"};
  const payload={
-  title,description,category,communityId,tags,
+  title,description,category,tags,
   isMemberOnly:data.isMemberOnly
  };
+ // Communities were removed from modern user broadcasts; copy only if present.
+ if(communityId)payload.communityId=communityId;
  const boolFlags=["isTagOwnerLock","isTimeshiftEnabled","isUadEnabled","isIchibaEnabled",
   "isOfficialIchibaOnly","isQuotable","isAutoCommentFilterEnabled"];
  for(const key of boolFlags){
