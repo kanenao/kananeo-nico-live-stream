@@ -1,5 +1,6 @@
 "use strict";
 const VALID_USER=/^\d{1,20}$/;
+const MAX_CONCURRENT_CHECKS=3;
 function normalizeUserIds(input){
  const rows=Array.isArray(input)?input:String(input||"").split(/[\s,;]+/);
  const found=[];
@@ -26,33 +27,49 @@ function buildRegisteredUserHistoryUrl(userId){
 function normalizeMonitorConfig(input){
  const src=input&&typeof input==="object"?input:{};
  const interval=Number(src.intervalSeconds);
- return {enabled:src.enabled===true,userIds:normalizeUserIds(src.userIds),
-  intervalSeconds:[30,60,120,300].includes(interval)?interval:60};
+ return {
+  enabled:src.enabled===true,userIds:normalizeUserIds(src.userIds),
+  intervalSeconds:[30,60,120,300].includes(interval)?interval:60,
+  notifyOnLive:src.notifyOnLive===true
+ };
 }
 const LIVE_STATUS=new Set(["ON_AIR","ONAIR","TEST"]);
 function createRegisteredUserMonitor({getUserBroadcast,onLive=()=>{},onStatus=()=>{},
  now=Date.now,setIntervalFn=setInterval,clearIntervalFn=clearInterval}){
  if(typeof getUserBroadcast!=="function")throw new TypeError("放送取得処理が必要です。");
- let config=normalizeMonitorConfig({}),timer=null,busy=false,generation=0,nextCheckAt=0,lastCheckAt="",message="登録配信者の監視は停止中です。";
+ let config=normalizeMonitorConfig({}),timer=null,busy=false,generation=0,nextCheckAt=0,lastCheckAt="";
+ let message="登録配信者の監視は停止中です。",checkedUsers=0,failedUsers=0,liveCount=0,checkDurationMs=0;
  let notified=new Set();
- function status(){return {...config,busy,nextCheckAt,lastCheckAt,message};}
+ function status(){return {...config,busy,nextCheckAt,lastCheckAt,message,checkedUsers,failedUsers,liveCount,checkDurationMs};}
  function emit(){try{onStatus(status());}catch{}}
+ const active=token=>token===generation&&config.enabled;
  async function poll(force=false){
   if(!config.enabled||busy||(!force&&now()<nextCheckAt))return status();
-  busy=true;const token=generation;emit();
-  try{
-   let liveCount=0;
-   for(const userId of config.userIds){
-    if(token!==generation||!config.enabled)break;
+  const token=generation,startedAt=now(),users=config.userIds.slice();
+  let checked=0,failed=0,lives=0,lastFailure="";
+  busy=true;message="登録配信者 "+users.length+"人を並列確認中…";emit();
+  let index=0;
+  async function worker(){
+   while(active(token)){
+    const position=index++;
+    if(position>=users.length)return;
+    const userId=users[position];
     let response;
     try{response=await getUserBroadcast(userId);}
-    catch(error){response={ok:false,message:error?.message||"取得できませんでした。"};}
-    if(token!==generation||!config.enabled)break;
-    if(!response?.ok){message="ユーザー "+userId+" の放送情報を確認できません："+String(response?.message||"通信失敗").slice(0,90);continue;}
-    for(const item of response.programs||[]){
+    catch(error){response={ok:false,message:error?.message||"通信エラー"};}
+    if(!active(token))return;
+    checked++;
+    if(!response?.ok){
+     failed++;
+     lastFailure="ユーザー "+userId+"："+String(response?.message||"取得失敗").slice(0,90);
+     continue;
+    }
+    const programs=Array.isArray(response.programs)?response.programs:[];
+    for(const item of programs){
+     if(!active(token))return;
      const id=String(item?.programId||"").toLowerCase();
      if(!/^lv\d{1,20}$/.test(id)||!LIVE_STATUS.has(String(item?.programStatus||"").toUpperCase()))continue;
-     liveCount++;
+     lives++;
      const key=userId+":"+id;
      if(notified.has(key))continue;
      notified.add(key);
@@ -60,31 +77,47 @@ function createRegisteredUserMonitor({getUserBroadcast,onLive=()=>{},onStatus=()
      try{onLive({userId,programId:id,title:String(item.title||id).slice(0,200),at:new Date(now()).toISOString()});}catch{}
     }
    }
-   if(token===generation&&config.enabled){
-    lastCheckAt=new Date(now()).toISOString();
-    message=config.userIds.length+"人を確認、放送中 "+liveCount+"件。次回確認："+new Date(now()+config.intervalSeconds*1000).toLocaleTimeString("ja-JP");
+  }
+  try{
+   await Promise.all(Array.from({length:Math.min(MAX_CONCURRENT_CHECKS,users.length)},()=>worker()));
+   if(active(token)){
+    checkedUsers=checked-failed;failedUsers=failed;liveCount=lives;
+    lastCheckAt=new Date(now()).toISOString();checkDurationMs=Math.max(0,now()-startedAt);
+    message="登録配信者 "+checked+"/"+users.length+"人を確認。放送中 "+lives+"件"+
+      (failed?"、取得失敗 "+failed+"人（"+lastFailure+"）":"")+
+      "。次回確認は約"+config.intervalSeconds+"秒後。";
    }
   }finally{
-   busy=false;
-   if(token===generation&&config.enabled)nextCheckAt=now()+config.intervalSeconds*1000;
-   emit();
+   // Reconfiguration may start a new request while the previous request is still
+   // finishing. An old generation must not overwrite the new generation's flags.
+   if(token===generation){
+    busy=false;
+    if(config.enabled)nextCheckAt=now()+config.intervalSeconds*1000;
+    emit();
+   }
   }
   return status();
  }
  function configure(input){
   const next=normalizeMonitorConfig(input);
+  const unchanged=next.enabled===config.enabled&&next.intervalSeconds===config.intervalSeconds&&
+   next.notifyOnLive===config.notifyOnLive&&next.userIds.join(",")===config.userIds.join(",");
+  if(unchanged)return {ok:true,status:status()};
   generation++;
   if(timer!==null){clearIntervalFn(timer);timer=null;}
-  config=next;
+  config=next;busy=false;
   if(!next.enabled||!next.userIds.length){
-   config.enabled=false;busy=false;message="登録配信者の監視は停止中です。";emit();return {ok:true,status:status()};
+   config.enabled=false;nextCheckAt=0;
+   message="登録配信者の監視は停止中です。";
+   emit();return {ok:true,status:status()};
   }
-  const activeUserIds=new Set(config.userIds);
-  notified=new Set([...notified].filter(key=>activeUserIds.has(key.split(":")[0])));
-  nextCheckAt=0;message="登録配信者 "+config.userIds.length+"人の監視を開始しました。";
+  const allowed=new Set(config.userIds);
+  notified=new Set([...notified].filter(key=>allowed.has(key.split(":")[0])));
+  nextCheckAt=0;
+  message="登録配信者 "+config.userIds.length+"人の監視を開始しました（最大"+MAX_CONCURRENT_CHECKS+"件並列）。";
   timer=setIntervalFn(()=>{void poll();},1000);
   emit();return {ok:true,status:status()};
  }
  return Object.freeze({configure,poll,status,dispose:()=>configure({enabled:false})});
 }
-module.exports={normalizeUserIds,buildRegisteredUserHistoryUrl,normalizeMonitorConfig,createRegisteredUserMonitor};
+module.exports={MAX_CONCURRENT_CHECKS,normalizeUserIds,buildRegisteredUserHistoryUrl,normalizeMonitorConfig,createRegisteredUserMonitor};

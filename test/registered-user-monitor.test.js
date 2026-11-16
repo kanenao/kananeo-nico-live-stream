@@ -47,3 +47,76 @@ test("disable during async fetch discards stale results",async()=>{
  m.dispose();done({ok:true,programs:[{programId:"lv2",programStatus:"ON_AIR"}]});
  await check;assert.equal(live.length,0);
 });
+
+test("checks at most three registered broadcasters concurrently",async()=>{
+ let current=0,peak=0,completed=0;
+ const userIds=Array.from({length:12},(_,i)=>String(i+1));
+ const m=createRegisteredUserMonitor({
+  getUserBroadcast:async()=>{
+   current++;peak=Math.max(peak,current);
+   await new Promise(resolve=>setImmediate(resolve));
+   completed++;current--;
+   return {ok:true,programs:[]};
+  },setIntervalFn:()=>1,clearIntervalFn:()=>{}
+ });
+ m.configure({enabled:true,userIds,intervalSeconds:30});
+ await m.poll(true);
+ assert.equal(peak,3);
+ assert.equal(completed,12);
+ assert.equal(m.status().checkedUsers,12);
+ assert.equal(m.status().failedUsers,0);
+ m.dispose();
+});
+test("one failed broadcaster does not block checks for others",async()=>{
+ const m=createRegisteredUserMonitor({
+  getUserBroadcast:async userId=>{
+   if(userId==="2")throw new Error("connection failed");
+   return {ok:true,programs:[]};
+  },setIntervalFn:()=>1,clearIntervalFn:()=>{}
+ });
+ m.configure({enabled:true,userIds:["1","2","3"],intervalSeconds:30});
+ await m.poll(true);
+ assert.equal(m.status().checkedUsers,2);
+ assert.equal(m.status().failedUsers,1);
+ assert.match(m.status().message,/取得失敗 1人/);
+ m.dispose();
+});
+test("repeating identical settings does not reset timer, notifications or restart monitoring",async()=>{
+ let scheduled=0,cleared=0;
+ const lives=[],config={enabled:true,userIds:["1"],intervalSeconds:30,notifyOnLive:true};
+ const m=createRegisteredUserMonitor({
+  getUserBroadcast:async()=>({ok:true,programs:[{programId:"lv55",programStatus:"ON_AIR"}]}),
+  onLive:x=>lives.push(x),setIntervalFn:()=>++scheduled,clearIntervalFn:()=>{cleared++;}
+ });
+ m.configure(config);await m.poll(true);
+ const same=m.configure({...config});
+ assert.equal(same.status.notifyOnLive,true);
+ assert.equal(scheduled,1);
+ assert.equal(cleared,0);
+ await m.poll(true);assert.equal(lives.length,1);
+ m.dispose();
+});
+test("reconfigure while requests are pending discards stale results and preserves fresh cycle state",async()=>{
+ let finish;
+ const pending=new Promise(resolve=>{finish=resolve;});
+ const broadcasts=[];
+ const m=createRegisteredUserMonitor({
+  getUserBroadcast:userId=>userId==="1"?pending:Promise.resolve({ok:true,programs:[{programId:"lv222",programStatus:"ON_AIR"}]}),
+  onLive:value=>broadcasts.push(value),setIntervalFn:()=>1,clearIntervalFn:()=>{}
+ });
+ m.configure({enabled:true,userIds:["1"],intervalSeconds:30});
+ const original=m.poll(true);
+ m.configure({enabled:true,userIds:["2"],intervalSeconds:30});
+ const newer=m.poll(true);
+ finish({ok:true,programs:[{programId:"lv111",programStatus:"ON_AIR"}]});
+ await Promise.all([original,newer]);
+ assert.deepEqual(broadcasts.map(x=>x.programId),["lv222"]);
+ assert.equal(m.status().busy,false);
+ assert.equal(m.status().checkedUsers,1);
+ m.dispose();
+});
+test("notification preference defaults OFF and only explicit true enables it",()=>{
+ assert.equal(normalizeMonitorConfig({enabled:true,userIds:["1"]}).notifyOnLive,false);
+ assert.equal(normalizeMonitorConfig({enabled:true,userIds:["1"],notifyOnLive:true}).notifyOnLive,true);
+ assert.equal(normalizeMonitorConfig({enabled:true,userIds:["1"],notifyOnLive:"true"}).notifyOnLive,false);
+});

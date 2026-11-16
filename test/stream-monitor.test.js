@@ -83,3 +83,9 @@ test("registered streamer user IDs stay normalized and distinct",()=>{
  const result=normalizeMonitorUserIds("123\nuser/456\nhttps://www.nicovideo.jp/user/789\nhttps://example.com/user/9\n123");
  assert.deepEqual(result,["123","456","789"]);
 });
+
+test("registered livestream notifications require an explicit saved preference",()=>{
+ assert.equal(normalizeStreamMonitorSettings({}).notifyOnLive,false);
+ assert.equal(normalizeStreamMonitorSettings({notifyOnLive:true}).notifyOnLive,true);
+ assert.equal(normalizeStreamMonitorSettings({notifyOnLive:"yes"}).notifyOnLive,false);
+});
