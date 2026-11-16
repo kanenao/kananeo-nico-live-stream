@@ -554,7 +554,7 @@ async function fetchReleaseHistory(reset=false){
  releaseHistoryState.loading=true;releaseHistoryState.error="";
  renderReleaseHistoryRows();
  try{
-  const response=await window.kananeoApp.updates.history(pageNumber);
+  const response=await window.kananeoApp.updates.history(pageNumber,reset);
   if(!response?.ok)throw Error(response?.message||"バージョン更新履歴を取得できませんでした。");
   const existing=new Set(releaseHistoryState.items.map(item=>item.tag));
   for(const item of response.items||[])if(item?.tag&&!existing.has(item.tag)){releaseHistoryState.items.push(item);existing.add(item.tag);}
