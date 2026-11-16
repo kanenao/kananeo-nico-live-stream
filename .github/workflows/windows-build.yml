@@ -9,6 +9,8 @@ on:
       - "package.json"
       - "src/**"
       - "test/**"
+      - "scripts/**"
+      - "config/**"
       - ".github/workflows/windows-build.yml"
 
 permissions:
@@ -47,14 +49,18 @@ jobs:
       - name: Build Windows installer and portable app
         run: npm run dist:win
 
-      - name: Generate alpha update manifest
+      - name: Generate update manifests for current release channel
         run: node scripts/generate-update-manifest.js
 
       - name: Verify embedded update configuration
         shell: pwsh
         run: |
           if (!(Test-Path "dist/win-unpacked/resources/app-update.yml")) { throw "Missing app-update.yml" }
-          if (!(Test-Path "dist/alpha.yml")) { throw "Missing alpha.yml" }
+          $channels = node -p "require('./src/update-channel').channelsForVersion(require('./package.json').version).join(',')"
+          if (!$channels) { throw "Unsupported release channel" }
+          foreach ($channel in $channels.Split(',')) {
+            if (!(Test-Path "dist/$channel.yml")) { throw "Missing $channel.yml" }
+          }
 
       - name: Upload Windows builds
         uses: actions/upload-artifact@v4
@@ -62,7 +68,7 @@ jobs:
           name: kananeo-nico-live-stream-windows-${{ github.ref_name }}
           path: |
             dist/*.exe
-            dist/alpha.yml
+            dist/*.yml
           if-no-files-found: error
           retention-days: 14
 
@@ -82,7 +88,7 @@ jobs:
           name: kananeo-nico-live-stream-windows-${{ github.ref_name }}
           path: dist
 
-      - name: Publish GitHub Release (alpha or version tag)
+      - name: Publish GitHub Release (alpha, beta or stable)
         uses: actions/github-script@v9
         with:
           script: |
@@ -107,11 +113,19 @@ jobs:
                 return;
               }
             }
-            const files = fs.readdirSync("dist").filter(name => name.toLowerCase().endsWith(".exe") || name === "alpha.yml").sort();
+            const files = fs.readdirSync("dist").filter(name => name.toLowerCase().endsWith(".exe") || /^(alpha|beta|latest)\.yml$/.test(name)).sort();
             const installer = files.some(name => /setup/i.test(name));
             const portable = files.some(name => /portable/i.test(name));
-            if (!installer || !portable || !files.includes("alpha.yml")) throw new Error("Setup, Portable and alpha.yml are required.");
-            if (!fs.readFileSync("dist/alpha.yml", "utf8").startsWith("version: " + version + "\n")) throw new Error("alpha.yml version mismatch.");
+            const channel = version.includes("-alpha.") ? "alpha" : (version.includes("-beta.") || version.includes("-rc.")) ? "beta" : "latest";
+            const manifests = channel === "latest" ? ["latest.yml", "beta.yml", "alpha.yml"] : channel === "beta" ? ["beta.yml", "alpha.yml"] : ["alpha.yml"];
+            if (!installer || !portable || manifests.some(file => !files.includes(file))) {
+              throw new Error("Setup, Portable and all subscribed-channel manifests are required.");
+            }
+            for (const manifest of manifests) {
+              if (!fs.readFileSync(path.join("dist", manifest), "utf8").startsWith("version: " + version + "\n")) {
+                throw new Error(manifest + " version mismatch.");
+              }
+            }
 
             let release;
             try {

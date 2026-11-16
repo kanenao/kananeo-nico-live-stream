@@ -34,6 +34,14 @@ test("Windows Setup uses the alpha GitHub channel, full download and safe instal
  assert.equal(s.getStatus().phase,"installing");
  assert.ok(messages.some(x=>x.phase==="downloaded"));
 });
+test("beta and stable Setup builds choose the correct update channel",()=>{
+ for(const [version,channel,prerelease] of [["1.0.0-beta.3","beta",true],["1.0.0","latest",false]]){
+  const m=updaterMock();
+  const s=createAutoUpdateService({app:{isPackaged:true,getVersion:()=>version},updater:m.up,platform:"win32",schedule:()=>{},repeat:()=>{}});
+  s.start();assert.equal(m.up.channel,channel);assert.equal(m.up.allowPrerelease,prerelease);
+  assert.equal(m.up.allowDowngrade,false);assert.equal(s.getStatus().channel,channel);
+ }
+});
 test("Portable, other OS and dev apps do not attempt updater or installation",async()=>{
  for(const options of [{platform:"win32",portable:true,packaged:true},{platform:"linux",portable:false,packaged:true},{platform:"win32",portable:false,packaged:false}]){
   const m=updaterMock();

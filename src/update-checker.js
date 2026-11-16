@@ -1,5 +1,7 @@
 "use strict";
 
+const {getReleaseChannel,isAllowedReleaseTrack}=require("./update-channel");
+
 const RELEASE_PAGE_BASE = "https://github.com/kanenao/kananeo-nico-live-stream/releases/tag/";
 
 function parseVersion(input) {
@@ -51,7 +53,7 @@ function compareVersions(leftInput, rightInput) {
 function normalizeRelease(input) {
   if (!input || typeof input !== "object" || Array.isArray(input) || input.draft === true) return null;
   const tagName = String(input.tag_name ?? "").trim().slice(0,100);
-  if (!parseVersion(tagName)) return null;
+  if (!parseVersion(tagName)||!getReleaseChannel(tagName)) return null;
   const version = tagName.replace(/^v/i,"");
   const publishedAt = typeof input.published_at === "string" && Number.isFinite(Date.parse(input.published_at))
     ? new Date(input.published_at).toISOString() : "";
@@ -63,7 +65,11 @@ function normalizeRelease(input) {
     body:String(input.body || "").slice(0,10000),
     publishedAt,
     prerelease:input.prerelease === true,
+    channel:getReleaseChannel(version),
     assetsCount:assets.length,
+    setupAvailable:assets.some(asset=>/\-Setup-x64\.exe$/i.test(String(asset?.name||""))),
+    portableAvailable:assets.some(asset=>/\-Portable-x64\.exe$/i.test(String(asset?.name||""))),
+    updateManifests:assets.map(asset=>String(asset?.name||"")).filter(name=>["alpha.yml","beta.yml","latest.yml"].includes(name)),
     releaseUrl:RELEASE_PAGE_BASE+encodeURIComponent(tagName)
   };
 }
@@ -76,7 +82,8 @@ function buildUpdateCheckResult(currentVersion, releasesInput) {
   if (!Array.isArray(releasesInput)) {
     return {ok:false,code:"INVALID_RELEASES",message:"GitHubから取得したリリース情報の形式が正しくありません。"};
   }
-  const releases = releasesInput.map(normalizeRelease).filter(Boolean);
+  const currentChannel=getReleaseChannel(current);
+  const releases = releasesInput.map(normalizeRelease).filter(release=>release&&isAllowedReleaseTrack(current,release.version));
   if (!releases.length) {
     return {
       ok:true,currentVersion:current,latestVersion:null,updateAvailable:false,
@@ -86,13 +93,17 @@ function buildUpdateCheckResult(currentVersion, releasesInput) {
   releases.sort((a,b)=>compareVersions(a.version,b.version));
   const release = releases[releases.length-1];
   const comparison = compareVersions(release.version,current);
+  const automaticUpdateAvailable=comparison>0&&release.setupAvailable&&release.updateManifests.includes(currentChannel+".yml");
   return {
     ok:true,
     currentVersion:current,
     latestVersion:release.version,
     updateAvailable:comparison > 0,
+    automaticUpdateAvailable,
+    channel:currentChannel,
     release,
-    message:comparison > 0 ? "新しいバージョンが公開されています。"
+    message:comparison > 0 && !automaticUpdateAvailable ? "新しいバージョンが公開されていますが、自動更新用ファイルが不足しています。Setup版を確認してください。"
+      : comparison > 0 ? "新しいバージョンが公開されています。"
       : comparison === 0 ? "このアプリは公開されている最新版です。"
       : "公開リリースより新しいバージョンを利用しています。"
   };
