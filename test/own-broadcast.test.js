@@ -16,3 +16,8 @@ test("captures only official navigation to an lv page",()=>{
  assert.equal(programFromCreateUrl("https://live.nicovideo.jp/watch/lv123456"),"lv123456");
  assert.equal(programFromCreateUrl("https://invalid.example/watch/lv123456"),"");
 });
+
+test("authenticated own-history request includes non-public broadcasts",()=>{
+ const url=new URL(broadcastHistoryUrl("4321"));
+ assert.equal(url.searchParams.get("isIncludeNonPublic"),"true");
+});
