@@ -81,6 +81,7 @@ const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,sto
 let remoteAuditEntries=[],remoteAuditFilters={query:"",type:"all",from:"",to:""},remoteAuditNotificationEnabled=true;
 let state=load(),page="dashboard";
 let streamMonitorRuntime={busy:false,nextCheckAt:0,lastCheckAt:"",message:"監視は停止中です。",checked:0,generation:0};
+let registeredMonitorStatus={enabled:false,message:"登録ユーザーの監視は停止中です。",lastCheckAt:""};
 let autoNextRuntime={enabled:false,busy:false,armedProgramId:"",phase:"disabled",message:"自動次枠監視は停止中です。"};
 function load(){
 try{
@@ -116,28 +117,30 @@ function renderStreamMonitorUi(){
  const host=document.getElementById("stream-monitor-status");if(!host)return;
  const config=state.streamMonitor,rows=config.targets||[];
  const active=rows.filter(x=>x.status==="onAir").length;
- host.innerHTML='<div class="grid2"><div class="row"><b>監視状態</b><strong>'+(config.enabled?"稼働中":"停止中")+'</strong></div><div class="row"><b>登録放送</b><strong>'+rows.length+'件</strong></div><div class="row"><b>放送中</b><strong>'+active+'件</strong></div><div class="row"><b>最終確認</b><strong>'+(streamMonitorRuntime.lastCheckAt?esc(new Date(streamMonitorRuntime.lastCheckAt).toLocaleTimeString("ja-JP")):"未確認")+'</strong></div></div><div class="muted">'+esc(streamMonitorRuntime.message)+'</div><div class="stream-monitor-list">'+(rows.map(x=>'<div class="row"><div><b>'+esc(x.programId)+'</b><small>'+esc(x.title||"番組名未取得")+' / '+esc(window.KananeoStreamMonitor.statusLabel(x.status))+(x.lastError?" / "+esc(x.lastError):"")+'</small></div><span>'+esc(x.lastCheckedAt?new Date(x.lastCheckedAt).toLocaleTimeString("ja-JP"):"—")+'</span></div>').join("")||'<div class="empty">監視する放送IDを登録してください。</div>')+'</div><h3>監視履歴（最新20件）</h3><div class="stream-monitor-list">'+(state.streamMonitor.history.slice(0,20).map(item=>'<div class="row"><div><b>'+esc(item.programId||"監視システム")+'</b><small>'+esc(item.message)+'</small></div><span>'+esc(new Date(item.at).toLocaleString("ja-JP"))+'</span></div>').join("")||'<div class="empty">履歴はまだありません。</div>')+'</div>';
+ host.innerHTML='<div class="grid2"><div class="row"><b>監視状態</b><strong>'+(config.enabled?"稼働中":"停止中")+'</strong></div><div class="row"><b>登録放送</b><strong>'+rows.length+'件</strong></div><div class="row"><b>放送中</b><strong>'+active+'件</strong></div><div class="row"><b>最終確認</b><strong>'+(streamMonitorRuntime.lastCheckAt?esc(new Date(streamMonitorRuntime.lastCheckAt).toLocaleTimeString("ja-JP")):"未確認")+'</strong></div><div class="row"><b>登録ユーザー</b><strong>'+((config.userIds||[]).length)+'人</strong></div></div><div class="muted">'+esc(streamMonitorRuntime.message)+'</div><div class="muted">ユーザー監視：'+esc(registeredMonitorStatus.message||"未確認")+'</div><div class="stream-monitor-list">'+(rows.map(x=>'<div class="row"><div><b>'+esc(x.programId)+'</b><small>'+esc(x.title||"番組名未取得")+' / '+esc(window.KananeoStreamMonitor.statusLabel(x.status))+(x.lastError?" / "+esc(x.lastError):"")+'</small></div><span>'+esc(x.lastCheckedAt?new Date(x.lastCheckedAt).toLocaleTimeString("ja-JP"):"—")+'</span></div>').join("")||'<div class="empty">監視する放送IDを登録してください。</div>')+'</div><h3>監視履歴（最新20件）</h3><div class="stream-monitor-list">'+(state.streamMonitor.history.slice(0,20).map(item=>'<div class="row"><div><b>'+esc(item.programId||"監視システム")+'</b><small>'+esc(item.message)+'</small></div><span>'+esc(new Date(item.at).toLocaleString("ja-JP"))+'</span></div>').join("")||'<div class="empty">履歴はまだありません。</div>')+'</div>';
  const start=document.querySelector("[data-stream-monitor-start]"),stop=document.querySelector("[data-stream-monitor-stop]"),check=document.querySelector("[data-stream-monitor-check]");
- if(start)start.disabled=config.enabled||(!rows.length&&!config.ownAccount);if(stop)stop.disabled=!config.enabled;if(check)check.disabled=streamMonitorRuntime.busy||(!rows.length&&!config.ownAccount);
+ if(start)start.disabled=config.enabled||(!rows.length&&!config.ownAccount&&!(config.userIds||[]).length);if(stop)stop.disabled=!config.enabled;if(check)check.disabled=streamMonitorRuntime.busy||(!rows.length&&!config.ownAccount&&!(config.userIds||[]).length);
 }
 function saveStreamMonitorSettings(){
  const textarea=document.getElementById("stream-monitor-targets");
  const ids=parseStreamMonitorTargets(textarea?.value||"");
+ const userIds=window.KananeoStreamMonitor.normalizeMonitorUserIds(document.getElementById("stream-monitor-users")?.value||"");
  const ownAccount=document.getElementById("stream-monitor-own-account")?.checked===true;
- if(!ids.length&&!ownAccount){toast("ログインアカウントの自動監視を選択するか放送IDを入力してください。");return;}
+ if(!ids.length&&!ownAccount&&!userIds.length){toast("監視するユーザーID・放送ID、または自分の放送を登録してください。");return;}
  const previous=new Map((state.streamMonitor.targets||[]).map(x=>[x.programId,x]));
- state.streamMonitor={...state.streamMonitor,targets:ids.map(programId=>previous.get(programId)||{programId,status:"unknown",title:"",lastCheckedAt:"",lastError:""})};
+ state.streamMonitor={...state.streamMonitor,userIds,targets:ids.map(programId=>previous.get(programId)||{programId,status:"unknown",title:"",lastCheckedAt:"",lastError:""})};
  const interval=Number(document.getElementById("stream-monitor-interval")?.value||60);
  state.streamMonitor.intervalSeconds=Math.max(30,Math.min(300,Number.isFinite(interval)?interval:60));
  state.streamMonitor.autoComments=document.getElementById("stream-monitor-auto-comments")?.checked===true;
+ state.streamMonitor.autoVideo=document.getElementById("stream-monitor-auto-video")?.checked===true;
  state.streamMonitor.ownAccount=ownAccount;
- save();streamMonitorRuntime.generation++;streamMonitorRuntime.nextCheckAt=0;streamMonitorRuntime.message="監視設定を更新しました。次の確認に反映します。";renderStreamMonitorUi();toast(ids.length+"件の監視対象を保存しました。");
+ save();streamMonitorRuntime.generation++;streamMonitorRuntime.nextCheckAt=0;streamMonitorRuntime.message="監視設定を更新しました。次の確認に反映します。";void syncRegisteredUserMonitor();renderStreamMonitorUi();toast(ids.length+"番組・"+userIds.length+"ユーザーの監視設定を保存しました。");
 }
 async function runStreamMonitorCheck(force=false){
  const config=state.streamMonitor;
  if(!config.enabled&&!force)return;
  if(streamMonitorRuntime.busy)return;
- if(!config.targets?.length&&!config.ownAccount){streamMonitorRuntime.message="監視対象が登録されていません。";renderStreamMonitorUi();return;}
+ if(!config.targets?.length&&!config.ownAccount){streamMonitorRuntime.message=(config.userIds||[]).length?"登録ユーザーの監視はアプリ本体で実行中です。":"監視対象が登録されていません。";streamMonitorRuntime.nextCheckAt=Date.now()+(config.intervalSeconds||60)*1000;renderStreamMonitorUi();return;}
  if(!force&&Date.now()<streamMonitorRuntime.nextCheckAt)return;
  streamMonitorRuntime.busy=true;
  const generation=++streamMonitorRuntime.generation;
@@ -269,12 +272,52 @@ async function checkAutoNextFrame(){
  try{const result=await api();if(result?.phase)applyAutoNextStatus(result);}
  catch(error){toast(error?.message||"次枠の終了状態を確認できませんでした。");}
 }
+function applyRegisteredMonitorStatus(status){
+ if(!status||typeof status!=="object")return;
+ registeredMonitorStatus=status;
+ if(page==="broadcast")renderStreamMonitorUi();
+}
+async function syncRegisteredUserMonitor(){
+ if(!window.kananeoApp?.niconico?.configureRegisteredUserMonitor)return;
+ try{
+  const config=state.streamMonitor;
+  const result=await window.kananeoApp.niconico.configureRegisteredUserMonitor({
+   enabled:config.enabled,userIds:config.userIds||[],intervalSeconds:config.intervalSeconds
+  });
+  if(result?.status)applyRegisteredMonitorStatus(result.status);
+ }catch(error){registeredMonitorStatus.message="登録ユーザーの監視設定に失敗："+String(error?.message||"通信エラー");}
+}
+async function onRegisteredUserLive(info){
+ if(!state.streamMonitor.enabled||!info||!state.streamMonitor.userIds?.includes(String(info.userId||"")))return;
+ const id=String(info.programId||"").toLowerCase();
+ if(!/^lv\d{1,20}$/.test(id))return;
+ if(!state.streamMonitor.targets.some(x=>x.programId===id)){
+  if(state.streamMonitor.targets.length>=50){addStreamMonitorHistory("error",id,"監視対象が50件に達したため番組を追加できませんでした。");return;}
+  state.streamMonitor.targets.unshift({programId:id,title:info.title||id,status:"onAir",lastCheckedAt:new Date().toISOString(),lastError:""});
+ }
+ addStreamMonitorHistory("live",id,"登録ユーザー "+info.userId+" の放送開始を検知しました。");
+ save();toast("登録配信者の放送を検知："+id);
+ if(state.streamMonitor.autoVideo&&!liveVideoState.open){
+  page="broadcast";render();
+  const result=await window.kananeoApp.niconico.openLiveVideo(id);
+  if(result?.ok){
+   liveVideoState={open:true,status:"loading",programId:id,message:"登録ユーザーの放送映像を表示しています。"};
+   state.lastProgramId=id;state.lastProgramTitle=info.title||id;save();render();
+  }
+ }
+ if(state.streamMonitor.autoComments){
+  const active=["connecting","connected","recovering"].includes(commentConnection.state);
+  if(!active)void startComments(id);
+  else if(commentConnection.programId.toLowerCase()!==id)addStreamMonitorHistory("info",id,"別番組のコメント受信中につき自動切替を保留しました。");
+ }
+ if(page==="broadcast")renderStreamMonitorUi();
+}
 function startStreamMonitor(){
- if(!state.streamMonitor.targets?.length&&!state.streamMonitor.ownAccount){toast("先に監視対象を保存してください。");return;}
- state.streamMonitor.enabled=true;addStreamMonitorHistory("started","","放送監視を開始しました。");save();streamMonitorRuntime.nextCheckAt=0;streamMonitorRuntime.message="監視を開始しました。";renderStreamMonitorUi();void runStreamMonitorCheck(true);toast("放送監視を開始しました。アプリ起動中に定期確認します。");
+ if(!state.streamMonitor.targets?.length&&!state.streamMonitor.ownAccount&&!state.streamMonitor.userIds?.length){toast("先に監視するユーザーまたは番組を保存してください。");return;}
+ state.streamMonitor.enabled=true;addStreamMonitorHistory("started","","放送監視を開始しました。");save();void syncRegisteredUserMonitor();streamMonitorRuntime.nextCheckAt=0;streamMonitorRuntime.message="監視を開始しました。";renderStreamMonitorUi();void runStreamMonitorCheck(true);toast("放送監視を開始しました。アプリ起動中に定期確認します。");
 }
 function stopStreamMonitor(){
- state.streamMonitor.enabled=false;streamMonitorRuntime.generation++;addStreamMonitorHistory("stopped","","放送監視を停止しました。");save();streamMonitorRuntime.nextCheckAt=0;streamMonitorRuntime.message="監視を停止しました。";renderStreamMonitorUi();toast("放送監視を停止しました。");
+ state.streamMonitor.enabled=false;streamMonitorRuntime.generation++;addStreamMonitorHistory("stopped","","放送監視を停止しました。");save();void syncRegisteredUserMonitor();streamMonitorRuntime.nextCheckAt=0;streamMonitorRuntime.message="監視を停止しました。";renderStreamMonitorUi();toast("放送監視を停止しました。");
 }
 function renderExtensionOptions(){
 const node=document.getElementById("extension-options");
@@ -558,7 +601,7 @@ panel("番組枠の作成・終了","作成後の自動番組開始と、開始�
 '<div id="broadcast-comments-list" class="ncv-comment-list"><div class="empty">コメント受信を開始すると、ここに一覧表示します。</div></div><div id="broadcast-comment-context" class="ncv-context-menu" hidden></div>'+
 '<details class="ncv-display-settings"><summary>コメント表示をカスタマイズ（文字サイズ・列・並び順・色）</summary><div id="broadcast-comment-settings-controls"></div></details><div class="muted">コメント番号をクリックすると既読位置を記録、ダブルクリックで解除できます。投稿者名をクリックすると、そのユーザーのコメントだけを表示します。</div></section>'+
 '</div>'+
-panel("24時間放送監視","登録した番組ページをアプリ起動中に定期確認します。放送開始時は通知し、任意でコメント取得を自動開始します。",'<label class="switchrow"><span><b>ログイン中の自分の放送を自動監視</b><small>アカウントの公開放送履歴から新しい番組を見つけます（アプリ起動中）。</small></span><input type="checkbox" id="stream-monitor-own-account" '+(state.streamMonitor.ownAccount?"checked":"")+'></label><div class="field"><label>追加で監視する放送ID・公式番組URL（1行に1件、最大50件）</label><textarea class="input" id="stream-monitor-targets" rows="4" placeholder="lv123456789\nlv987654321">'+esc((state.streamMonitor.targets||[]).map(x=>x.programId).join("\n"))+'</textarea></div><div class="grid2"><div class="field"><label>確認間隔</label><select class="input" id="stream-monitor-interval"><option value="30" '+(state.streamMonitor.intervalSeconds===30?"selected":"")+'>30秒</option><option value="60" '+(state.streamMonitor.intervalSeconds===60?"selected":"")+'>1分</option><option value="120" '+(state.streamMonitor.intervalSeconds===120?"selected":"")+'>2分</option><option value="300" '+(state.streamMonitor.intervalSeconds===300?"selected":"")+'>5分</option></select></div><label class="switchrow"><span><b>放送開始時にコメント取得</b><small>受信コメントをPC内へ保存します。別番組を受信中は切り替えません。</small></span><input type="checkbox" id="stream-monitor-auto-comments" '+(state.streamMonitor.autoComments?"checked":"")+'></label></div><div class="actions"><button class="btn" type="button" data-stream-monitor-own-fetch>自分の番組を取得</button><button class="btn" type="button" data-stream-monitor-save>監視対象を保存</button><button class="btn primary" type="button" data-stream-monitor-start '+(state.streamMonitor.enabled?"disabled":"")+'>監視開始</button><button class="btn danger" type="button" data-stream-monitor-stop '+(!state.streamMonitor.enabled?"disabled":"")+'>監視停止</button><button class="btn" type="button" data-stream-monitor-check>今すぐ確認</button></div><div id="stream-monitor-status" class="section"></div><div class="muted">アカウント放送履歴は非公開APIに依存します。監視停止・対象変更時は処理中の古い確認結果を破棄します。監視はアプリが起動している間に動作します。PCのスリープ中・アプリ終了中は確認できません。現段階の自動開始対象はコメント取得です。映像ファイルの自動録画は別途実装が必要です。</div>')+
+panel("24時間放送監視","登録した番組ページをアプリ起動中に定期確認します。放送開始時は通知し、任意でコメント取得を自動開始します。",'<label class="switchrow"><span><b>ログイン中の自分の放送を自動監視</b><small>アカウントの公開放送履歴から新しい番組を見つけます（アプリ起動中）。</small></span><input type="checkbox" id="stream-monitor-own-account" '+(state.streamMonitor.ownAccount?"checked":"")+'></label><div class="field"><label>登録する配信者のユーザーID・プロフィールURL（1行に1件、最大30人）</label><textarea class="input" id="stream-monitor-users" rows="3" placeholder="12345678\nhttps://www.nicovideo.jp/user/12345678">'+esc((state.streamMonitor.userIds||[]).join("\n"))+'</textarea></div><div class="field"><label>追加で監視する放送ID・公式番組URL（1行に1件、最大50件）</label><textarea class="input" id="stream-monitor-targets" rows="4" placeholder="lv123456789\nlv987654321">'+esc((state.streamMonitor.targets||[]).map(x=>x.programId).join("\n"))+'</textarea></div><div class="grid2"><div class="field"><label>確認間隔</label><select class="input" id="stream-monitor-interval"><option value="30" '+(state.streamMonitor.intervalSeconds===30?"selected":"")+'>30秒</option><option value="60" '+(state.streamMonitor.intervalSeconds===60?"selected":"")+'>1分</option><option value="120" '+(state.streamMonitor.intervalSeconds===120?"selected":"")+'>2分</option><option value="300" '+(state.streamMonitor.intervalSeconds===300?"selected":"")+'>5分</option></select></div><label class="switchrow"><span><b>放送開始時にコメント取得</b><small>受信コメントをPC内へ保存します。別番組を受信中は切り替えません。</small></span><input type="checkbox" id="stream-monitor-auto-comments" '+(state.streamMonitor.autoComments?"checked":"")+'></label></div><label class="switchrow"><span><b>新規放送を検知したら放送画面も自動表示</b><small>既に別の放送画面を表示している場合は自動切替しません。初期OFF。</small></span><input type="checkbox" id="stream-monitor-auto-video" '+(state.streamMonitor.autoVideo?"checked":"")+'></label><div class="actions"><button class="btn" type="button" data-stream-monitor-own-fetch>自分の番組を取得</button><button class="btn" type="button" data-stream-monitor-save>監視対象を保存</button><button class="btn primary" type="button" data-stream-monitor-start '+(state.streamMonitor.enabled?"disabled":"")+'>監視開始</button><button class="btn danger" type="button" data-stream-monitor-stop '+(!state.streamMonitor.enabled?"disabled":"")+'>監視停止</button><button class="btn" type="button" data-stream-monitor-check>今すぐ確認</button></div><div id="stream-monitor-status" class="section"></div><div class="muted">アカウント放送履歴は非公開APIに依存します。監視停止・対象変更時は処理中の古い確認結果を破棄します。監視はアプリが起動している間に動作します。PCのスリープ中・アプリ終了中は確認できません。登録ユーザーの監視はElectron本体で動作します。自動連携は放送IDの追加、任意のコメント受信・映像表示です。映像ファイルの自動録画は未実装です。</div>')+
 '<div class="banner"><i class="led"></i><div><b>表示について</b><small>放送映像はニコニコ公式視聴ページを専用セッションで表示します。コメント一覧はこのアプリが受信したNDGRコメントを表示します。配信ページの仕様や視聴権限により映像が表示できない場合があります。</small></div></div>';
 }else if(page==="voice"){
 const speechAvailable=!!(window.speechSynthesis&&typeof window.SpeechSynthesisUtterance==="function");
@@ -2178,7 +2221,7 @@ if(b.hasAttribute("data-broadcast-own-fetch")||b.hasAttribute("data-stream-monit
  if(b.hasAttribute("data-stream-monitor-save")){saveStreamMonitorSettings();return;}
 if(b.hasAttribute("data-stream-monitor-start")){startStreamMonitor();return;}
 if(b.hasAttribute("data-stream-monitor-stop")){stopStreamMonitor();return;}
-if(b.hasAttribute("data-stream-monitor-check")){void runStreamMonitorCheck(true);return;}
+if(b.hasAttribute("data-stream-monitor-check")){void runStreamMonitorCheck(true);void window.kananeoApp.niconico.checkRegisteredUserMonitor?.();return;}
 if(b.hasAttribute("data-broadcast-comment-start")){
  const id=document.getElementById("broadcast-watch-id")?.value.trim()||state.lastProgramId||"";
  if(!id){toast("コメント受信する放送IDを入力してください。");return;}
@@ -2545,6 +2588,9 @@ if(window.kananeoApp?.niconico){window.kananeoApp.niconico.getSessionStatus().th
     window.kananeoApp.niconico.onLiveVideoState(applyLiveVideoState);
     window.kananeoApp.niconico.onCreatedBroadcast?.(value=>{if(value?.programId){void adoptCreatedBroadcast(value.programId).then(()=>maybeStartNewProgram(value.programId));toast("作成した番組IDを検知："+value.programId);}});
     window.kananeoApp.niconico.onAutoNextStatus?.(applyAutoNextStatus);
+    window.kananeoApp.niconico.onRegisteredUserLive?.(info=>{void onRegisteredUserLive(info);});
+    window.kananeoApp.niconico.onRegisteredUserMonitorStatus?.(applyRegisteredMonitorStatus);
+    void syncRegisteredUserMonitor();
     void syncAutoNextSettings();
     void refreshVideoLibrary(true);
     window.kananeoApp.niconico.onComment(receiveComment);

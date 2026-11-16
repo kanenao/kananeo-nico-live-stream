@@ -4,7 +4,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
-  version:"0.2.0-alpha.62",
+  version:"0.2.0-alpha.63",
   platform:process.platform,
   stage:"https-lan-remote-control",
   remote:Object.freeze({
@@ -68,6 +68,21 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
     configureAutoNext:settings=>ipcRenderer.invoke("niconico:auto-next-configure",settings),
     checkAutoNext:()=>ipcRenderer.invoke("niconico:auto-next-check"),
     getAutoNextStatus:()=>ipcRenderer.invoke("niconico:auto-next-status"),
+    configureRegisteredUserMonitor:config=>ipcRenderer.invoke("niconico:registered-user-monitor-configure",config),
+    checkRegisteredUserMonitor:()=>ipcRenderer.invoke("niconico:registered-user-monitor-check"),
+    getRegisteredUserMonitorStatus:()=>ipcRenderer.invoke("niconico:registered-user-monitor-status"),
+    onRegisteredUserLive:callback=>{
+      if(typeof callback!=="function")return ()=>{};
+      const listener=(_event,info)=>callback(info);
+      ipcRenderer.on("niconico:registered-user-live",listener);
+      return ()=>ipcRenderer.removeListener("niconico:registered-user-live",listener);
+    },
+    onRegisteredUserMonitorStatus:callback=>{
+      if(typeof callback!=="function")return ()=>{};
+      const listener=(_event,status)=>callback(status);
+      ipcRenderer.on("niconico:registered-user-monitor-status",listener);
+      return ()=>ipcRenderer.removeListener("niconico:registered-user-monitor-status",listener);
+    },
     onAutoNextStatus:callback=>{
       if(typeof callback!=="function")return ()=>{};
       const listener=(_event,status)=>callback(status);

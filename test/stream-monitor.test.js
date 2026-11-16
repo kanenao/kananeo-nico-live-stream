@@ -1,7 +1,7 @@
 "use strict";
 const test=require("node:test");
 const assert=require("node:assert/strict");
-const {normalizeStreamMonitorSettings,applyProgramCheck,isStreamMonitorGenerationCurrent,checkStreamMonitorTargets,statusLabel}=require("../src/stream-monitor");
+const {normalizeStreamMonitorSettings,normalizeMonitorUserIds,applyProgramCheck,isStreamMonitorGenerationCurrent,checkStreamMonitorTargets,statusLabel}=require("../src/stream-monitor");
 test("normalizes and deduplicates at most 50 registered broadcast IDs",()=>{
  const targets=Array.from({length:55},(_,i)=>({programId:"lv"+(1000+i)}));
  const result=normalizeStreamMonitorSettings({enabled:true,intervalSeconds:45,autoComments:true,targets:[...targets,{programId:"LV1000"},{programId:"https://example.com"}]});
@@ -77,4 +77,9 @@ test("converts individual request failures into visible errors and continues",as
  assert.equal(results[0].message,"network offline");
  assert.equal(results[0].ok,false);
  assert.equal(results[1].ok,true);
+});
+
+test("registered streamer user IDs stay normalized and distinct",()=>{
+ const result=normalizeMonitorUserIds("123\nuser/456\nhttps://www.nicovideo.jp/user/789\nhttps://example.com/user/9\n123");
+ assert.deepEqual(result,["123","456","789"]);
 });

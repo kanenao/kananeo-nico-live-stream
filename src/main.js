@@ -45,6 +45,7 @@ const { buildBroadcasterCommentRequest, parseBroadcasterCommentResponse } = requ
 const { buildUpdateCheckResult } = require("./update-checker");
 const {loggedInId,broadcastHistoryUrl,parseHistory,programFromCreateUrl}=require("./own-broadcast");
 const {createNextFrameMonitor}=require("./next-frame-monitor");
+const {buildRegisteredUserHistoryUrl,createRegisteredUserMonitor}=require("./registered-user-monitor");
 const {validateProgramControl,canMutateProgram,buildProgramMutationRequest,summarizeProgramMutation}=require("./program-control");
 const {buildPreviousProgramRequest,parsePreviousProgram,
   buildCreateProgramRequest,parseCreateProgramResponse}=require("./inherited-program");
@@ -67,6 +68,7 @@ let loginWindow = null;
 let broadcastWindow = null;
 let recentlyCreatedId="";
 let nextFrameMonitor=null;
+let registeredUserMonitor=null;
 let liveVideoView = null;
 let liveVideoProgramId = "";
 let niconicoSession = null;
@@ -185,6 +187,34 @@ async function getOwnBroadcast(){
  catch{return {ok:false,message:"自分の放送履歴にアクセスできませんでした。"};}
  if(!res.ok)return {ok:false,message:"放送履歴の取得が拒否されました（HTTP "+res.status+"）。"};
  return {...parseHistory(await res.text()),userId:id};
+}
+async function getRegisteredUserBroadcast(userId){
+ const url=buildRegisteredUserHistoryUrl(userId);
+ if(!url)return {ok:false,code:"INVALID_USER_ID",message:"ユーザーIDの形式が不正です。"};
+ let response;
+ try{response=await niconicoSession.fetch(url,{method:"GET",credentials:"include",redirect:"error",
+  headers:{Accept:"application/json"},signal:AbortSignal.timeout(12000)});}
+ catch{return {ok:false,code:"NETWORK_ERROR",message:"ユーザーの番組情報を取得できませんでした。"};}
+ if(!response.ok)return {ok:false,code:"HISTORY_HTTP_ERROR",message:"ユーザーの番組履歴が取得できません（HTTP "+response.status+"）。"};
+ let text;
+ try{text=await response.text();}catch{return {ok:false,code:"READ_ERROR",message:"番組情報を読み取れませんでした。"};}
+ return parseHistory(text);
+}
+function getRegisteredUserMonitor(){
+ if(!registeredUserMonitor){
+  registeredUserMonitor=createRegisteredUserMonitor({
+   getUserBroadcast:getRegisteredUserBroadcast,
+   onLive:info=>{
+    if(mainWindow&&!mainWindow.isDestroyed()&&!mainWindow.webContents.isDestroyed())
+     mainWindow.webContents.send("niconico:registered-user-live",info);
+   },
+   onStatus:status=>{
+    if(mainWindow&&!mainWindow.isDestroyed()&&!mainWindow.webContents.isDestroyed())
+     mainWindow.webContents.send("niconico:registered-user-monitor-status",status);
+   }
+  });
+ }
+ return registeredUserMonitor;
 }
 async function createInheritedNextFrame(previousProgramId,expectedUserId){
  // Credentials never cross IPC into the renderer or persistent logs.
@@ -2266,6 +2296,18 @@ function registerIpcHandlers() {
     if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
     return {ok:true,status:getNextFrameMonitor().status()};
   });
+  ipcMain.handle("niconico:registered-user-monitor-configure",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    return getRegisteredUserMonitor().configure(input);
+  });
+  ipcMain.handle("niconico:registered-user-monitor-check",event=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    return getRegisteredUserMonitor().poll(true);
+  });
+  ipcMain.handle("niconico:registered-user-monitor-status",event=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    return {ok:true,status:getRegisteredUserMonitor().status()};
+  });
   ipcMain.handle("niconico:own-broadcast",event=>{
     if(event.sender!==mainWindow?.webContents)return {ok:false,message:"この操作は許可されていません。"};
     return getOwnBroadcast();
@@ -2484,7 +2526,7 @@ app.on("before-quit",event=>{
   closeNiconicoLiveVideoView();
   finalQuitInProgress=true;
   void settleBeforeQuit([
-    ()=>{nextFrameMonitor?.dispose();},
+    ()=>{nextFrameMonitor?.dispose();registeredUserMonitor?.dispose();},
     ()=>stopCommentStream("アプリを終了しました。"),
     ()=>stopRemoteControlServer()
   ],7000).then(result=>{
