@@ -22,7 +22,7 @@ test("history IPC is guarded and uses public GitHub release API",()=>{
  assert.match(main,/normalizeHistoryPage/);
  assert.match(main,/ipcMain\.handle\("app:open-release"/);
  assert.match(main,/releaseHistoryUrl\(tag\)/);
- assert.match(preload,/history:page=>ipcRenderer\.invoke\("app:release-history"/);
+ assert.match(preload,/history:\(page,refresh=false\)=>ipcRenderer\.invoke\("app:release-history"/);
  assert.match(preload,/openRelease:tag=>ipcRenderer\.invoke\("app:open-release"/);
 });
 test("version history release version increments and remains alpha",()=>{
