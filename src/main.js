@@ -44,6 +44,7 @@ const {
 const { selectNextPlaybackCandidate } = require("./playback-scheduler");
 const { buildBroadcasterCommentRequest, parseBroadcasterCommentResponse } = require("./broadcaster-comment-api");
 const { buildUpdateCheckResult } = require("./update-checker");
+const {PAGE_SIZE,normalizeHistoryPage,releaseHistoryUrl}=require("./release-history");
 const {loggedInId,broadcastHistoryUrl,parseHistory,programFromCreateUrl}=require("./own-broadcast");
 const {createNextFrameMonitor}=require("./next-frame-monitor");
 const {createOwnBroadcastMonitor}=require("./own-broadcast-monitor");
@@ -1808,6 +1809,31 @@ async function fetchNiconicoLibraryVideos(input = {}) {
 
 const UPDATE_RELEASES_API_URL = "https://api.github.com/repos/kanenao/kananeo-nico-live-stream/releases?per_page=100";
 const UPDATE_RELEASES_PAGE_URL = "https://github.com/kanenao/kananeo-nico-live-stream/releases";
+const RELEASE_HISTORY_API_BASE = "https://api.github.com/repos/kanenao/kananeo-nico-live-stream/releases";
+const releaseHistoryCache=new Map();
+async function getReleaseHistory(page=1,force=false){
+ const number=Number(page);
+ if(!Number.isInteger(number)||number<1||number>20)return {ok:false,code:"INVALID_PAGE",message:"履歴のページ番号は1〜20で指定してください。"};
+ const cached=releaseHistoryCache.get(number);
+ if(cached&&!force&&Date.now()-cached.time<5*60*1000)return cached.data;
+ try{
+  const response=await fetch(RELEASE_HISTORY_API_BASE+"?per_page="+PAGE_SIZE+"&page="+number,{
+   method:"GET",redirect:"error",
+   headers:{Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","User-Agent":"kananeo-nico-live-stream"},
+   signal:AbortSignal.timeout(12000)
+  });
+  if(!response.ok)return {ok:false,code:response.status===403||response.status===429?"ACCESS_LIMIT":"HTTP_ERROR",
+   message:"更新履歴をGitHubから取得できませんでした（HTTP "+response.status+"）。時間を置いて再確認してください。"};
+  const body=await response.text();
+  if(body.length>2*1024*1024)return {ok:false,code:"RESPONSE_TOO_LARGE",message:"更新履歴データが大きすぎるため読み込みを中止しました。"};
+  let json;try{json=JSON.parse(body);}catch{return {ok:false,code:"INVALID_JSON",message:"更新履歴の解析に失敗しました。"};}
+  const result=normalizeHistoryPage(json,number);
+  if(result.ok){result.fetchedAt=new Date().toISOString();releaseHistoryCache.set(number,{time:Date.now(),data:result});}
+  return result;
+ }catch(error){
+  return {ok:false,code:"NETWORK_ERROR",message:"GitHubの更新履歴に接続できません。ネットワークをご確認ください。"};
+ }
+}
 
 async function checkApplicationUpdates() {
   const currentVersion=app.getVersion();
@@ -2498,6 +2524,17 @@ function registerIpcHandlers() {
      if(autoUpdateService?.getStatus().phase!=="downloaded")return {ok:false,code:"UPDATE_NOT_READY",message:"更新ファイルのダウンロードが完了していません。"};
      setImmediate(()=>app.quit());
      return {ok:true,message:"コメントとリモート操作を終了後、更新を適用します。"};
+   });
+   ipcMain.handle("app:release-history",async(event,page,force)=>{
+     if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+     return getReleaseHistory(page,force===true);
+   });
+   ipcMain.handle("app:open-release",async(event,tag)=>{
+     if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+     const url=releaseHistoryUrl(tag);
+     if(!url)return {ok:false,code:"INVALID_RELEASE_TAG",message:"公開済みのバージョンタグを確認してください。"};
+     try{await shell.openExternal(url);return {ok:true};}
+     catch{return {ok:false,code:"OPEN_FAILED",message:"リリースページを開けませんでした。"};}
    });
    ipcMain.handle("app:check-updates",event=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};

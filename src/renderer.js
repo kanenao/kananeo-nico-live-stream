@@ -1,5 +1,5 @@
 (() => {
-const names={audit:"監査ログ",remote:"リモート操作",dashboard:"ダッシュボード",broadcast:"放送・枠管理",comments:"コメントビューア",requests:"動画リクエスト",stocks:"ストック",library:"動画ライブラリ",poll:"自動アンケート",player:"プレイヤー・BGM",automation:"自動枠取り・延長",external:"OBS・外部ツール",voice:"音声・自動応答",users:"ユーザー・NG管理",logs:"履歴・バックアップ",settings:"設定"};
+const names={audit:"監査ログ",remote:"リモート操作",dashboard:"ダッシュボード",broadcast:"放送・枠管理",comments:"コメントビューア",requests:"動画リクエスト",stocks:"ストック",library:"動画ライブラリ",poll:"自動アンケート",player:"プレイヤー・BGM",automation:"自動枠取り・延長",external:"OBS・外部ツール",voice:"音声・自動応答",users:"ユーザー・NG管理",logs:"履歴・バックアップ",changelog:"バージョン更新履歴",settings:"設定"};
 const key="kananeo-beta2";
 const COMMENT_VIEW_STORAGE_KEY=key+"-comment-view";
 const BROADCAST_COMMENT_COLUMNS=[{key:"number",label:"番号"},{key:"time",label:"時刻"},{key:"user",label:"投稿者"},{key:"userId",label:"ユーザーID"},{key:"content",label:"コメント本文"},{key:"type",label:"種別"}];
@@ -54,6 +54,7 @@ let broadcastContextMenuComment=null;
 let dashboardStats={loading:false,watchCount:null,commentCount:null,updatedAt:"",error:""};
 let extensionOptionsState={loading:false,methods:[],updatedAt:"",error:""};
 let updateCheckState={loading:false,result:null,error:""};
+let releaseHistoryState={loading:false,page:0,items:[],hasMore:true,error:"",query:"",type:"all",fetchedAt:""};
 let autoUpdateState={supported:false,channel:"alpha",phase:"idle",message:"自動更新を確認中です。",percent:0,version:"",errorCode:"",checkedAt:""};
 let bgmTracks=[];
 let bgmLoading=false;
@@ -514,6 +515,57 @@ async function revokeRemoteDeviceFromUi(deviceId){
  await refreshRemoteControlUi(true);
  toast("端末を失効しました。");
 }
+
+function renderReleaseHistoryRows(){
+ const list=document.getElementById("release-history-list");
+ if(!list)return;
+ const status=document.getElementById("release-history-status");
+ const more=document.querySelector("[data-release-history-more]");
+ const query=releaseHistoryState.query.trim().toLocaleLowerCase("ja-JP");
+ const items=releaseHistoryState.items.filter(item=>{
+  const kind=/-alpha\./.test(item.version)?"alpha":/-(?:beta|rc)\./.test(item.version)?"beta":"stable";
+  if(releaseHistoryState.type!=="all"&&releaseHistoryState.type!==kind)return false;
+  if(!query)return true;
+  return [item.version,item.title,...item.notes].join(" ").toLocaleLowerCase("ja-JP").includes(query);
+ });
+ if(status)status.textContent=releaseHistoryState.loading?"GitHub Releasesから履歴を取得しています…":
+  releaseHistoryState.error||"公開済み "+releaseHistoryState.items.length+" バージョンを読み込み済み"+(releaseHistoryState.hasMore?"（続きがあります）":"");
+ list.innerHTML=items.map(item=>{
+  const type=/-alpha\./.test(item.version)?"α開発版":/-(?:beta|rc)\./.test(item.version)?"βテスト版":"製品版";
+  const date=item.publishedAt?new Date(item.publishedAt).toLocaleString("ja-JP"):"公開日時不明";
+  const notes=item.notes.length?
+   '<ul class="release-notes">'+item.notes.map(note=>'<li>'+esc(note)+'</li>').join("")+'</ul>':
+   '<div class="muted">このバージョンの詳しい変更内容はリリースノートに登録されていません。GitHubで確認できます。</div>';
+  const installer=item.setupAvailable?"Setupあり":"Setup未確認";
+  return '<article class="release-history-item">'+
+   '<div class="release-history-heading"><div><b>'+esc(item.version)+'</b><small>'+esc(type)+" / "+esc(date)+" / "+installer+'</small></div>'+
+   '<button class="btn" data-release-history-open="'+esc(item.tag)+'">GitHubで詳細</button></div>'+
+   notes+'</article>';
+ }).join("")||'<div class="empty">'+(releaseHistoryState.loading?"履歴を読み込み中です…":releaseHistoryState.items.length?"検索条件に一致するバージョンはありません。":"公開済みのバージョンを取得できませんでした。")+'</div>';
+ if(more){more.hidden=!releaseHistoryState.hasMore;more.disabled=releaseHistoryState.loading;}
+ const refresh=document.querySelector("[data-release-history-refresh]");
+ if(refresh)refresh.disabled=releaseHistoryState.loading;
+}
+async function fetchReleaseHistory(reset=false){
+ if(releaseHistoryState.loading)return;
+ if(reset){releaseHistoryState.page=0;releaseHistoryState.items=[];releaseHistoryState.hasMore=true;}
+ if(!releaseHistoryState.hasMore){renderReleaseHistoryRows();return;}
+ const pageNumber=releaseHistoryState.page+1;
+ releaseHistoryState.loading=true;releaseHistoryState.error="";
+ renderReleaseHistoryRows();
+ try{
+  const response=await window.kananeoApp.updates.history(pageNumber,reset);
+  if(!response?.ok)throw Error(response?.message||"バージョン更新履歴を取得できませんでした。");
+  const existing=new Set(releaseHistoryState.items.map(item=>item.tag));
+  for(const item of response.items||[])if(item?.tag&&!existing.has(item.tag)){releaseHistoryState.items.push(item);existing.add(item.tag);}
+  releaseHistoryState.page=pageNumber;
+  releaseHistoryState.hasMore=response.hasMore===true&&pageNumber<20;
+  releaseHistoryState.fetchedAt=response.fetchedAt||"";
+ }catch(error){
+  releaseHistoryState.error=String(error?.message||"更新履歴の取得に失敗しました。").slice(0,180);
+ }finally{releaseHistoryState.loading=false;renderReleaseHistoryRows();}
+}
+
 function render(){
 document.getElementById("crumb").textContent=names[page];
 document.querySelectorAll("[data-page]").forEach(b=>b.classList.toggle("active",b.dataset.page===page));
@@ -642,9 +694,12 @@ panel("監査ログ検索","再起動後も保存履歴を復元し、直近500�
 }else if(page==="logs"){
 html=hero("ACTIVITY & BACKUP","履歴・バックアップ","設定データのJSON書き出し・読み込み。")+
 panel("システムログ","操作履歴",state.logs.map(x=>`<div class="row"><i></i><b>${esc(x)}</b></div>`).join("")+'<div class="actions"><button class="btn primary" data-export>設定JSONを書き出す</button><button class="btn" data-clear-logs>ログを消去</button></div>');
+}else if(page==="changelog"){
+html=hero("VERSION HISTORY","バージョン更新履歴","各バージョンで追加・変更した機能や修正内容を掲載しています。")+
+panel("公開バージョン一覧","GitHub Releasesの実際のリリースノートを新しい順に表示します。詳細情報のない版はその旨を表示します。",'<div class="grid2"><div class="field"><label>バージョン・追加機能・修正内容で検索</label><input class="input" id="release-history-search" placeholder="例：alpha.65 / 自動更新" value="'+esc(releaseHistoryState.query)+'"></div><div class="field"><label>公開区分</label><select class="input" id="release-history-type"><option value="all" '+(releaseHistoryState.type==="all"?"selected":"")+'>すべて</option><option value="alpha" '+(releaseHistoryState.type==="alpha"?"selected":"")+'>α開発版</option><option value="beta" '+(releaseHistoryState.type==="beta"?"selected":"")+'>βテスト版</option><option value="stable" '+(releaseHistoryState.type==="stable"?"selected":"")+'>製品版</option></select></div></div><div class="actions"><button class="btn" data-release-history-refresh>最新の履歴を再取得</button><button class="btn" data-update-open-releases>GitHub Releases一覧</button></div><div class="muted" id="release-history-status"></div><div class="release-history-list" id="release-history-list"></div><div class="actions"><button class="btn primary" data-release-history-more>過去のバージョンをさらに表示</button></div>');
 }else{
 html=hero("APPLICATION SETTINGS","設定","アプリのバージョンとローカル設定を管理します。")+
-panel("自動更新・アップデート確認","Windows Setup版は利用中のα・β・製品版に合わせて更新を自動ダウンロードします。Portable版は最新のSetup版へ切り替えてください。",'<div class="row"><div><b>現在のバージョン</b><small>このアプリにインストールされているバージョン</small></div><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>自動更新</b><span id="auto-update-status">確認中</span></div><div id="auto-update-details" class="muted"></div><div class="row"><b>確認状態</b><span id="update-check-status">未確認</span></div><div id="update-release-details"></div><div class="actions"><button class="btn primary" type="button" data-update-auto-check>自動更新を再確認</button><button class="btn primary" type="button" data-update-auto-apply hidden>更新を適用して終了</button><button class="btn" type="button" data-update-diagnostic-copy>更新診断をコピー</button><button class="btn" type="button" data-update-check>公開版を確認</button><button class="btn" type="button" data-update-open-releases>GitHub Releasesを開く</button></div>')+
+panel("自動更新・アップデート確認","Windows Setup版は利用中のα・β・製品版に合わせて更新を自動ダウンロードします。Portable版は最新のSetup版へ切り替えてください。",'<div class="row"><div><b>現在のバージョン</b><small>このアプリにインストールされているバージョン</small></div><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>自動更新</b><span id="auto-update-status">確認中</span></div><div id="auto-update-details" class="muted"></div><div class="row"><b>確認状態</b><span id="update-check-status">未確認</span></div><div id="update-release-details"></div><div class="actions"><button class="btn primary" type="button" data-update-auto-check>自動更新を再確認</button><button class="btn primary" type="button" data-update-auto-apply hidden>更新を適用して終了</button><button class="btn" type="button" data-update-diagnostic-copy>更新診断をコピー</button><button class="btn" type="button" data-update-check>公開版を確認</button><button class="btn" type="button" data-update-open-releases>GitHub Releasesを開く</button><button class="btn" type="button" data-go="changelog">バージョン更新履歴を見る</button></div>')+
 panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Alpha（開発版） / localhost・LAN リモート対応</span></div>');
 }
 if(page==="dashboard"&&updateCheckState.result?.updateAvailable){
@@ -661,6 +716,7 @@ if(page==="broadcast"){renderBroadcastManageVerification();renderBroadcastCommen
 updateLiveVideoBounds();
 if(page==="voice"){renderSpeechVoices();updateSpeechQueueUi();}
 if(page==="settings"){renderUpdateCheck();renderAutoUpdateStatus();}
+if(page==="changelog")renderReleaseHistoryRows();
 if(page==="remote")updateRemoteControlUi();
 if(page==="audit")void refreshRemoteAudit();
 if(page==="library")renderLibrarySourcePreview();
@@ -2155,7 +2211,7 @@ async function checkForApplicationUpdates(silent=false){
 if(page==="dashboard"&&updateCheckState.result?.updateAvailable)render();
 if(!silent&&updateCheckState.error)toast(updateCheckState.error);
 }
-function go(p){if(p!=="broadcast")hideBroadcastCommentContextMenu();page=p;render();if(p==="dashboard")void refreshDashboardStatistics(true);if(p==="player"){void refreshQuotePlayback();if(!bgmTracks.length&&!bgmLoading)void refreshBgmLibrary(true);}if(p==="comments")renderComments();if(p==="library"){void refreshVideoLibrary();renderVideoLibraryRows();}if(p==="users")renderUserProfileRows();if(p==="remote")void refreshRemoteControlUi(true);}
+function go(p){if(p!=="broadcast")hideBroadcastCommentContextMenu();page=p;render();if(p==="dashboard")void refreshDashboardStatistics(true);if(p==="player"){void refreshQuotePlayback();if(!bgmTracks.length&&!bgmLoading)void refreshBgmLibrary(true);}if(p==="comments")renderComments();if(p==="library"){void refreshVideoLibrary();renderVideoLibraryRows();}if(p==="users")renderUserProfileRows();if(p==="remote")void refreshRemoteControlUi(true);if(p==="changelog"&&!releaseHistoryState.items.length)void fetchReleaseHistory();}
 document.getElementById("nav").addEventListener("click",e=>{const b=e.target.closest("[data-page]");if(!b)return;window.KananeoUiHealth?.trackAction("画面移動："+b.textContent);try{go(b.dataset.page);}catch(error){window.KananeoUiHealth?.report(error,"メニュー操作");}});
 window.addEventListener("resize",()=>{hideBroadcastCommentContextMenu();updateLiveVideoBounds();},{passive:true});
 document.addEventListener("scroll",()=>{hideBroadcastCommentContextMenu();updateLiveVideoBounds();},true);
@@ -2267,6 +2323,13 @@ if(b.hasAttribute("data-nico-logout")){if(confirm("このアプリ専用のニ�
 if(b.hasAttribute("data-nico-check")){void checkProgram();return;}
 if(b.hasAttribute("data-dashboard-refresh")){void refreshDashboardStatistics(false);return;}
 if(b.hasAttribute("data-extension-check")){void refreshExtensionOptions();return;}
+if(b.hasAttribute("data-release-history-refresh")){void fetchReleaseHistory(true);return;}
+if(b.hasAttribute("data-release-history-more")){void fetchReleaseHistory();return;}
+if(b.hasAttribute("data-release-history-open")){
+ const result=await window.kananeoApp.updates.openRelease(b.dataset.releaseHistoryOpen);
+ if(!result?.ok)toast(result?.message||"リリース詳細を開けませんでした。");
+ return;
+}
 if(b.hasAttribute("data-update-check")){void checkForApplicationUpdates();return;}
 if(b.hasAttribute("data-update-auto-check")){void manuallyCheckAutoUpdate();return;}
 if(b.hasAttribute("data-update-auto-apply")){void applyDownloadedUpdate();return;}
@@ -2496,12 +2559,12 @@ if(b.hasAttribute("data-placeholder"))toast("現在の段階ではこの操作�
 }
  document.addEventListener("click",e=>{const marker=e.target.closest("[data-broadcast-read-through]");if(marker){broadcastReadThroughIndex=Number(marker.dataset.broadcastReadThrough);renderBroadcastComments();}});
  document.addEventListener("dblclick",e=>{if(e.target.closest("[data-broadcast-read-through]")){broadcastReadThroughIndex=-1;renderBroadcastComments();}});
-document.addEventListener("input",e=>{if(["remote-audit-query","remote-audit-type","remote-audit-from","remote-audit-to"].includes(e.target.id)){remoteAuditFilters={query:document.getElementById("remote-audit-query")?.value||"",type:document.getElementById("remote-audit-type")?.value||"all",from:document.getElementById("remote-audit-from")?.value||"",to:document.getElementById("remote-audit-to")?.value||""};renderRemoteAuditRows();}if(e.target.id==="ncv-comment-font-size"){const output=document.getElementById("ncv-comment-font-size-value");if(output)output.textContent=e.target.value+"px";}if(e.target.id==="broadcast-comment-search"){broadcastCommentSearch=e.target.value;renderBroadcastComments();}if(e.target.id==="broadcast-manage-id"){broadcastManageVerification=null;renderBroadcastManageVerification();}if(e.target.id==="comments-search")renderComments();if(e.target.id==="user-profile-search"){userProfileSearch=e.target.value;renderUserProfileRows();}if(e.target.id==="library-search")renderVideoLibraryRows();if(e.target.id==="library-source-search"){librarySourceQuery=e.target.value;renderLibrarySourcePreview();}});
+document.addEventListener("input",e=>{if(e.target.id==="release-history-search"){releaseHistoryState.query=e.target.value.slice(0,150);renderReleaseHistoryRows();}if(["remote-audit-query","remote-audit-type","remote-audit-from","remote-audit-to"].includes(e.target.id)){remoteAuditFilters={query:document.getElementById("remote-audit-query")?.value||"",type:document.getElementById("remote-audit-type")?.value||"all",from:document.getElementById("remote-audit-from")?.value||"",to:document.getElementById("remote-audit-to")?.value||""};renderRemoteAuditRows();}if(e.target.id==="ncv-comment-font-size"){const output=document.getElementById("ncv-comment-font-size-value");if(output)output.textContent=e.target.value+"px";}if(e.target.id==="broadcast-comment-search"){broadcastCommentSearch=e.target.value;renderBroadcastComments();}if(e.target.id==="broadcast-manage-id"){broadcastManageVerification=null;renderBroadcastManageVerification();}if(e.target.id==="comments-search")renderComments();if(e.target.id==="user-profile-search"){userProfileSearch=e.target.value;renderUserProfileRows();}if(e.target.id==="library-search")renderVideoLibraryRows();if(e.target.id==="library-source-search"){librarySourceQuery=e.target.value;renderLibrarySourcePreview();}});
 document.addEventListener("input",e=>{
  if(e.target.id==="bgm-volume"){state.playback.bgmVolume=clampBgmVolume(e.target.value);if(bgmAudio)bgmAudio.volume=state.playback.bgmVolume;updateBgmPlaybackUi();}
  if(e.target.id==="bgm-progress"&&bgmAudio&&Number.isFinite(bgmAudio.duration)){bgmAudio.currentTime=bgmAudio.duration*(Math.max(0,Math.min(1000,Number(e.target.value)||0))/1000);updateBgmPlaybackUi();}
 });
-document.addEventListener("change",e=>{if(e.target.id==="stream-monitor-interval"||e.target.id==="stream-monitor-auto-comments"){if(e.target.id==="stream-monitor-interval")state.streamMonitor.intervalSeconds=Number(e.target.value)||60;else state.streamMonitor.autoComments=e.target.checked;save();}if(e.target.id==="remote-audit-notification-enabled"){const enabled=e.target.checked;void window.kananeoApp.remote.setNotificationSettings({enabled}).then(result=>{if(result?.ok){remoteAuditNotificationEnabled=enabled;toast(enabled?"異常アクセス通知をONにしました。":"異常アクセス通知をOFFにしました。");}else{e.target.checked=remoteAuditNotificationEnabled;toast(result?.message||"通知設定を保存できませんでした。");}}).catch(()=>{e.target.checked=remoteAuditNotificationEnabled;toast("通知設定を保存できませんでした。");});}});
+document.addEventListener("change",e=>{if(e.target.id==="release-history-type"){releaseHistoryState.type=e.target.value;renderReleaseHistoryRows();}if(e.target.id==="stream-monitor-interval"||e.target.id==="stream-monitor-auto-comments"){if(e.target.id==="stream-monitor-interval")state.streamMonitor.intervalSeconds=Number(e.target.value)||60;else state.streamMonitor.autoComments=e.target.checked;save();}if(e.target.id==="remote-audit-notification-enabled"){const enabled=e.target.checked;void window.kananeoApp.remote.setNotificationSettings({enabled}).then(result=>{if(result?.ok){remoteAuditNotificationEnabled=enabled;toast(enabled?"異常アクセス通知をONにしました。":"異常アクセス通知をOFFにしました。");}else{e.target.checked=remoteAuditNotificationEnabled;toast(result?.message||"通知設定を保存できませんでした。");}}).catch(()=>{e.target.checked=remoteAuditNotificationEnabled;toast("通知設定を保存できませんでした。");});}});
 document.addEventListener("change",e=>{if(e.target.id==="broadcast-comment-type"){broadcastCommentType=e.target.value;renderBroadcastComments();}if(e.target.id==="library-sort"){librarySort=e.target.value;renderVideoLibraryRows();}if(e.target.id==="library-source"){librarySource=e.target.value;renderVideoLibraryRows();}});
 document.addEventListener("change",e=>{if(e.target.matches("[data-library-source-check]")){const id=e.target.dataset.librarySourceCheck;if(e.target.checked)librarySourceSelected.add(id);else librarySourceSelected.delete(id);const count=document.getElementById("library-source-selection-count");if(count)count.textContent=librarySourceSelected.size+" 件を選択中";const button=document.querySelector("[data-library-source-import]");if(button){button.disabled=librarySourceSelected.size===0;button.textContent="選択した "+librarySourceSelected.size+" 件を取り込む";}}});
 document.addEventListener("change",e=>{if(e.target.id==="bgm-volume"){state.playback.bgmVolume=clampBgmVolume(e.target.value);save();}if(e.target.id==="bgm-repeat"){state.playback.bgmRepeat=e.target.checked;save();toast(e.target.checked?"BGMを最後の曲から先頭へ繰り返します。":"BGMの繰り返しをOFFにしました。");}if(e.target.matches('[data-toggle="quote-auto-next"]')){if(state.playback.playStyle===0&&e.target.checked){e.target.checked=false;state.playback.quoteAutoNext=false;save();toast("手動モードでは自動次動画を使えません。自動順次または自動ランダムに変更してください。");return;}state.playback.quoteAutoNext=e.target.checked;save();if(e.target.checked&&quotePlayback.active){const active=currentQueueItem();const started=Number(state.player.quoteStartedAt);if(started>0)scheduleQuoteAutoNext(active||{videoId:quotePlayback.videoId,lengthMs:state.player.quoteDurationMs},started);else{quoteAutoMessage="引用再生の開始時刻が不明です。次の動画から自動予約します。";updateQuoteScheduleUi();}}else clearQuoteAutoTimer("引用再生の自動次動画はOFFです。");toast(e.target.checked?"引用再生の自動次動画をONにしました。":"引用再生の自動次動画をOFFにしました。");}if(e.target.id==="comments-filter")renderComments();if(e.target.id==="player-auto-next"){state.player.autoNext=e.target.checked;save();toast(e.target.checked?"自動で次の動画へ切り替えます。":"自動次動画切替をOFFにしました。");}if(e.target.id==="request-from-comments"){state.requestSettings.acceptComments=e.target.checked;save();toast(e.target.checked?"コメントからのリクエスト受付をONにしました。":"コメントからのリクエスト受付をOFFにしました。");}if(e.target.id==="request-max-per-user"){state.requestSettings.maxPerUser=Math.min(50,Math.max(1,Number(e.target.value)||5));save();toast("ユーザー別リクエスト上限を保存しました。");}if(e.target.id==="request-reply-enabled"){state.requestSettings.replyEnabled=e.target.checked;save();toast(e.target.checked?"受付結果の自動返信をONにしました。":"受付結果の自動返信をOFFにしました。");}if(e.target.id==="request-reply-accepted"){state.requestSettings.replyAccepted=Array.from(String(e.target.value||"")).slice(0,80).join("");save();}if(e.target.id==="request-reply-rejected"){state.requestSettings.replyRejected=Array.from(String(e.target.value||"")).slice(0,80).join("");save();}});
