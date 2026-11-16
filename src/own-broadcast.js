@@ -7,7 +7,7 @@ function loggedInId(cookies){
 function broadcastHistoryUrl(userId){
  if(typeof userId!=="string"||!/^\d{1,20}$/.test(userId))return null;
  const url=new URL("https://live.nicovideo.jp/front/api/v2/user-broadcast-history");
- for(const [k,v] of Object.entries({providerId:userId,providerType:"user",isIncludeNonPublic:"false",offset:"0",limit:"5",withTotalCount:"false"}))url.searchParams.set(k,v);
+ for(const [k,v] of Object.entries({providerId:userId,providerType:"user",isIncludeNonPublic:"true",offset:"0",limit:"5",withTotalCount:"false"}))url.searchParams.set(k,v);
  return url.toString();
 }
 function parseHistory(text){
