@@ -15,6 +15,9 @@ test("video metadata request only uses canonical Nico video IDs",()=>{
  assert.equal(m.ok,true);assert.equal(new URL(m.url).hostname,"www.nicovideo.jp");
  assert.equal(new URL(m.url).pathname,"/api/watch/v3_guest/sm9");
  assert.equal(m.options.headers["X-Frontend-Id"],"6");
+ assert.match(new URL(m.url).searchParams.get("actionTrackId"),/^[a-zA-Z0-9]{10}_[0-9]{13}$/);
+ assert.equal(buildVideoMetadataRequest("sm9",1700000000).ok,false); // 10-digit seconds are invalid
+
  assert.equal(buildVideoMetadataRequest("https://evil.example/sm9").ok,false);
 });
 test("metadata duration is accepted only when API status and video ID match",()=>{
