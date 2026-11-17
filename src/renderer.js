@@ -80,6 +80,7 @@ let pollVideoId="";
 let pollTimingSummary="";
 let pollVerifiedRound=false;
 let quoteMetadataPending=null;
+let quoteMetadataMessage="";
 let autoLiveQuotePending="";
 const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,stockAutoPlay:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,autoPlayOnOwnLive:false,lastAutoPlayProgramId:"",nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoCreate:false,autoStartProgram:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,autoVideo:false,notifyOnLive:false,ownAccount:true,targets:[],history:[]},liveVideoZoom:{zoomMode:"auto",zoomPercent:70},logs:["β2 UIプロトタイプを起動しました"]};
 let remoteAuditEntries=[],remoteAuditFilters={query:"",type:"all",from:"",to:""},remoteAuditNotificationEnabled=true;
@@ -92,6 +93,14 @@ try{
 const stored=JSON.parse(localStorage.getItem(key)||"{}");
 const loaded={...initial,...stored};
 loaded.player={...initial.player,...(stored.player||{})};
+// A new application session cannot verify that an earlier quotation is still the same playback.
+// Preserve the playlist but discard previously recorded timing to avoid unsafe automatic skips.
+loaded.player.quoteStartedAt=0;
+loaded.player.quoteDurationMs=0;
+loaded.player.quoteVideoId="";
+loaded.player.quoteProgramId="";
+loaded.player.quoteExpectedEndAt=0;
+loaded.player.quotePollAutoSuspended=false;
 loaded.streamMonitor={...window.KananeoStreamMonitor.normalizeStreamMonitorSettings(stored.streamMonitor),ownAccount:true,history:window.KananeoStreamMonitorHistory.normalizeHistory(stored.streamMonitor?.history)};
 loaded.liveVideoZoom={zoomMode:stored?.liveVideoZoom?.zoomMode==="manual"?"manual":"auto",zoomPercent:Number.isFinite(Number(stored?.liveVideoZoom?.zoomPercent))?Math.max(35,Math.min(125,Math.round(Number(stored.liveVideoZoom.zoomPercent)))):70};
 loaded.playback={...initial.playback,...(stored.playback||{})};
@@ -143,13 +152,12 @@ async function maybeAutoPlayOnOwnLive(info){
   const current=await window.kananeoApp.niconico.getCurrentQuotation({programId:id});
   if(!current?.ok||current.exists)return;
   state.lastProgramId=id;
-  const original=state.playback.lastAutoPlayProgramId;
   state.playback.lastAutoPlayProgramId=id;
   save(); // one attempt per program, even if API times out
   const played=await playNextQuoteItem({triggeredByAuto:true,skipConfirmation:true});
   toast(played?"新しい自分の放送で動画リクエストの自動再生を開始しました。":
    "自動再生を開始できませんでした。手動操作で状態を確認してください。");
-  if(!played)state.playback.lastAutoPlayProgramId=id; // do not flood the live with retries
+  // A failed or uncertain attempt is still consumed. Do not flood an actual broadcast with retries.
   save();
  }catch(error){toast("放送開始後の自動再生を確認できませんでした。手動で確認してください。");}
  finally{if(autoLiveQuotePending===id)autoLiveQuotePending="";}
@@ -892,6 +900,10 @@ message=remaining>0?"自動次動画まで残り "+formatVideoTime(Math.ceil(rem
 }
 node.textContent=message;
 }
+function activeQuotedQueueItem(){
+ const activeVideoId=String(quotePlayback.videoId||"").toLowerCase();
+ return window.KananeoQuoteTiming.findQuotedItem(activeVideoId,state.requests,state.stocks);
+}
 function storedQuoteDurationMs(item){
 const itemValue=Number(item?.lengthMs??item?.durationMs??0);
 if(Number.isFinite(itemValue)&&itemValue>0)return itemValue;
@@ -1029,23 +1041,34 @@ matched.status="playing";
 }
 quotePlayback={active:!!result.exists,verified:true,programId,videoId:result.currentVideoId||"",queueType:matched?(state.stocks.includes(matched)?"stock":"request"):"",itemId:matched?.id||"",message:result.exists?"ニコ生の引用再生状態を確認しました。":"現在、引用再生は行われていません。"};
 if(matched){state.player.currentId=matched.id;state.player.currentQueueType=quotePlayback.queueType;}
-else if(!result.exists){
-if(state.player.currentId===previousItemId)state.player.currentId="";
-clearQuoteAutoTimer("ニコ生の引用再生は停止しています。");
-state.player.quoteStartedAt=0;
-state.player.quoteDurationMs=0;
-state.player.quoteVideoId="";
-state.player.quoteExpectedEndAt=0;
-}else if(result.exists){
-const storedMatches=state.player.quoteVideoId===result.currentVideoId&&state.player.quoteProgramId===programId&&Number(state.player.quoteStartedAt)>0&&Number(state.player.quoteDurationMs)>0;
-if(storedMatches){
-const scheduleItem={videoId:result.currentVideoId,lengthMs:Number(state.player.quoteDurationMs)};
-scheduleQuoteAutoNext(scheduleItem,Number(state.player.quoteStartedAt));
-}else if(state.playback.quoteAutoNext){
-clearQuoteAutoTimer("現在の引用再生は開始時刻が分からないため、自動次動画は予約できません。");
+if(!result.exists){
+ if(state.player.currentId===previousItemId)state.player.currentId="";
+ clearQuoteAutoTimer("ニコ生の引用再生は停止しています。");
+ state.player.quoteStartedAt=0;
+ state.player.quoteDurationMs=0;
+ state.player.quoteVideoId="";
+ state.player.quoteProgramId="";
+ state.player.quoteExpectedEndAt=0;
 }else{
-clearQuoteAutoTimer("引用再生の自動次動画はOFFです。");
-}
+ const trusted=window.KananeoQuoteTiming.trustedQuoteTiming({
+  programId,videoId:result.currentVideoId,storedProgramId:state.player.quoteProgramId,
+  storedVideoId:state.player.quoteVideoId,startedAt:state.player.quoteStartedAt,
+  durationMs:state.player.quoteDurationMs
+ });
+ if(trusted){
+  if(!pollRuntime.active) {
+   const scheduleItem={videoId:result.currentVideoId,lengthMs:Number(state.player.quoteDurationMs)};
+   scheduleQuoteAutoNext(scheduleItem,Number(state.player.quoteStartedAt));
+  }
+ }else{
+  // Never inherit an earlier video's timestamp, even when it exists in the queue.
+  state.player.quoteStartedAt=0;
+  state.player.quoteDurationMs=0;
+  state.player.quoteVideoId=result.currentVideoId||"";
+  state.player.quoteProgramId=programId;
+  state.player.quoteExpectedEndAt=0;
+  clearQuoteAutoTimer("引用再生中ですが正確な再生開始時刻を確認できません。自動アンケートは保留します。");
+ }
 }
 save();
 if(page==="player")render();
@@ -1221,11 +1244,19 @@ function suspendQuoteAutoForPoll(){
 async function ensureCurrentQuoteDuration(){
  const id=String(quotePlayback.videoId||state.player.quoteVideoId||"").toLowerCase();
  if(!/^(?:sm|nm|so)\d{1,12}$/.test(id))return false;
- if(storedQuoteDurationMs(currentQueueItem())>0)return true;
+ if(storedQuoteDurationMs(activeQuotedQueueItem())>0)return true;
  if(quoteMetadataPending?.videoId===id)return quoteMetadataPending.promise;
  const request=(async()=>{
   const result=await window.kananeoApp.niconico.getVideoMetadata(id);
-  if(!result?.ok||quotePlayback.videoId!==id)return false;
+  if(!result?.ok){
+   quoteMetadataMessage=String(result?.message||"動画情報を取得できませんでした。").slice(0,180);
+   return false;
+  }
+  if(quotePlayback.videoId!==id){
+   quoteMetadataMessage="動画が切り替わったため、古い動画の再生時間は破棄しました。";
+   return false;
+  }
+  quoteMetadataMessage="";
   const item=[...state.requests,...state.stocks].find(x=>x.videoId===id);
   if(item)item.lengthMs=result.durationMs;
   state.player.quoteDurationMs=result.durationMs;
@@ -1241,7 +1272,7 @@ async function ensureCurrentQuoteDuration(){
 
 function activePollMedia(now=Date.now()){
  return {now,startedAt:Number(state.player.quoteStartedAt),
-   durationMs:storedQuoteDurationMs(currentQueueItem()),
+   durationMs:storedQuoteDurationMs(activeQuotedQueueItem()),
    videoId:String(quotePlayback.videoId||state.player.quoteVideoId||"")};
 }
 function safePollVideoMatches(){
@@ -1333,8 +1364,10 @@ async function startAutomaticPoll(){
  const programId=state.lastProgramId||commentConnection.programId;
  if(!programId){toast("先に「放送・枠管理」で放送IDを確認してください。");return;}
  const input={programId,question:state.poll.question,choices:[state.poll.continue,state.poll.next],waitSeconds:Number(state.poll.wait),resultSeconds:Number(state.poll.result)};
- if(!quotePlayback.active&&programId)await refreshQuotePlayback({silent:true});
- if(quotePlayback.active&&storedQuoteDurationMs(currentQueueItem())<=0){
+ // A stale cached quotation must never trigger a poll on a different video.
+ const currentQuote=await refreshQuotePlayback({silent:true});
+ if(!currentQuote?.ok){pollTimingSummary="引用再生の状態を確認できないためアンケートを開始できません。";setPollRuntime("skipped",pollTimingSummary,[]);toast(pollTimingSummary);return;}
+ if(quotePlayback.active&&storedQuoteDurationMs(activeQuotedQueueItem())<=0){
   setPollRuntime("starting","動画の長さを自動取得しています…");
   await ensureCurrentQuoteDuration();
  }
@@ -1346,8 +1379,8 @@ async function startAutomaticPoll(){
  const timing=window.KananeoPollTiming;
  const initial=timing.mediaPlan({...media,startWaitSeconds:timing.INITIAL_START_SECONDS,voteSeconds:input.waitSeconds,resultSeconds:input.resultSeconds});
  if(!initial.ok){
-  pollTimingSummary=initial.message;
-  setPollRuntime("skipped",initial.message,[]);toast(initial.message);return;
+  pollTimingSummary=initial.message+(initial.code==="UNKNOWN_VIDEO_DURATION"&&quoteMetadataMessage?" "+quoteMetadataMessage:"");
+  setPollRuntime("skipped",pollTimingSummary,[]);toast(pollTimingSummary);return;
  }
  const token=++pollRunToken;
  let resumeNaturalAfterPoll=false;
@@ -2554,7 +2587,7 @@ if(b.hasAttribute("data-poll-duration-fetch")){
  const id=String(quotePlayback.videoId||state.player.quoteVideoId||"");
  if(!id){toast("先にニコ生で引用再生中の動画を確認してください。");return;}
  const ok=await ensureCurrentQuoteDuration();
- toast(ok?"動画の長さを取得して保存しました。":"取得できませんでした。動画時間を手動で入力してください。");
+ toast(ok?"動画の長さを取得して保存しました。":(quoteMetadataMessage||"取得できませんでした。")+" 動画時間を手動で入力してください。");
  return;
 }
 if(b.hasAttribute("data-poll-duration-set")){
@@ -2692,7 +2725,7 @@ document.addEventListener("change",e=>{
   const enabled=e.target.checked===true;
   if(enabled&&!state.playback.autoPlayOnOwnLive&&!confirm("自分の番組開始を検知したら、視聴者へ動画リクエストを自動で引用再生します。有効にしますか？")){e.target.checked=false;return;}
   state.playback.autoPlayOnOwnLive=enabled;
-  if(enabled)state.playback.lastAutoPlayProgramId="";
+  // Keep the attempted program ID even if this switch is toggled during the same live.
   save();toast(enabled?"放送開始時の動画自動再生をONにしました。":"放送開始時の動画自動再生をOFFにしました。");
   if(enabled){for(const item of ownMonitorStatus.activePrograms||[])void maybeAutoPlayOnOwnLive(item);}
  }

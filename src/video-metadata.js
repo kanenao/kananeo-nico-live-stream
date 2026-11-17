@@ -2,8 +2,9 @@
 const VALID=/^(?:sm|nm|so)\d{1,12}$/i;
 function buildVideoMetadataRequest(videoId,now=Date.now()){
  if(typeof videoId!=="string"||!VALID.test(videoId))return {ok:false,code:"INVALID_VIDEO_ID",message:"ニコニコ動画のIDを確認してください。"};
- const stamp=Math.floor(Number(now)/1000);
- if(!Number.isSafeInteger(stamp)||stamp<=0)return {ok:false,code:"INVALID_TIME"};
+ // Nico watch v3_guest requires actionTrackId: 10 alphanumerics + "_" + 13-digit milliseconds.
+ const stamp=Math.trunc(Number(now));
+ if(!Number.isSafeInteger(stamp)||stamp<1000000000000||stamp>9999999999999)return {ok:false,code:"INVALID_TIME"};
  const id=videoId.toLowerCase();
  const url="https://www.nicovideo.jp/api/watch/v3_guest/"+id+
   "?actionTrackId=kanenonico_"+String(stamp)+"&noSideEffect=true";
