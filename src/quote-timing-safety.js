@@ -1,4 +1,5 @@
 "use strict";
+(() => {
 const VIDEO_ID=/^(?:sm|nm|so)\d{1,12}$/i;
 const PROGRAM_ID=/^lv\d{1,20}$/i;
 
@@ -21,4 +22,7 @@ function trustedQuoteTiming(input={},now=Date.now()){
   // Cached times that have already passed cannot anchor a safe future poll.
   startedAt+durationMs>current;
 }
-module.exports={findQuotedItem,trustedQuoteTiming};
+const api=Object.freeze({findQuotedItem,trustedQuoteTiming});
+if(typeof module!=="undefined"&&module.exports)module.exports=api;
+if(typeof window!=="undefined")window.KananeoQuoteTiming=api;
+})();
