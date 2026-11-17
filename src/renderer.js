@@ -80,6 +80,7 @@ let pollVideoId="";
 let pollTimingSummary="";
 let pollVerifiedRound=false;
 let quoteMetadataPending=null;
+let quoteMetadataMessage="";
 let autoLiveQuotePending="";
 const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,stockAutoPlay:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,autoPlayOnOwnLive:false,lastAutoPlayProgramId:"",nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoCreate:false,autoStartProgram:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,autoVideo:false,notifyOnLive:false,ownAccount:true,targets:[],history:[]},liveVideoZoom:{zoomMode:"auto",zoomPercent:70},logs:["β2 UIプロトタイプを起動しました"]};
 let remoteAuditEntries=[],remoteAuditFilters={query:"",type:"all",from:"",to:""},remoteAuditNotificationEnabled=true;
@@ -1247,7 +1248,15 @@ async function ensureCurrentQuoteDuration(){
  if(quoteMetadataPending?.videoId===id)return quoteMetadataPending.promise;
  const request=(async()=>{
   const result=await window.kananeoApp.niconico.getVideoMetadata(id);
-  if(!result?.ok||quotePlayback.videoId!==id)return false;
+  if(!result?.ok){
+   quoteMetadataMessage=String(result?.message||"動画情報を取得できませんでした。").slice(0,180);
+   return false;
+  }
+  if(quotePlayback.videoId!==id){
+   quoteMetadataMessage="動画が切り替わったため、古い動画の再生時間は破棄しました。";
+   return false;
+  }
+  quoteMetadataMessage="";
   const item=[...state.requests,...state.stocks].find(x=>x.videoId===id);
   if(item)item.lengthMs=result.durationMs;
   state.player.quoteDurationMs=result.durationMs;
@@ -1370,8 +1379,8 @@ async function startAutomaticPoll(){
  const timing=window.KananeoPollTiming;
  const initial=timing.mediaPlan({...media,startWaitSeconds:timing.INITIAL_START_SECONDS,voteSeconds:input.waitSeconds,resultSeconds:input.resultSeconds});
  if(!initial.ok){
-  pollTimingSummary=initial.message;
-  setPollRuntime("skipped",initial.message,[]);toast(initial.message);return;
+  pollTimingSummary=initial.message+(initial.code==="UNKNOWN_VIDEO_DURATION"&&quoteMetadataMessage?" "+quoteMetadataMessage:"");
+  setPollRuntime("skipped",pollTimingSummary,[]);toast(pollTimingSummary);return;
  }
  const token=++pollRunToken;
  let resumeNaturalAfterPoll=false;
@@ -2578,7 +2587,7 @@ if(b.hasAttribute("data-poll-duration-fetch")){
  const id=String(quotePlayback.videoId||state.player.quoteVideoId||"");
  if(!id){toast("先にニコ生で引用再生中の動画を確認してください。");return;}
  const ok=await ensureCurrentQuoteDuration();
- toast(ok?"動画の長さを取得して保存しました。":"取得できませんでした。動画時間を手動で入力してください。");
+ toast(ok?"動画の長さを取得して保存しました。":(quoteMetadataMessage||"取得できませんでした。")+" 動画時間を手動で入力してください。");
  return;
 }
 if(b.hasAttribute("data-poll-duration-set")){
