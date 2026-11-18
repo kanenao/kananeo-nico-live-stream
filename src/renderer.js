@@ -1261,6 +1261,10 @@ async function ensureCurrentQuoteDuration(options={}){
   // A queued request can already know its duration while the live timing
   // record is incomplete. Repair the duration without inventing a start.
   if(Number(state.player.quoteDurationMs)!==knownDuration){
+   if(!window.KananeoQuoteTiming.trustedQuoteStart({
+    programId,videoId:id,storedProgramId:state.player.quoteProgramId,
+    storedVideoId:state.player.quoteVideoId,startedAt:state.player.quoteStartedAt
+   }))state.player.quoteStartedAt=0;
    state.player.quoteDurationMs=knownDuration;
    state.player.quoteVideoId=id;
    state.player.quoteProgramId=programId;
@@ -1296,6 +1300,12 @@ async function ensureCurrentQuoteDuration(options={}){
   quoteMetadataMessage="";
   const item=activeQuotedQueueItem();
   if(item)item.lengthMs=durationMs;
+  // A metadata response must not turn a timestamp from another live into
+  // a trusted start for this live simply by overwriting its program/video IDs.
+  if(!window.KananeoQuoteTiming.trustedQuoteStart({
+   programId,videoId:id,storedProgramId:state.player.quoteProgramId,
+   storedVideoId:state.player.quoteVideoId,startedAt:state.player.quoteStartedAt
+  }))state.player.quoteStartedAt=0;
   state.player.quoteDurationMs=durationMs;
   state.player.quoteVideoId=id;
   state.player.quoteProgramId=programId;
