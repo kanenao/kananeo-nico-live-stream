@@ -1139,15 +1139,21 @@ if(page==="player")render();
 updateQuoteScheduleUi();
 return result;
 }
-async function playQuotedQueueItem(item,queueType="request",skipConfirmation=false){
+async function playQuotedQueueItem(item,queueType="request",skipConfirmation=false,options={}){
 if(!item)return false;
-const programId=state.lastProgramId||commentConnection.programId;
+const programId=options.programId||state.lastProgramId||commentConnection.programId;
 if(!programId){toast("先に「放送・枠管理」で配信中の放送IDを確認してください。");return false;}
 const ok=skipConfirmation||confirm("ニコ生の放送へ「"+item.title+"」を引用再生します。\\n\\n視聴者に動画が流れます。放送主権限が必要です。実行しますか？");
 if(!ok)return false;
 try{
 const validation=await window.kananeoApp.niconico.validateVideo(item.videoId||item.url);
 if(!validation?.ok){toast(validation?.message||"引用再生できる動画IDではありません。");return false;}
+if(options.autoLive){
+ if(!state.playback.autoPlayOnOwnLive||state.playback.lastAutoPlayProgramId!==programId||
+    (quotePlayback.active&&quotePlayback.programId===programId))return false;
+ const checked=await window.kananeoApp.niconico.getCurrentQuotation({programId});
+ if(!checked?.ok||checked.exists)return false;
+}
 const result=await window.kananeoApp.niconico.playQuotedVideo({
 programId,videoId:validation.videoId,confirmed:true,
 mainVolume:state.playback.mainVolume,subVolume:state.playback.subVolume
@@ -1174,6 +1180,7 @@ state.player.quoteDurationMs=storedQuoteDurationMs(item);
 state.player.quoteVideoId=validation.videoId;
 state.player.quoteExpectedEndAt=state.player.quoteDurationMs>0?startedAt+state.player.quoteDurationMs+Number(state.playback.nextIntervalSeconds||0)*1000:0;
 quotePlayback={active:true,verified:!!result.verified,programId,videoId:result.videoId,queueType,itemId:item.id,message:result.message};
+quoteMetadataMessage="";
 state.logs.unshift("ニコ生へ引用再生："+item.title);
 scheduleQuoteAutoNext(item,startedAt);
 scheduleAutoPollOnQuote(programId,validation.videoId,startedAt);
@@ -1209,9 +1216,9 @@ for(const list of [state.requests,state.stocks])list.forEach(x=>{if(x.id===stopp
 if(state.player.currentId===stoppedItemId){state.player.currentId="";}save();if(page==="player"||page==="requests"||page==="stocks")render();toast(result.message);
 }
 async function playNextQuoteItem(options={}){
-const endAt=Number(state.lastProgramEndAt);
+const endAt=Number(options.endTime??state.lastProgramEndAt);
 const remainingMs=endAt>0?endAt*1000-Date.now():null;
-const selected=await window.kananeoApp.niconico.selectPlaybackCandidate({
+const selected=options.selectedCandidate||await window.kananeoApp.niconico.selectPlaybackCandidate({
 requests:state.requests.map(x=>({...x,lengthMs:Number(x.lengthMs)||0})),
 stocks:(options.triggeredByAuto&&!state.playback.stockAutoPlay?[]:state.stocks).map(x=>({...x,lengthMs:Number(x.lengthMs)||0})),
 playStyle:state.playback.playStyle,
@@ -1221,7 +1228,10 @@ remainingMs
 if(!selected){if(!options.triggeredByAuto)toast("再生可能なリクエスト・ストックがありません。放送残り時間や引用可否も確認してください。");return false;}
 const list=selected.queue==="stock"?state.stocks:state.requests;
 const item=list[selected.index];
-return await playQuotedQueueItem(item,selected.queue,options.skipConfirmation===true);
+if(!item||options.triggeredByAuto&&["completed","skipped","rejected","playing"].includes(String(item.status||"").toLowerCase()))return false;
+return await playQuotedQueueItem(item,selected.queue,options.skipConfirmation===true,{
+ programId:options.programId||"",autoLive:options.triggeredByAuto===true
+});
 }
 async function playQueueItem(item,queueType="request"){
 if(!item)return false;
@@ -1478,7 +1488,7 @@ return result;
 }
 async function stopAutomaticPoll(reason="自動アンケートを停止しました。"){
 stopPollDeadlineGuard();
-if(!pollRuntime.active)return;
+if(!pollRuntime.active){if(pollStartPending)pollRunToken++;return;}
 const programId=pollCurrentProgramId;
 pollRunToken++;
 pollRuntime.active=false;
@@ -1495,7 +1505,10 @@ setPollRuntime("idle",reason);
 toast(reason);
 }
 async function startAutomaticPoll(){
- if(pollRuntime.active){toast("自動アンケートは既に実行中です。");return;}
+ if(pollRuntime.active||pollStartPending){toast("自動アンケートは既に実行中・開始準備中です。");return;}
+ pollStartPending=true;
+ const setupGeneration=pollRunToken;
+ try{
  if(pollEnqueteOpen){
   const cleared=await finishActiveEnquete(pollCurrentProgramId||state.lastProgramId||commentConnection.programId);
   if(!cleared?.ok){toast(cleared?.message||"前回のアンケートを終了できません。");return;}
@@ -1531,6 +1544,11 @@ async function startAutomaticPoll(){
  if(quotePlayback.active&&storedQuoteDurationMs(activeQuotedQueueItem())<=0){
   setPollRuntime("starting","動画の長さを自動取得しています…");
   await ensureCurrentQuoteDuration();
+ }
+ if(setupGeneration!==pollRunToken)return;
+ if(expectedVideoId&&quotePlayback.active&&String(quotePlayback.videoId||"").toLowerCase()!==expectedVideoId){
+  pollTimingSummary="確認中に引用動画が切り替わりました。別動画への誤投票を防ぐため開始しません。";
+  setPollRuntime("skipped",pollTimingSummary,[]);return;
  }
  const media=activePollMedia();
  if(quotePlayback.active&&(!Number.isFinite(media.startedAt)||media.startedAt<=0)){
@@ -1654,6 +1672,7 @@ async function startAutomaticPoll(){
    save();
   }
  }
+}finally{pollStartPending=false;}
 }
 function currentFilteredComments(){
 const q=(document.getElementById("comments-search")?.value||"").trim().toLocaleLowerCase();
@@ -2896,7 +2915,7 @@ document.addEventListener("change",e=>{
    e.target.checked=false;return;
   }
   state.poll.autoOnQuote=e.target.checked===true;
-  if(!state.poll.autoOnQuote)cancelPendingAutoPoll();
+  if(!state.poll.autoOnQuote){cancelPendingAutoPoll();if(pollStartPending&&!pollRuntime.active)pollRunToken++;}
   save();toast(state.poll.autoOnQuote?"引用再生連動アンケートをONにしました。":"引用再生連動アンケートをOFFにしました。");
   return;
  }
