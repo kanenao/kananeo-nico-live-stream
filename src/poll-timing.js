@@ -8,9 +8,15 @@ function mediaPlan(input={}){
  const startWaitSeconds=Number(input.startWaitSeconds??0);
  const voteSeconds=Number(input.voteSeconds),resultSeconds=Number(input.resultSeconds);
  const safetySeconds=Number(input.safetySeconds??SAFETY_SECONDS);
- if(![now,startedAt,durationMs,startWaitSeconds,voteSeconds,resultSeconds,safetySeconds].every(Number.isFinite)||
-    now<=0||startedAt<=0||durationMs<=0||startWaitSeconds<0||voteSeconds<3||resultSeconds<0||safetySeconds<0){
-  return {ok:false,code:"UNKNOWN_VIDEO_DURATION",message:"動画の再生開始時刻・長さを確認できないため、アンケートを省略しました。"};
+ if(![now,startWaitSeconds,voteSeconds,resultSeconds,safetySeconds].every(Number.isFinite)||
+    now<=0||startWaitSeconds<0||voteSeconds<3||resultSeconds<0||safetySeconds<0){
+  return {ok:false,code:"INVALID_POLL_SETTINGS",message:"アンケートの待機・投票・結果表示の時間設定を確認してください。"};
+ }
+ if(!Number.isFinite(startedAt)||startedAt<=0||startedAt>now){
+  return {ok:false,code:"UNKNOWN_QUOTE_START",message:"現在の動画の再生開始時刻を確認できません。アプリから引用再生を開始してください。"};
+ }
+ if(!Number.isFinite(durationMs)||durationMs<=0){
+  return {ok:false,code:"UNKNOWN_VIDEO_DURATION",message:"現在の動画の長さを取得できません。動画時間の自動取得または手動設定を確認してください。"};
  }
  const remainingMs=Math.max(0,durationMs-Math.max(0,now-startedAt));
  const requiredSeconds=startWaitSeconds+voteSeconds+resultSeconds+safetySeconds;
