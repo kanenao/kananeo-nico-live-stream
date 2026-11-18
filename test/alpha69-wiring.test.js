@@ -31,7 +31,7 @@ test("auto-start requests is opt-in and runs only on confirmed own ON_AIR status
  assert.match(renderer,/\["ON_AIR","ONAIR"\]/);
  assert.match(renderer,/state\.playback\.lastAutoPlayProgramId=id/);
  assert.match(renderer,/getCurrentQuotation\(\{programId:id\}\)/);
- assert.match(renderer,/playNextQuoteItem\(\{triggeredByAuto:true,skipConfirmation:true\}\)/);
+ assert.match(renderer,/triggeredByAuto:true,skipConfirmation:true,programId:id/);
  const own=read("src/own-broadcast-monitor.js");
  assert.match(own,/programStatus:String\(x\.programStatus/);
 });

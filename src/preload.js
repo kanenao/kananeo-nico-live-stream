@@ -4,7 +4,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
-  version:"0.2.0-alpha.73",
+  version:"0.2.0-alpha.74",
   platform:process.platform,
   stage:"https-lan-remote-control",
   remote:Object.freeze({
@@ -72,6 +72,7 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
     configureAutoNext:settings=>ipcRenderer.invoke("niconico:auto-next-configure",settings),
     checkAutoNext:()=>ipcRenderer.invoke("niconico:auto-next-check"),
     getAutoNextStatus:()=>ipcRenderer.invoke("niconico:auto-next-status"),
+    getOwnBroadcast:()=>ipcRenderer.invoke("niconico:own-broadcast"),
     getOwnMonitorStatus:()=>ipcRenderer.invoke("niconico:own-monitor-status"),
     checkOwnMonitor:()=>ipcRenderer.invoke("niconico:own-monitor-check"),
     onOwnMonitorStatus:callback=>{
@@ -106,6 +107,12 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
       const listener=(_event,status)=>callback(status);
       ipcRenderer.on("niconico:auto-next-status",listener);
       return ()=>ipcRenderer.removeListener("niconico:auto-next-status",listener);
+    },
+    onCreatedBroadcast:callback=>{
+      if(typeof callback!=="function")return ()=>{};
+      const listener=(_event,info)=>callback(info);
+      ipcRenderer.on("niconico:created-broadcast",listener);
+      return ()=>ipcRenderer.removeListener("niconico:created-broadcast",listener);
     },
     openBroadcastManage:programId=>ipcRenderer.invoke("niconico:open-broadcast-manage",programId),
     controlProgram:(programId,action)=>ipcRenderer.invoke("niconico:program-control",{programId,action}),
