@@ -85,6 +85,12 @@ let quoteMetadataPending=null;
 let quoteMetadataAttempt={key:"",at:0};
 let quoteMetadataMessage="";
 let autoLiveQuotePending="";
+let autoLiveQuoteMessage="自分の放送開始と待機中のリクエストを確認しています。";
+function setAutoLiveQuoteMessage(message){
+ autoLiveQuoteMessage=String(message||"").slice(0,240);
+ const node=document.getElementById("request-auto-status");
+ if(node)node.textContent="自動再生の状態："+autoLiveQuoteMessage;
+}
 const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,stockAutoPlay:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,autoPlayOnOwnLive:false,lastAutoPlayProgramId:"",nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true,autoOnQuote:false},automation:{autoNext:false,autoCreate:false,autoStartProgram:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,autoVideo:false,notifyOnLive:false,ownAccount:true,targets:[],history:[]},liveVideoZoom:{zoomMode:"auto",zoomPercent:70},logs:["β2 UIプロトタイプを起動しました"]};
 let remoteAuditEntries=[],remoteAuditFilters={query:"",type:"all",from:"",to:""},remoteAuditNotificationEnabled=true;
 let state=load(),page="dashboard";
@@ -144,26 +150,61 @@ async function maybeAutoPlayOnOwnLive(info){
  if(!state.playback.autoPlayOnOwnLive||!/^lv\d{1,20}$/.test(id)||
     !["ON_AIR","ONAIR"].includes(String(info.programStatus||"").toUpperCase()))return;
  if(state.playback.lastAutoPlayProgramId===id||autoLiveQuotePending===id)return;
- if(quotePlayback.active||!state.requests.some(x=>x.status==="queued")&&
-    !(state.playback.stockAutoPlay&&state.stocks.some(x=>x.status==="queued")))return;
+ // A quotation from the previous live must not block this new program.
+ if(quotePlayback.active&&quotePlayback.programId===id){
+  setAutoLiveQuoteMessage("この番組では既に動画を引用再生中です。");return;
+ }
+ const queued=item=>!["completed","skipped","rejected","playing"].includes(String(item?.status||"queued").toLowerCase());
+ if(!state.requests.some(queued)&&!(state.playback.stockAutoPlay&&state.stocks.some(queued))){
+  setAutoLiveQuoteMessage("再生待ちのリクエストがありません。追加されたら次の監視時に再確認します。");
+  return;
+ }
  autoLiveQuotePending=id;
  try{
   const verification=await window.kananeoApp.niconico.checkProgram(id);
-  if(!verification?.ok||!["ON_AIR","ONAIR"].includes(String(verification.programStatus||"").toUpperCase()))return;
-  if(!state.playback.autoPlayOnOwnLive||quotePlayback.active)return;
-  // Fail closed if the quotation is already active on Nico itself.
+  if(!verification?.ok){
+   setAutoLiveQuoteMessage("放送状態の確認に失敗："+String(verification?.message||"通信エラー"));return;
+  }
+  if(!["ON_AIR","ONAIR"].includes(String(verification.programStatus||"").toUpperCase())){
+   setAutoLiveQuoteMessage("放送開始を確認中："+String(verification.programStatus||"状態不明"));return;
+  }
+  if(!state.playback.autoPlayOnOwnLive||(quotePlayback.active&&quotePlayback.programId===id))return;
+  // Never replace a quotation already running on the actual Nico live.
   const current=await window.kananeoApp.niconico.getCurrentQuotation({programId:id});
-  if(!current?.ok||current.exists)return;
+  if(!current?.ok){
+   setAutoLiveQuoteMessage("引用再生状態の確認に失敗："+String(current?.message||"通信エラー"));return;
+  }
+  if(current.exists){setAutoLiveQuoteMessage("ニコ生側で既に引用再生中です。上書きしません。");return;}
+  // The cached end time belongs to an older broadcast until this exact live is verified.
+  const endTime=Number(verification.endTime);
   state.lastProgramId=id;
+  state.lastProgramTitle=verification.title||id;
+  state.lastProgramStatus=verification.programStatus||"ON_AIR";
+  state.lastProgramEndAt=Number.isFinite(endTime)&&endTime>0?endTime:0;
+  save();
+  const remainingMs=state.lastProgramEndAt>0?state.lastProgramEndAt*1000-Date.now():null;
+  const selected=await window.kananeoApp.niconico.selectPlaybackCandidate({
+   requests:state.requests.map(x=>({...x,lengthMs:Number(x.lengthMs)||0})),
+   stocks:(state.playback.stockAutoPlay?state.stocks:[]).map(x=>({...x,lengthMs:Number(x.lengthMs)||0})),
+   playStyle:state.playback.playStyle,randomStock:state.playback.randomStock,remainingMs
+  });
+  if(!selected){
+   setAutoLiveQuoteMessage("再生候補がありません。動画時間、引用制限、放送の残り時間を確認してください。");
+   return; // No playback request was sent; do not consume this broadcast's one attempt.
+  }
+  if(!state.playback.autoPlayOnOwnLive||state.playback.lastAutoPlayProgramId===id||
+     (quotePlayback.active&&quotePlayback.programId===id))return;
   state.playback.lastAutoPlayProgramId=id;
-  save(); // one attempt per program, even if API times out
+  save(); // An uncertain quotation API result must not trigger repeated POST/PATCH.
+  setAutoLiveQuoteMessage("番組 "+id+" で動画リクエストの引用再生を要求しています。");
   const played=await playNextQuoteItem({triggeredByAuto:true,skipConfirmation:true});
+  setAutoLiveQuoteMessage(played?"自動引用再生を開始しました。":"自動引用再生の要求に失敗しました。ログを確認して手動操作で再確認してください。");
   toast(played?"新しい自分の放送で動画リクエストの自動再生を開始しました。":
    "自動再生を開始できませんでした。手動操作で状態を確認してください。");
-  // A failed or uncertain attempt is still consumed. Do not flood an actual broadcast with retries.
-  save();
- }catch(error){toast("放送開始後の自動再生を確認できませんでした。手動で確認してください。");}
- finally{if(autoLiveQuotePending===id)autoLiveQuotePending="";}
+ }catch(error){
+  setAutoLiveQuoteMessage("自動再生の確認に失敗："+String(error?.message||"通信エラー"));
+  toast("放送開始後の自動再生を確認できませんでした。手動で確認してください。");
+ }finally{if(autoLiveQuotePending===id)autoLiveQuotePending="";}
 }
 
 function applyOwnMonitorStatus(status){
@@ -644,7 +685,7 @@ panel("システムログ","ローカルに記録した直近の操作",state.lo
 const waiting=state.requests.filter(x=>!["completed","skipped","rejected"].includes(x.status)).length;
 const requestRows=state.requests.map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+(x.status==="playing"?"再生中":x.status==="completed"?"再生済み":x.status==="skipped"?"スキップ":x.status==="rejected"?"引用不可":"待機中")+'</td><td>'+esc(x.title)+(x.requestUserId?'<div class="muted">リクエスト者：'+esc(getRequesterDisplayName(x))+'</div>':"")+'</td><td>'+esc(x.videoId||x.url)+'</td><td><button class="btn" data-play="'+esc(x.id)+'">プレビュー</button> <button class="btn primary" data-quote-request="'+esc(x.id)+'">ニコ生へ送る</button> <button class="btn" data-up="'+i+'" '+(i===0?"disabled":"")+'>&uarr;</button> <button class="btn" data-down="'+i+'" '+(i===state.requests.length-1?"disabled":"")+'>&darr;</button> <button class="btn" data-remove="'+esc(x.id)+'">削除</button></td></tr>').join("");
 html=hero("VIEWER REQUESTS","動画リクエスト","視聴者から受け付けた動画を管理します。プレビューとニコ生への引用再生は別操作です。")+
-panel("放送開始時の動画リクエスト自動再生","自分の番組がON_AIRになったら先頭のリクエストを一度だけ引用再生します。",'<label class="switchrow"><span><b>番組開始時に動画を自動再生</b><small>初期OFF。自分の放送のみ。リクエスト優先、ストックはストック自動再生ON時だけ利用。番組ごとに一回だけ試行します。</small></span><input type="checkbox" id="request-auto-on-live" '+(state.playback.autoPlayOnOwnLive?"checked":"")+'></label><div class="muted">配信開始の検知後に放送状態と引用状態を確認します。すでに別の動画を引用再生中の場合は変更しません。</div>')+
+panel("放送開始時の動画リクエスト自動再生","自分の番組がON_AIRになったら先頭のリクエストを一度だけ引用再生します。",'<label class="switchrow"><span><b>番組開始時に動画を自動再生</b><small>初期OFF。自分の放送のみ。リクエスト優先、ストックはストック自動再生ON時だけ利用。番組ごとに一回だけ試行します。</small></span><input type="checkbox" id="request-auto-on-live" '+(state.playback.autoPlayOnOwnLive?"checked":"")+'></label><div class="muted">配信開始の検知後に放送状態と引用状態を確認します。すでに別の動画を引用再生中の場合は変更しません。</div><div class="muted" id="request-auto-status">自動再生の状態：'+esc(autoLiveQuoteMessage)+'</div>')+
 panel("動画リクエストを追加","動画ID・watch URLと、分かる場合は動画時間も登録します。",'<form id="request-form" class="grid3">'+field("動画タイトル（任意）","req-title","","未入力なら動画IDを表示")+field("動画URL / ID","req-url","","sm12345678 または動画URL")+field("動画時間（秒・任意）","req-duration","","例：240")+'<button class="btn primary">キューに追加</button></form><label class="switchrow"><span><b>コメントからリクエスト自動受付</b><small>明示コマンドのみ受付。NGユーザー・NGワード・重複・上限を順に確認します。</small></span><input type="checkbox" id="request-from-comments" '+(state.requestSettings.acceptComments?"checked":"")+'></label><div class="field"><label>1ユーザーあたりの未再生リクエスト上限（1〜50）</label><input class="input" id="request-max-per-user" type="number" min="1" max="50" value="'+(state.requestSettings.maxPerUser||5)+'"></div><label class="switchrow"><span><b>受付結果を運営コメントで自動返信</b><small>初期設定OFF。配信主権限が必要で、送信間隔は最低5秒に制限します。</small></span><input type="checkbox" id="request-reply-enabled" '+(state.requestSettings.replyEnabled?"checked":"")+'></label><div class="field"><label>受付時の返信（80文字以内）</label><textarea class="input" id="request-reply-accepted" rows="2" maxlength="80">'+esc(state.requestSettings.replyAccepted||initial.requestSettings.replyAccepted)+'</textarea></div><div class="field"><label>却下時の返信（80文字以内）</label><textarea class="input" id="request-reply-rejected" rows="2" maxlength="80">'+esc(state.requestSettings.replyRejected||initial.requestSettings.replyRejected)+'</textarea></div><div class="muted">使用できる置換：{video_id}、{comment_no}、{reason}。受付返信はキュー登録後、却下返信はNG・重複・上限などの判定後に送信します。一般コメントとしてではなく、ニコ生の運営コメントとして投稿されます。</div><div class="muted">「プレビュー」は動画ページを開くだけです。「ニコ生へ送る」は放送中の番組に引用再生を要求します。</div>')+
 panel("リクエストキュー",waiting+" 件が未再生",state.requests.length?'<table class="table"><thead><tr><th>#</th><th>状態</th><th>タイトル</th><th>動画ID</th><th>操作</th></tr></thead><tbody>'+requestRows+'</tbody></table><div class="actions"><button class="btn" data-player-next>次の動画をプレビュー</button><button class="btn primary" data-quote-next>次の動画をニコ生へ引用再生</button><button class="btn" data-clear>リクエストを全消去</button><button class="btn" data-go="stocks">ストックを管理</button></div>':'<div class="empty">リクエストキューは空です。</div>');
 }else if(page==="stocks"){
@@ -1021,7 +1062,7 @@ quoteAutoBusy=false;
 async function getNextQueueItem(){const selected=await window.kananeoApp.niconico.findNextQueueItem(state.requests.map(x=>({id:x.id,status:x.status})),state.player.currentId);return selected?state.requests.find(x=>x.id===selected.id)||null:null;}
 async function refreshQuotePlayback(options={}){
 const silent=options.silent===true;
-const programId=state.lastProgramId||quotePlayback.programId;
+const programId=(quotePlayback.active?quotePlayback.programId:state.lastProgramId)||state.lastProgramId||quotePlayback.programId;
 if(!programId){if(!silent)toast("先に「放送・枠管理」で番組IDを確認してください。");return {ok:false};}
 const result=await window.kananeoApp.niconico.getCurrentQuotation({programId});
 if(!result?.ok){
@@ -1224,7 +1265,7 @@ const wait=Number(document.getElementById("poll-wait")?.value??state.poll.wait);
 const result=Number(document.getElementById("poll-result")?.value??state.poll.result);
 const continueLabel=document.getElementById("poll-continue")?.value.trim()||state.poll.continue;
 const nextLabel=document.getElementById("poll-next")?.value.trim()||state.poll.next;
-state.poll={question,wait,result,continue:continueLabel,next:nextLabel,tie:true,zero:true};
+state.poll={...state.poll,question,wait,result,continue:continueLabel,next:nextLabel,tie:true,zero:true};
 save();
 }
 function setPollRuntime(status,message,result){
@@ -1352,9 +1393,15 @@ function scheduleAutoPollOnQuote(programId,videoId,startedAt){
 }
 
 function activePollMedia(now=Date.now()){
- return {now,startedAt:Number(state.player.quoteStartedAt),
-   durationMs:storedQuoteDurationMs(activeQuotedQueueItem()),
-   videoId:String(quotePlayback.videoId||state.player.quoteVideoId||"")};
+ const programId=String(quotePlayback.programId||"").toLowerCase();
+ const videoId=String(quotePlayback.videoId||"").toLowerCase();
+ const startedAt=Number(state.player.quoteStartedAt);
+ const trusted=window.KananeoQuoteTiming.trustedQuoteStart({
+  programId,videoId,storedProgramId:state.player.quoteProgramId,
+  storedVideoId:state.player.quoteVideoId,startedAt
+ },now);
+ return {now,startedAt:trusted?startedAt:0,
+   durationMs:storedQuoteDurationMs(activeQuotedQueueItem()),videoId};
 }
 function safePollVideoMatches(){
  return !!(quotePlayback.active&&pollVideoId&&(quotePlayback.videoId||state.player.quoteVideoId)===pollVideoId);
@@ -1442,9 +1489,30 @@ async function startAutomaticPoll(){
   if(!cleared?.ok){toast(cleared?.message||"前回のアンケートを終了できません。");return;}
  }
  savePollSettings();
- const programId=state.lastProgramId||commentConnection.programId;
+ const programId=(quotePlayback.active?quotePlayback.programId:state.lastProgramId)||state.lastProgramId||commentConnection.programId;
  if(!programId){toast("先に「放送・枠管理」で放送IDを確認してください。");return;}
  const input={programId,question:state.poll.question,choices:[state.poll.continue,state.poll.next],waitSeconds:Number(state.poll.wait),resultSeconds:Number(state.poll.result)};
+ // When the app just started a quote, Nico can report the previous state briefly.
+ // Retry read-only verification before invalidating the known start timestamp.
+ const expectedVideoId=String(quotePlayback.videoId||"").toLowerCase();
+ const locallyStarted=quotePlayback.active&&window.KananeoQuoteTiming.trustedQuoteStart({
+  programId,videoId:expectedVideoId,storedProgramId:state.player.quoteProgramId,
+  storedVideoId:state.player.quoteVideoId,startedAt:state.player.quoteStartedAt
+ });
+ if(locallyStarted){
+  let confirmed=false;
+  for(let attempt=0;attempt<3;attempt++){
+   const observed=await window.kananeoApp.niconico.getCurrentQuotation({programId});
+   if(observed?.ok&&observed.exists&&String(observed.currentVideoId||"").toLowerCase()===expectedVideoId){
+    confirmed=true;break;
+   }
+   if(attempt<2)await new Promise(resolve=>setTimeout(resolve,1200));
+  }
+  if(!confirmed){
+   pollTimingSummary="引用再生直後の動画状態をニコ生側で確認できませんでした。誤った動画への投票を防ぐため省略します。再生開始時刻は保持します。";
+   setPollRuntime("skipped",pollTimingSummary,[]);toast(pollTimingSummary);return;
+  }
+ }
  // A stale cached quotation must never trigger a poll on a different video.
  const currentQuote=await refreshQuotePlayback({silent:true});
  if(!currentQuote?.ok){pollTimingSummary="引用再生の状態を確認できないためアンケートを開始できません。";setPollRuntime("skipped",pollTimingSummary,[]);toast(pollTimingSummary);return;}
@@ -2824,6 +2892,7 @@ document.addEventListener("change",e=>{
   const enabled=e.target.checked===true;
   if(enabled&&!state.playback.autoPlayOnOwnLive&&!confirm("自分の番組開始を検知したら、視聴者へ動画リクエストを自動で引用再生します。有効にしますか？")){e.target.checked=false;return;}
   state.playback.autoPlayOnOwnLive=enabled;
+  setAutoLiveQuoteMessage(enabled?"自分の放送開始を確認しています。":"自動再生はOFFです。");
   // Keep the attempted program ID even if this switch is toggled during the same live.
   save();toast(enabled?"放送開始時の動画自動再生をONにしました。":"放送開始時の動画自動再生をOFFにしました。");
   if(enabled){for(const item of ownMonitorStatus.activePrograms||[])void maybeAutoPlayOnOwnLive(item);}
