@@ -12,6 +12,7 @@ const orderedScripts=[...html.matchAll(/<script\s+src="([^"]+)"\s*><\/script>/g)
 const exportsExpected=[
  "KananeoQuoteScheduler",
  "KananeoQuoteTiming",
+ "KananeoAutoPoll",
  "KananeoPollTiming",
  "KananeoUserProfiles",
  "KananeoCommentSpeech",
@@ -76,6 +77,7 @@ test("browser scripts load together in real HTML order without duplicate lexical
  for(const name of exportsExpected)assert.ok(page.sandbox[name],name+" was not registered");
  assert.equal(typeof page.sandbox.KananeoQuoteScheduler.createQuoteSchedule,"function");
  assert.equal(typeof page.sandbox.KananeoQuoteTiming.trustedQuoteTiming,"function");
+ assert.equal(typeof page.sandbox.KananeoAutoPoll.canAutoPoll,"function");
  assert.equal(typeof page.sandbox.KananeoQuoteTiming.trustedQuoteStart,"function");
  assert.equal(typeof page.sandbox.KananeoStreamMonitor.checkStreamMonitorTargets,"function");
  assert.match(page.nodes.get("content").innerHTML,/配信コントロールセンター/);
