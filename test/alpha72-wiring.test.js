@@ -16,7 +16,7 @@ test("quote start alone schedules poll; toggling off or manual stop cancels pend
  assert.match(ui,/if\(!state\.poll\.autoOnQuote\|\|!quotePlayback\.active\|\|pollRuntime\.active\)return/);
  assert.match(ui,/void startAutomaticPoll\(\)/);
  assert.match(ui,/state\.poll\.autoOnQuote=false;save\(\);cancelPendingAutoPoll\(\)/);
- assert.match(ui,/if\(!state\.poll\.autoOnQuote\)cancelPendingAutoPoll\(\)/);
+ assert.match(ui,/if\(!state\.poll\.autoOnQuote\)\{cancelPendingAutoPoll\(\)/);
 });
 test("script loads before renderer without shared-scope collisions",()=>{
  assert.ok(html.indexOf('src="auto-poll-policy.js"')<html.indexOf('src="renderer.js"'));
