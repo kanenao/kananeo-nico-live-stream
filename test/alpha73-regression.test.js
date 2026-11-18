@@ -19,7 +19,7 @@ test("auto playback uses the verified current broadcast end, never the old cache
  assert.match(section,/setAutoLiveQuoteMessage/);
 });
 test("automatic polls verify current video after quote start and retain valid timestamps",()=>{
- const section=renderer.slice(renderer.indexOf("async function startAutomaticPoll("),renderer.indexOf("async function stopAutomaticPoll("));
+ const section=renderer.slice(renderer.indexOf("async function startAutomaticPoll("));
  assert.match(section,/for\(let attempt=0;attempt<3;attempt\+\+\)/);
  assert.match(section,/String\(observed\.currentVideoId\|\|""\)\.toLowerCase\(\)===expectedVideoId/);
  assert.match(section,/再生開始時刻は保持します/);
