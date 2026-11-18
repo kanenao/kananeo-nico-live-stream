@@ -80,6 +80,7 @@ let pollVideoId="";
 let pollTimingSummary="";
 let pollVerifiedRound=false;
 let quoteMetadataPending=null;
+let quoteMetadataAttempt={key:"",at:0};
 let quoteMetadataMessage="";
 let autoLiveQuotePending="";
 const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,stockAutoPlay:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,autoPlayOnOwnLive:false,lastAutoPlayProgramId:"",nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoCreate:false,autoStartProgram:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,autoVideo:false,notifyOnLive:false,ownAccount:true,targets:[],history:[]},liveVideoZoom:{zoomMode:"auto",zoomPercent:70},logs:["β2 UIプロトタイプを起動しました"]};
@@ -1050,16 +1051,24 @@ if(!result.exists){
  state.player.quoteProgramId="";
  state.player.quoteExpectedEndAt=0;
 }else{
- const trusted=window.KananeoQuoteTiming.trustedQuoteTiming({
+ const timingContext={
   programId,videoId:result.currentVideoId,storedProgramId:state.player.quoteProgramId,
   storedVideoId:state.player.quoteVideoId,startedAt:state.player.quoteStartedAt,
   durationMs:state.player.quoteDurationMs
- });
+ };
+ const trusted=window.KananeoQuoteTiming.trustedQuoteTiming(timingContext);
  if(trusted){
   if(!pollRuntime.active) {
    const scheduleItem={videoId:result.currentVideoId,lengthMs:Number(state.player.quoteDurationMs)};
    scheduleQuoteAutoNext(scheduleItem,Number(state.player.quoteStartedAt));
   }
+ }else if(window.KananeoQuoteTiming.trustedQuoteStart(timingContext)&&
+           Number(state.player.quoteDurationMs)<=0){
+  // The app really started this exact quotation, but its duration is still
+  // missing. Preserve the start time so a later metadata response can repair it.
+  state.player.quoteExpectedEndAt=0;
+  clearQuoteAutoTimer("引用再生の開始時刻を保持し、動画の長さを取得しています。");
+  void ensureCurrentQuoteDuration();
  }else{
   // Never inherit an earlier video's timestamp, even when it exists in the queue.
   state.player.quoteStartedAt=0;
@@ -1241,32 +1250,49 @@ function suspendQuoteAutoForPoll(){
  save();updateQuoteScheduleUi();
 }
 
-async function ensureCurrentQuoteDuration(){
- const id=String(quotePlayback.videoId||state.player.quoteVideoId||"").toLowerCase();
- if(!/^(?:sm|nm|so)\d{1,12}$/.test(id))return false;
+async function ensureCurrentQuoteDuration(options={}){
+ const programId=String(quotePlayback.programId||"").toLowerCase();
+ const id=String(quotePlayback.videoId||"").toLowerCase();
+ if(!quotePlayback.active||!/^lv\d{1,20}$/.test(programId)||
+    !/^(?:sm|nm|so)\d{1,12}$/.test(id))return false;
  if(storedQuoteDurationMs(activeQuotedQueueItem())>0)return true;
- if(quoteMetadataPending?.videoId===id)return quoteMetadataPending.promise;
+ const key=programId+":"+id;
+ if(quoteMetadataPending?.key===key)return quoteMetadataPending.promise;
+ // Automatic refreshes are throttled, but a user pressing "取得" can retry.
+ if(options.force!==true&&quoteMetadataAttempt.key===key&&
+    Date.now()-quoteMetadataAttempt.at<60000)return false;
+ quoteMetadataAttempt={key,at:Date.now()};
  const request=(async()=>{
   const result=await window.kananeoApp.niconico.getVideoMetadata(id);
   if(!result?.ok){
    quoteMetadataMessage=String(result?.message||"動画情報を取得できませんでした。").slice(0,180);
    return false;
   }
-  if(quotePlayback.videoId!==id){
-   quoteMetadataMessage="動画が切り替わったため、古い動画の再生時間は破棄しました。";
+  if(!quotePlayback.active||quotePlayback.programId!==programId||quotePlayback.videoId!==id){
+   quoteMetadataMessage="動画または番組が切り替わったため、古い動画情報を破棄しました。";
    return false;
   }
+  const durationMs=Number(result.durationMs);
+  if(!Number.isFinite(durationMs)||durationMs<=0||durationMs>86400000)return false;
   quoteMetadataMessage="";
-  const item=[...state.requests,...state.stocks].find(x=>x.videoId===id);
-  if(item)item.lengthMs=result.durationMs;
-  state.player.quoteDurationMs=result.durationMs;
+  const item=activeQuotedQueueItem();
+  if(item)item.lengthMs=durationMs;
+  state.player.quoteDurationMs=durationMs;
+  state.player.quoteVideoId=id;
+  state.player.quoteProgramId=programId;
   save();
   const started=Number(state.player.quoteStartedAt);
-  if(started>0&&!pollRuntime.active&&state.playback.quoteAutoNext)
-   scheduleQuoteAutoNext(item||{videoId:id,lengthMs:result.durationMs},started);
+  const timingContext={programId,videoId:id,storedProgramId:state.player.quoteProgramId,
+    storedVideoId:state.player.quoteVideoId,startedAt:started,durationMs};
+  if(!pollRuntime.active&&state.playback.quoteAutoNext&&
+     window.KananeoQuoteTiming.trustedQuoteTiming(timingContext))
+   scheduleQuoteAutoNext(item||{videoId:id,lengthMs:durationMs},started);
   return true;
- })().catch(()=>false).finally(()=>{if(quoteMetadataPending?.videoId===id)quoteMetadataPending=null;});
- quoteMetadataPending={videoId:id,promise:request};
+ })().catch(error=>{
+  quoteMetadataMessage="動画情報の取得で通信エラーが発生しました。";
+  return false;
+ }).finally(()=>{if(quoteMetadataPending?.key===key)quoteMetadataPending=null;});
+ quoteMetadataPending={key,promise:request};
  return request;
 }
 
@@ -2586,7 +2612,7 @@ if(b.hasAttribute("data-player-close")){window.kananeoApp.niconico.closeVideo().
 if(b.hasAttribute("data-poll-duration-fetch")){
  const id=String(quotePlayback.videoId||state.player.quoteVideoId||"");
  if(!id){toast("先にニコ生で引用再生中の動画を確認してください。");return;}
- const ok=await ensureCurrentQuoteDuration();
+ const ok=await ensureCurrentQuoteDuration({force:true});
  toast(ok?"動画の長さを取得して保存しました。":(quoteMetadataMessage||"取得できませんでした。")+" 動画時間を手動で入力してください。");
  return;
 }
