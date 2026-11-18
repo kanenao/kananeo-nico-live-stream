@@ -80,6 +80,7 @@ let pollVideoId="";
 let pollTimingSummary="";
 let pollVerifiedRound=false;
 let quoteMetadataPending=null;
+let quoteMetadataAttempt={key:"",at:0};
 let quoteMetadataMessage="";
 let autoLiveQuotePending="";
 const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,stockAutoPlay:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,autoPlayOnOwnLive:false,lastAutoPlayProgramId:"",nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true},automation:{autoNext:false,autoCreate:false,autoStartProgram:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,autoVideo:false,notifyOnLive:false,ownAccount:true,targets:[],history:[]},liveVideoZoom:{zoomMode:"auto",zoomPercent:70},logs:["β2 UIプロトタイプを起動しました"]};
@@ -1050,16 +1051,24 @@ if(!result.exists){
  state.player.quoteProgramId="";
  state.player.quoteExpectedEndAt=0;
 }else{
- const trusted=window.KananeoQuoteTiming.trustedQuoteTiming({
+ const timingContext={
   programId,videoId:result.currentVideoId,storedProgramId:state.player.quoteProgramId,
   storedVideoId:state.player.quoteVideoId,startedAt:state.player.quoteStartedAt,
   durationMs:state.player.quoteDurationMs
- });
+ };
+ const trusted=window.KananeoQuoteTiming.trustedQuoteTiming(timingContext);
  if(trusted){
   if(!pollRuntime.active) {
    const scheduleItem={videoId:result.currentVideoId,lengthMs:Number(state.player.quoteDurationMs)};
    scheduleQuoteAutoNext(scheduleItem,Number(state.player.quoteStartedAt));
   }
+ }else if(window.KananeoQuoteTiming.trustedQuoteStart(timingContext)&&
+           Number(state.player.quoteDurationMs)<=0){
+  // The app really started this exact quotation, but its duration is still
+  // missing. Preserve the start time so a later metadata response can repair it.
+  state.player.quoteExpectedEndAt=0;
+  clearQuoteAutoTimer("引用再生の開始時刻を保持し、動画の長さを取得しています。");
+  void ensureCurrentQuoteDuration();
  }else{
   // Never inherit an earlier video's timestamp, even when it exists in the queue.
   state.player.quoteStartedAt=0;
@@ -1220,7 +1229,7 @@ const label=document.getElementById("poll-status-label");
 const detail=document.getElementById("poll-status-message");
 const results=document.getElementById("poll-results");
 const timing=document.getElementById("poll-timing-summary");
-if(label)label.textContent=({idle:"停止中",voting:"投票中",results:"結果表示中",repeating:"再投票準備中",skipped:"動画尺不足で省略",next:"次動画へ進みました",error:"エラー",stopping:"停止処理中"}[status]||"処理中");
+if(label)label.textContent=({idle:"停止中",voting:"投票中",results:"結果表示中",repeating:"再投票準備中",skipped:"条件未確認・時間不足で省略",next:"次動画へ進みました",error:"エラー",stopping:"停止処理中"}[status]||"処理中");
 if(detail)detail.textContent=message||"";
 if(results&&result)results.textContent=result.map(item=>String(item.name)+"："+Number(item.rate).toFixed(1)+"%").join(" / ");
 if(timing)timing.textContent=pollTimingSummary||"動画の長さを確認してから開始します。";
@@ -1241,32 +1250,78 @@ function suspendQuoteAutoForPoll(){
  save();updateQuoteScheduleUi();
 }
 
-async function ensureCurrentQuoteDuration(){
- const id=String(quotePlayback.videoId||state.player.quoteVideoId||"").toLowerCase();
- if(!/^(?:sm|nm|so)\d{1,12}$/.test(id))return false;
- if(storedQuoteDurationMs(activeQuotedQueueItem())>0)return true;
- if(quoteMetadataPending?.videoId===id)return quoteMetadataPending.promise;
+async function ensureCurrentQuoteDuration(options={}){
+ const programId=String(quotePlayback.programId||"").toLowerCase();
+ const id=String(quotePlayback.videoId||"").toLowerCase();
+ if(!quotePlayback.active||!/^lv\d{1,20}$/.test(programId)||
+    !/^(?:sm|nm|so)\d{1,12}$/.test(id))return false;
+ const itemWithDuration=activeQuotedQueueItem();
+ const knownDuration=storedQuoteDurationMs(itemWithDuration);
+ if(knownDuration>0){
+  // A queued request can already know its duration while the live timing
+  // record is incomplete. Repair the duration without inventing a start.
+  if(Number(state.player.quoteDurationMs)!==knownDuration){
+   if(!window.KananeoQuoteTiming.trustedQuoteStart({
+    programId,videoId:id,storedProgramId:state.player.quoteProgramId,
+    storedVideoId:state.player.quoteVideoId,startedAt:state.player.quoteStartedAt
+   }))state.player.quoteStartedAt=0;
+   state.player.quoteDurationMs=knownDuration;
+   state.player.quoteVideoId=id;
+   state.player.quoteProgramId=programId;
+   save();
+  }
+  const started=Number(state.player.quoteStartedAt);
+  if(!pollRuntime.active&&state.playback.quoteAutoNext&&
+     window.KananeoQuoteTiming.trustedQuoteTiming({
+      programId,videoId:id,storedProgramId:state.player.quoteProgramId,
+      storedVideoId:state.player.quoteVideoId,startedAt:started,durationMs:knownDuration
+     }))
+   scheduleQuoteAutoNext(itemWithDuration||{videoId:id,lengthMs:knownDuration},started);
+  return true;
+ }
+ const key=programId+":"+id;
+ if(quoteMetadataPending?.key===key)return quoteMetadataPending.promise;
+ // Automatic refreshes are throttled, but a user pressing "取得" can retry.
+ if(options.force!==true&&quoteMetadataAttempt.key===key&&
+    Date.now()-quoteMetadataAttempt.at<60000)return false;
+ quoteMetadataAttempt={key,at:Date.now()};
  const request=(async()=>{
   const result=await window.kananeoApp.niconico.getVideoMetadata(id);
   if(!result?.ok){
    quoteMetadataMessage=String(result?.message||"動画情報を取得できませんでした。").slice(0,180);
    return false;
   }
-  if(quotePlayback.videoId!==id){
-   quoteMetadataMessage="動画が切り替わったため、古い動画の再生時間は破棄しました。";
+  if(!quotePlayback.active||quotePlayback.programId!==programId||quotePlayback.videoId!==id){
+   quoteMetadataMessage="動画または番組が切り替わったため、古い動画情報を破棄しました。";
    return false;
   }
+  const durationMs=Number(result.durationMs);
+  if(!Number.isFinite(durationMs)||durationMs<=0||durationMs>86400000)return false;
   quoteMetadataMessage="";
-  const item=[...state.requests,...state.stocks].find(x=>x.videoId===id);
-  if(item)item.lengthMs=result.durationMs;
-  state.player.quoteDurationMs=result.durationMs;
+  const item=activeQuotedQueueItem();
+  if(item)item.lengthMs=durationMs;
+  // A metadata response must not turn a timestamp from another live into
+  // a trusted start for this live simply by overwriting its program/video IDs.
+  if(!window.KananeoQuoteTiming.trustedQuoteStart({
+   programId,videoId:id,storedProgramId:state.player.quoteProgramId,
+   storedVideoId:state.player.quoteVideoId,startedAt:state.player.quoteStartedAt
+  }))state.player.quoteStartedAt=0;
+  state.player.quoteDurationMs=durationMs;
+  state.player.quoteVideoId=id;
+  state.player.quoteProgramId=programId;
   save();
   const started=Number(state.player.quoteStartedAt);
-  if(started>0&&!pollRuntime.active&&state.playback.quoteAutoNext)
-   scheduleQuoteAutoNext(item||{videoId:id,lengthMs:result.durationMs},started);
+  const timingContext={programId,videoId:id,storedProgramId:state.player.quoteProgramId,
+    storedVideoId:state.player.quoteVideoId,startedAt:started,durationMs};
+  if(!pollRuntime.active&&state.playback.quoteAutoNext&&
+     window.KananeoQuoteTiming.trustedQuoteTiming(timingContext))
+   scheduleQuoteAutoNext(item||{videoId:id,lengthMs:durationMs},started);
   return true;
- })().catch(()=>false).finally(()=>{if(quoteMetadataPending?.videoId===id)quoteMetadataPending=null;});
- quoteMetadataPending={videoId:id,promise:request};
+ })().catch(error=>{
+  quoteMetadataMessage="動画情報の取得で通信エラーが発生しました。";
+  return false;
+ }).finally(()=>{if(quoteMetadataPending?.key===key)quoteMetadataPending=null;});
+ quoteMetadataPending={key,promise:request};
  return request;
 }
 
@@ -1372,6 +1427,10 @@ async function startAutomaticPoll(){
   await ensureCurrentQuoteDuration();
  }
  const media=activePollMedia();
+ if(quotePlayback.active&&(!Number.isFinite(media.startedAt)||media.startedAt<=0)){
+  pollTimingSummary="現在の動画の再生開始時刻が不明です。アプリから引用再生を開始し直してください。動画の長さだけでは開始時刻を推定できません。";
+  setPollRuntime("skipped",pollTimingSummary,[]);toast(pollTimingSummary);return;
+ }
  if(!quotePlayback.active||!media.videoId){
   pollTimingSummary="ニコ生で引用再生中の動画を確認できないため、アンケートを省略しました。";
   setPollRuntime("skipped",pollTimingSummary,[]);toast(pollTimingSummary);return;
@@ -2586,7 +2645,7 @@ if(b.hasAttribute("data-player-close")){window.kananeoApp.niconico.closeVideo().
 if(b.hasAttribute("data-poll-duration-fetch")){
  const id=String(quotePlayback.videoId||state.player.quoteVideoId||"");
  if(!id){toast("先にニコ生で引用再生中の動画を確認してください。");return;}
- const ok=await ensureCurrentQuoteDuration();
+ const ok=await ensureCurrentQuoteDuration({force:true});
  toast(ok?"動画の長さを取得して保存しました。":(quoteMetadataMessage||"取得できませんでした。")+" 動画時間を手動で入力してください。");
  return;
 }
