@@ -1229,7 +1229,7 @@ const label=document.getElementById("poll-status-label");
 const detail=document.getElementById("poll-status-message");
 const results=document.getElementById("poll-results");
 const timing=document.getElementById("poll-timing-summary");
-if(label)label.textContent=({idle:"停止中",voting:"投票中",results:"結果表示中",repeating:"再投票準備中",skipped:"動画尺不足で省略",next:"次動画へ進みました",error:"エラー",stopping:"停止処理中"}[status]||"処理中");
+if(label)label.textContent=({idle:"停止中",voting:"投票中",results:"結果表示中",repeating:"再投票準備中",skipped:"条件未確認・時間不足で省略",next:"次動画へ進みました",error:"エラー",stopping:"停止処理中"}[status]||"処理中");
 if(detail)detail.textContent=message||"";
 if(results&&result)results.textContent=result.map(item=>String(item.name)+"："+Number(item.rate).toFixed(1)+"%").join(" / ");
 if(timing)timing.textContent=pollTimingSummary||"動画の長さを確認してから開始します。";
@@ -1255,7 +1255,26 @@ async function ensureCurrentQuoteDuration(options={}){
  const id=String(quotePlayback.videoId||"").toLowerCase();
  if(!quotePlayback.active||!/^lv\d{1,20}$/.test(programId)||
     !/^(?:sm|nm|so)\d{1,12}$/.test(id))return false;
- if(storedQuoteDurationMs(activeQuotedQueueItem())>0)return true;
+ const itemWithDuration=activeQuotedQueueItem();
+ const knownDuration=storedQuoteDurationMs(itemWithDuration);
+ if(knownDuration>0){
+  // A queued request can already know its duration while the live timing
+  // record is incomplete. Repair the duration without inventing a start.
+  if(Number(state.player.quoteDurationMs)!==knownDuration){
+   state.player.quoteDurationMs=knownDuration;
+   state.player.quoteVideoId=id;
+   state.player.quoteProgramId=programId;
+   save();
+  }
+  const started=Number(state.player.quoteStartedAt);
+  if(!pollRuntime.active&&state.playback.quoteAutoNext&&
+     window.KananeoQuoteTiming.trustedQuoteTiming({
+      programId,videoId:id,storedProgramId:state.player.quoteProgramId,
+      storedVideoId:state.player.quoteVideoId,startedAt:started,durationMs:knownDuration
+     }))
+   scheduleQuoteAutoNext(itemWithDuration||{videoId:id,lengthMs:knownDuration},started);
+  return true;
+ }
  const key=programId+":"+id;
  if(quoteMetadataPending?.key===key)return quoteMetadataPending.promise;
  // Automatic refreshes are throttled, but a user pressing "取得" can retry.
@@ -1398,6 +1417,10 @@ async function startAutomaticPoll(){
   await ensureCurrentQuoteDuration();
  }
  const media=activePollMedia();
+ if(quotePlayback.active&&(!Number.isFinite(media.startedAt)||media.startedAt<=0)){
+  pollTimingSummary="現在の動画の再生開始時刻が不明です。アプリから引用再生を開始し直してください。動画の長さだけでは開始時刻を推定できません。";
+  setPollRuntime("skipped",pollTimingSummary,[]);toast(pollTimingSummary);return;
+ }
  if(!quotePlayback.active||!media.videoId){
   pollTimingSummary="ニコ生で引用再生中の動画を確認できないため、アンケートを省略しました。";
   setPollRuntime("skipped",pollTimingSummary,[]);toast(pollTimingSummary);return;
