@@ -41,7 +41,7 @@ test("re-poll notice precisely uses computed wait of majority/tie/zero votes",()
 test("renderer starts no poll when the next request is empty, and broadcasts the skip",async()=>{
  const noticesLogged=[],messages=[];
  const state={poll:{question:"継続しますか",continue:"続ける",next:"次の動画へ",
-   wait:15,result:10,announceResults:true},requests:[],stocks:[{id:"stock",status:"queued"}],player:{}};
+   wait:15,result:10,announceResults:true},requests:[],stocks:[{id:"stock",status:"queued"}],player:{},logs:[]};
  const ctx={
   state,pollRuntime:{active:false,status:"idle"},pollStartPending:false,pollRunToken:0,
   pollEnqueteOpen:false,quotePlayback:{active:true,verified:true,programId:"lv123",videoId:"sm123"},
