@@ -46,4 +46,12 @@ function isMetadataMissingError(error){
   /\bCannot find (?:alpha|beta|latest)\.yml\b/i.test(detail)||
   /https:\/\/github\.com\/kanenao\/kananeo-nico-live-stream\/releases\/download\/[^\s]+\/(?:alpha|beta|latest)\.yml[^\s]*.*(?:404|Not Found)/i.test(detail);
 }
-module.exports={API_URL,RELEASE_BASE,selectAlphaUpdateRelease,fetchVerifiedAlphaReleases,isMetadataMissingError};
+function isGitHubUpdateNotFound(error){
+ const code=String(error?.code||"").toUpperCase();
+ const status=Number(error?.statusCode??error?.status??0);
+ const detail=String(error?.message||"").slice(0,2000);
+ return isMetadataMissingError(error)||status===404||
+  /^(?:ERR_HTTP_404|HTTP_404|UPDATE_RELEASE_NOT_FOUND|ERR_UPDATER_CHANNEL_FILE_NOT_FOUND)$/.test(code)||
+  /(?:HTTP|status|response status)\\s*(?:code\\s*)?[:=]?\\s*404\\b|\\b404 Not Found\\b/i.test(detail);
+}
+module.exports={API_URL,RELEASE_BASE,selectAlphaUpdateRelease,fetchVerifiedAlphaReleases,isMetadataMissingError,isGitHubUpdateNotFound};
