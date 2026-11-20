@@ -10,7 +10,7 @@ function describeUpdateError(error){
  const detail=String(error?.message||"");
  if(isMetadataMissingError(error))
   return {code:"UPDATE_METADATA_NOT_FOUND",message:"GitHubに自動更新用のチャンネル情報が見つかりません。対象リリースの更新用YMLファイルを確認してください。"};
- if(/(?:HTTP|status)\s*404|404 Not Found/i.test(code+" "+detail))
+ if(isGitHubUpdateNotFound(error))
   return {code:"UPDATE_RELEASE_NOT_FOUND",message:"GitHubの更新ファイルを取得できませんでした（HTTP 404）。配布版の確認または再試行をしてください。"};
  if(/403|429|RATE_LIMIT|FORBIDDEN/i.test(code+" "+detail))
   return {code:"UPDATE_ACCESS_LIMIT",message:"GitHubのアクセス制限により更新を確認できません。時間を置いて再試行してください。"};
@@ -28,7 +28,7 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
  const supported=platform==="win32"&&!!app?.isPackaged&&!portable&&!!updater;
  let status={
   supported,channel,currentVersion:installedVersion,phase:supported?"idle":"unavailable",version:"",percent:0,errorCode:"",checkedAt:"",
-  message:supported?"自動更新の初期化が完了しました。":
+  source:"",message:supported?"自動更新の初期化が完了しました。":
    portable?"Portable版は自動インストールできません。Setup版をインストールしてください。":
    !app?.isPackaged?"開発版からは自動更新できません。Windows Setup版でご利用ください。":
    "この環境ではWindows Setup版の自動更新を利用できません。"
@@ -47,7 +47,8 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
  async function check(){
   if(!supported||busy||["downloading","downloaded","installing"].includes(status.phase))return getStatus();
   busy=true;
-  publish({phase:"checking",errorCode:"",checkedAt:new Date().toISOString(),
+  let verifiedAvailableVersion="";
+  publish({phase:"checking",errorCode:"",source:"",checkedAt:new Date().toISOString(),
    message:"公開済み"+channel+"版の配布ファイルを確認しています。"});
   function settle(result){
    if(status.phase!=="checking")return;
@@ -64,6 +65,16 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
   }
   async function runFeed(){
    const result=await updater.checkForUpdates();
+   // A tagged API release has already proven there is a newer alpha. Do not
+   // let a stale GitHub/Atom response incorrectly claim the app is current.
+   const candidate=String(result?.updateInfo?.version||"");
+   const comparison=candidate?compareVersions(candidate,installedVersion):null;
+   if(verifiedAvailableVersion&&(result?.isUpdateAvailable===false||
+      comparison!==null&&comparison<=0)){
+    publish({phase:"error",errorCode:"UPDATE_FEED_MISMATCH",
+     message:"新しいα版 "+verifiedAvailableVersion+" は公開済みですが、更新サービスから古い版が返されました。安全のため適用しません。"});
+    return result;
+   }
    settle(result);
    // electron-updater may reject downloadPromise only after checkForUpdates
    // has resolved. Await it so download-time HTTP 404 is never lost.
@@ -86,7 +97,8 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
   function pinVerifiedRelease(target){
    updater.setFeedURL({provider:"generic",url:target.url,channel:"alpha"});
    usingPinnedRelease=true;
-   publish({phase:"checking",version:target.version,errorCode:"",
+   verifiedAvailableVersion=target.version;
+   publish({phase:"checking",source:"verified-release",version:target.version,errorCode:"",
     message:"GitHubで確認した "+target.tag+" の配布ファイルから更新を取得しています。"});
   }
   function resetToGitHub(){
@@ -120,6 +132,7 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
    }
    // API inaccessible: keep the original provider as a safe fallback.
    if(usingPinnedRelease)resetToGitHub();
+   publish({source:"github-fallback"});
    await runFeed();
   }catch(error){
    // A generic pinned feed might suffer a transient 404 at the release CDN.
@@ -130,6 +143,7 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
      publish({phase:"checking",errorCode:"",
       message:"確認済みリリースの取得に失敗したためGitHub標準経路で再試行します。"});
      resetToGitHub();
+     publish({source:"github-fallback"});
      await runFeed();
     }catch(retryError){reportError(retryError);}
    }else if(channel==="alpha"&&isGitHubUpdateNotFound(error)&&
