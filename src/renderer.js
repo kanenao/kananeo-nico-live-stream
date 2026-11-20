@@ -1300,6 +1300,7 @@ state.playback.quoteResumeCheckpoint=null;
 state.player.quoteStartedAt=startedAt;
 state.player.quoteDurationMs=storedQuoteDurationMs(item);
 state.player.quoteVideoId=validation.videoId;
+state.player.quoteProgramId=programId;
 state.player.quoteExpectedEndAt=state.player.quoteDurationMs>0?startedAt+state.player.quoteDurationMs+Number(state.playback.nextIntervalSeconds||0)*1000:0;
 quotePlayback={active:true,verified:!!result.verified,programId,videoId:result.videoId||validation.videoId,
  queueType,itemId:item.id,item,message:result.message};
