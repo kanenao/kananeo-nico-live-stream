@@ -1,7 +1,7 @@
 "use strict";
 const {getReleaseChannel}=require("./update-channel");
 const {compareVersions}=require("./update-checker");
-const {fetchVerifiedAlphaReleases,selectAlphaUpdateRelease,isMetadataMissingError}=require("./update-metadata-recovery");
+const {fetchVerifiedAlphaReleases,selectAlphaUpdateRelease,isMetadataMissingError,isGitHubUpdateNotFound}=require("./update-metadata-recovery");
 
 /** Windows NSIS alpha-updater; never forces a restart during a live broadcast. */
 function describeUpdateError(error){
@@ -47,62 +47,98 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
  async function check(){
   if(!supported||busy||["downloading","downloaded","installing"].includes(status.phase))return getStatus();
   busy=true;
-  publish({phase:"checking",errorCode:"",checkedAt:new Date().toISOString(),message:"GitHub Releasesから"+channel+"チャンネルの更新を確認しています。"});
+  publish({phase:"checking",errorCode:"",checkedAt:new Date().toISOString(),
+   message:"公開済み"+channel+"版の配布ファイルを確認しています。"});
   function settle(result){
-   // Some providers resolve before emitting an updater lifecycle event.
    if(status.phase!=="checking")return;
    const candidate=String(result?.updateInfo?.version||"");
    const compared=candidate?compareVersions(candidate,installedVersion):null;
    if(result?.isUpdateAvailable===false||compared!==null&&compared<=0){
     publish({phase:"current",errorCode:"",message:"公開済みの最新版を使用しています。"});
    }else if(compared!==null&&compared>0&&result?.downloadPromise){
-    publish({phase:"downloading",version:candidate,percent:0,message:"α版の更新が見つかりました。自動ダウンロードしています。"});
+    publish({phase:"downloading",version:candidate,percent:0,message:"更新版が見つかりました。ダウンロードしています。"});
    }else{
     publish({phase:"error",errorCode:"UPDATE_CHECK_INCOMPLETE",
-     message:"更新確認の結果を読み取れませんでした。GitHub Releasesを確認してから再試行してください。"});
+     message:"更新確認の結果を読み取れませんでした。配布ページと通信状態を確認してください。"});
    }
   }
+  async function runFeed(){
+   const result=await updater.checkForUpdates();
+   settle(result);
+   // electron-updater may reject downloadPromise only after checkForUpdates
+   // has resolved. Await it so download-time HTTP 404 is never lost.
+   if(result?.downloadPromise)await result.downloadPromise;
+   return result;
+  }
+  function selectVerifiedTarget(releases){
+   if(!Array.isArray(releases)||releases.length===0)return {checked:false};
+   const target=selectAlphaUpdateRelease(releases,installedVersion);
+   if(target)return {checked:true,target};
+   const hasNewer=releases.some(release=>release?.draft!==true&&release?.prerelease===true&&
+    /^v\d+\.\d+\.\d+-alpha\.\d+$/.test(String(release?.tag_name||""))&&
+    compareVersions(String(release.tag_name).slice(1),installedVersion)>0);
+   if(hasNewer)return {checked:true,missing:true};
+   const hasCurrent=releases.some(release=>release?.draft!==true&&release?.prerelease===true&&
+    release?.tag_name==="v"+installedVersion);
+   if(hasCurrent)return {checked:true,current:true};
+   return {checked:false};
+  }
+  function pinVerifiedRelease(target){
+   updater.setFeedURL({provider:"generic",url:target.url,channel:"alpha"});
+   usingPinnedRelease=true;
+   publish({phase:"checking",version:target.version,errorCode:"",
+    message:"GitHubで確認した "+target.tag+" の配布ファイルから更新を取得しています。"});
+  }
+  function resetToGitHub(){
+   updater.setFeedURL({provider:"github",owner:"kanenao",repo:"kananeo-nico-live-stream",channel});
+   usingPinnedRelease=false;
+  }
+  async function handleVerifiedAlpha(releases){
+   const checked=selectVerifiedTarget(releases);
+   if(!checked.checked)return false;
+   if(checked.current){
+    publish({phase:"current",errorCode:"",message:"GitHubの公開リリースを確認しました。現在のα版が最新版です。"});
+    return true;
+   }
+   if(checked.missing){
+    publish({phase:"error",errorCode:"UPDATE_METADATA_NOT_FOUND",
+     message:"新しいα版が公開されていますがalpha.ymlまたはSetup版が不足しています。配布ページを確認してください。"});
+    return true;
+   }
+   pinVerifiedRelease(checked.target);
+   await runFeed();
+   return true;
+  }
   try{
-   // A generic feed targets exactly one release; switch back for subsequent checks.
-   if(usingPinnedRelease){
-    updater.setFeedURL({provider:"github",owner:"kanenao",repo:"kananeo-nico-live-stream",channel});
-    usingPinnedRelease=false;
+   // GitHubProvider can receive 404 on GitHub's prerelease discovery even
+   // though a versioned Release contains valid alpha.yml and NSIS Setup.
+   // On alpha, prefer the public Releases API and pin the complete release
+   // *before* electron-updater attempts to resolve its metadata or binaries.
+   if(channel==="alpha"&&typeof updater.setFeedURL==="function"){
+    const verified=await fetchVerifiedAlphaReleases(releaseFetch);
+    if(await handleVerifiedAlpha(verified))return getStatus();
    }
-   settle(await updater.checkForUpdates());
+   // API inaccessible: keep the original provider as a safe fallback.
+   if(usingPinnedRelease)resetToGitHub();
+   await runFeed();
   }catch(error){
-   if(channel!=="alpha"||!isMetadataMissingError(error)||typeof updater.setFeedURL!=="function"){
-    reportError(error);
-   }else{
-    // Never use an arbitrary URL from an exception or GitHub release body.
-    // Look up published assets on the fixed public GitHub API first.
-    const releases=await fetchVerifiedAlphaReleases(releaseFetch);
-    if(!releases){reportError(error);}
-    else{
-     const target=selectAlphaUpdateRelease(releases,installedVersion);
-     const newerPublished=releases.some(release=>release?.draft!==true&&
-      /^v\d+\.\d+\.\d+-alpha\.\d+$/.test(String(release?.tag_name||""))&&
-      compareVersions(String(release.tag_name).slice(1),installedVersion)>0);
-     if(!target){
-      if(newerPublished){
-       publish({phase:"error",errorCode:"UPDATE_METADATA_NOT_FOUND",
-        message:"新しいα版は公開されていますがalpha.ymlとSetup版が揃っていません。配布ページから更新してください。"});
-      }else if(releases.some(release=>release?.draft!==true&&String(release?.tag_name||"")==="v"+installedVersion)){
-       publish({phase:"current",errorCode:"",message:"GitHubの公開済みα版を確認しました。現在のバージョンが最新版です。"});
-      }else{
-       // An incomplete API page cannot establish that an older version is current.
-       reportError(error);
-      }
-     }else{
-      try{
-       publish({phase:"checking",errorCode:"",
-        message:"確認済みα版 "+target.version+" の更新情報から再取得しています。"});
-       updater.setFeedURL({provider:"generic",url:target.url,channel:"alpha"});
-       usingPinnedRelease=true;
-       settle(await updater.checkForUpdates());
-      }catch(retryError){reportError(retryError);}
-     }
-    }
-   }
+   // A generic pinned feed might suffer a transient 404 at the release CDN.
+   // Try the official GitHub provider once more, without changing the target
+   // repository or bypassing update checksum verification.
+   if(usingPinnedRelease&&isGitHubUpdateNotFound(error)){
+    try{
+     publish({phase:"checking",errorCode:"",
+      message:"確認済みリリースの取得に失敗したためGitHub標準経路で再試行します。"});
+     resetToGitHub();
+     await runFeed();
+    }catch(retryError){reportError(retryError);}
+   }else if(channel==="alpha"&&isGitHubUpdateNotFound(error)&&
+            typeof updater.setFeedURL==="function"){
+    const retryReleases=await fetchVerifiedAlphaReleases(releaseFetch);
+    try{
+     if(!await handleVerifiedAlpha(retryReleases))reportError(error);
+    }catch(retryError){reportError(retryError);}
+   }else reportError(error);
   }finally{busy=false;}
   return getStatus();
  }
