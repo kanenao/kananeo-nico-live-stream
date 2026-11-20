@@ -2671,7 +2671,7 @@ function renderAutoUpdateStatus(){
 }
 function applyAutoUpdateStatus(s){
  if(!s||typeof s!=="object")return;
- autoUpdateState={supported:s.supported===true,channel:String(s.channel||"alpha"),phase:String(s.phase||"idle"),message:String(s.message||"").slice(0,220),percent:Number(s.percent)||0,version:String(s.version||"").slice(0,70),errorCode:String(s.errorCode||"").slice(0,80),checkedAt:String(s.checkedAt||"").slice(0,50)};
+ autoUpdateState={supported:s.supported===true,channel:String(s.channel||"alpha"),phase:String(s.phase||"idle"),message:String(s.message||"").slice(0,220),percent:Number(s.percent)||0,version:String(s.version||"").slice(0,70),errorCode:String(s.errorCode||"").slice(0,80),checkedAt:String(s.checkedAt||"").slice(0,50),source:String(s.source||"").slice(0,50)};
  renderAutoUpdateStatus();
  renderDashboardAlphaUpdateStatus();
  renderInAppUpdateNotice();
@@ -2696,6 +2696,7 @@ async function copyUpdateDiagnostic(){
   "エラーコード: "+(v.errorCode||"なし"),
   "対象版: "+(v.version||"不明"),
   "更新チャンネル: "+(v.channel||"不明"),
+  "自動更新の取得経路: "+(v.source||"未選択"),
   "確認日時: "+(v.checkedAt||"不明"),
   "状況: "+v.message
  ];

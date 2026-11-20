@@ -51,13 +51,14 @@ function service(updater,fetchImpl=validFetch,version="0.2.2-alpha.79"){
  return createAutoUpdateService({app:{isPackaged:true,getVersion:()=>version},updater,
   platform:"win32",releaseFetch:fetchImpl,schedule:()=>{},repeat:()=>{}});
 }
-test("GitHub provider 404 recovers using pinned public release and starts download",async()=>{
+test("alpha release lookup pins a verified feed; a 404 also retries the provider",async()=>{
  const up=makeUpdater(),svc=service(up);
  svc.start();
  const status=await svc.check();
  assert.equal(up.calls,2);
- assert.equal(up.feeds.length,1);
+ assert.equal(up.feeds.length,2);
  assert.equal(up.feeds[0].provider,"generic");
+ assert.equal(up.feeds[1].provider,"github");
  assert.equal(up.feeds[0].channel,"alpha");
  assert.equal(up.feeds[0].url,"https://github.com/kanenao/kananeo-nico-live-stream/releases/download/v0.2.3-alpha.80/");
  assert.equal(status.phase,"downloading");
@@ -69,7 +70,7 @@ test("updater error at already installed latest alpha resolves to current",async
  const up=makeUpdater(),svc=service(up,validFetch,"0.2.3-alpha.80");
  svc.start();
  const status=await svc.check();
- assert.equal(up.calls,1);
+ assert.equal(up.calls,0);
  assert.equal(status.phase,"current");
  assert.equal(status.errorCode,"");
  assert.equal(up.feeds.length,0);
@@ -91,7 +92,7 @@ test("new alpha without YML does not falsely claim current; invalid API keeps or
  assert.equal(failed.phase,"error");
  assert.equal(failed.errorCode,"UPDATE_METADATA_NOT_FOUND");
 });
-test("release feed is not pinned for future versions after a successful no-update retry",async()=>{
+test("a stale feed after a verified newer alpha cannot falsely claim current",async()=>{
  const up=makeUpdater();let calls=0;
  up.checkForUpdates=async()=>{
   calls++;
@@ -100,8 +101,9 @@ test("release feed is not pinned for future versions after a successful no-updat
  };
  const svc=service(up);
  svc.start();
- assert.equal((await svc.check()).phase,"current");
- assert.equal((await svc.check()).phase,"current");
+ assert.equal((await svc.check()).errorCode,"UPDATE_FEED_MISMATCH");
+ assert.equal((await svc.check()).errorCode,"UPDATE_FEED_MISMATCH");
  assert.equal(up.feeds[0].provider,"generic");
  assert.equal(up.feeds[1].provider,"github");
+ assert.equal(up.feeds[2].provider,"generic");
 });
