@@ -1705,7 +1705,7 @@ async function startAutomaticPoll(){
  // Do not run another automatic poll when no next unplayed request remains.
  // Stock autoplay may still continue independently without a vote.
  if(!window.KananeoPollNotices.hasPendingRequests(state.requests)){
-  markAutoPollWaitingForRequests(programId,media.videoId,media.startedAt);
+  if(state.poll.autoOnQuote)markAutoPollWaitingForRequests(programId,media.videoId,media.startedAt);
   pollTimingSummary="次の未再生リクエストがないためアンケートを省略しました。リクエストを受け付け次第、現在の動画で自動アンケートを再開します。";
   setPollRuntime("skipped",pollTimingSummary,[]);
   await announceNoPendingRequests(programId,()=>
@@ -1801,7 +1801,7 @@ async function startAutomaticPoll(){
    // Requests can be removed while votes are being counted. Never start
    // another round without any pending requests, even if stock exists.
    if(!window.KananeoPollNotices.hasPendingRequests(state.requests)){
-    markAutoPollWaitingForRequests(programId,pollVideoId,state.player.quoteStartedAt);
+    if(state.poll.autoOnQuote)markAutoPollWaitingForRequests(programId,pollVideoId,state.player.quoteStartedAt);
     pollTimingSummary="未再生リクエストがなくなったためアンケートを終了しました。次のリクエスト受付後に自動アンケートを再開します。";
     setPollRuntime("skipped",pollTimingSummary,fetched.items);
     await announceNoPendingRequests(programId,()=>
