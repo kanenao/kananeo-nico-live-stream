@@ -86,8 +86,11 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
       if(newerPublished){
        publish({phase:"error",errorCode:"UPDATE_METADATA_NOT_FOUND",
         message:"新しいα版は公開されていますがalpha.ymlとSetup版が揃っていません。配布ページから更新してください。"});
-      }else{
+      }else if(releases.some(release=>release?.draft!==true&&String(release?.tag_name||"")==="v"+installedVersion)){
        publish({phase:"current",errorCode:"",message:"GitHubの公開済みα版を確認しました。現在のバージョンが最新版です。"});
+      }else{
+       // An incomplete API page cannot establish that an older version is current.
+       reportError(error);
       }
      }else{
       try{
