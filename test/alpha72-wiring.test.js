@@ -9,13 +9,18 @@ test("new automatic poll setting starts OFF, persists and is visible in the poll
  assert.match(ui,/state\.poll\.autoOnQuote=e\.target\.checked===true/);
  assert.match(ui,/引用再生するたびに、視聴者向けアンケートを自動で開始します/);
 });
-test("quote start alone schedules poll; toggling off or manual stop cancels pending requests",()=>{
+test("quote start schedules poll after prior cleanup; manual stop cancels only this round",()=>{
  assert.match(ui,/scheduleAutoPollOnQuote\(programId,validation\.videoId,startedAt\)/);
  assert.match(ui,/const key=window\.KananeoAutoPoll\.quotePollKey/);
  assert.match(ui,/autoPollAttemptKey=key/);
- assert.match(ui,/if\(!state\.poll\.autoOnQuote\|\|!quotePlayback\.active\|\|pollRuntime\.active\)return/);
+ assert.match(ui,/if\(!state\.poll\.autoOnQuote\|\|!quotePlayback\.active\|\|autoPollAttemptKey===key\)return/);
+ assert.match(ui,/const busy=pollRuntime\.active\|\|pollStartPending/);
+ assert.match(ui,/autoPollPendingTimer=setTimeout\(tryStart,1000\)/);
  assert.match(ui,/void startAutomaticPoll\(\)/);
- assert.match(ui,/state\.poll\.autoOnQuote=false;save\(\);cancelPendingAutoPoll\(\)/);
+ const stop=ui.slice(ui.indexOf('if(b.hasAttribute("data-poll-stop")){'),ui.indexOf('if(b.hasAttribute("data-comment-start")){'));
+ assert.match(stop,/cancelPendingAutoPoll\(\)/);
+ assert.match(stop,/stopAutomaticPoll\(\)/);
+ assert.doesNotMatch(stop,/autoOnQuote=false/);
  assert.match(ui,/if\(!state\.poll\.autoOnQuote\)\{cancelPendingAutoPoll\(\)/);
 });
 test("script loads before renderer without shared-scope collisions",()=>{

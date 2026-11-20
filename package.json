@@ -1,6 +1,6 @@
 {
   "name": "kananeo-nico-live-stream",
-  "version": "0.2.2-alpha.79",
+  "version": "0.2.3-alpha.80",
   "private": true,
   "description": "総合ニコ生管理デスクトップアプリ",
   "main": "src/main.js",
