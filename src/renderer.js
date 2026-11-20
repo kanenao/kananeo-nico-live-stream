@@ -180,6 +180,14 @@ async function maybeAutoPlayOnOwnLive(info){
    setAutoLiveQuoteMessage("引用再生状態の確認に失敗："+String(current?.message||"通信エラー"));return;
   }
   if(current.exists){setAutoLiveQuoteMessage("ニコ生側で既に引用再生中です。上書きしません。");return;}
+  const continuation=window.KananeoQuoteResume.continueInfo(state.playback.quoteResumeCheckpoint,id);
+  if(state.automation.keepPosition&&continuation.ok){
+   setAutoLiveQuoteMessage("前枠 "+continuation.programId+" で "+continuation.videoId+" を "+
+    formatVideoTime(continuation.offsetMs/1000)+" まで再生した記録があります。"+
+    "引用再生APIの途中シークが未確認のため、0秒から自動で上書き再生せず保留します。"+
+    "プレイヤー画面で記録を確認・解除してください。");
+   return;
+  }
   // Old broadcast state must not suppress the new live's queued requests.
   if(quotePlayback.programId&&quotePlayback.programId!==id){
    const staleItem=[...state.requests,...state.stocks].find(x=>x.id===quotePlayback.itemId);
@@ -945,6 +953,47 @@ const seconds=Math.max(0,Math.floor(Number(value)||0));
 const h=Math.floor(seconds/3600),m=Math.floor((seconds%3600)/60),sec=seconds%60;
 return h?String(h)+":"+String(m).padStart(2,"0")+":"+String(sec).padStart(2,"0"):String(m)+":"+String(sec).padStart(2,"0");
 }
+function currentQuoteProgress(now=Date.now()){
+ if(!quotePlayback.active||quotePlayback.verified!==true)return {ok:false};
+ return window.KananeoQuoteResume.quoteProgress({
+  programId:quotePlayback.programId,videoId:quotePlayback.videoId,
+  storedProgramId:state.player.quoteProgramId,storedVideoId:state.player.quoteVideoId,
+  startedAt:state.player.quoteStartedAt,durationMs:state.player.quoteDurationMs
+ },now);
+}
+function updateQuoteProgressUi(now=Date.now()){
+ const p=currentQuoteProgress(now);
+ const clock=document.getElementById("quote-time-label");
+ const bar=document.getElementById("quote-time-progress");
+ const hint=document.getElementById("quote-time-hint");
+ const checkpoint=document.getElementById("quote-resume-checkpoint");
+ const clear=document.querySelector("[data-quote-clear-checkpoint]");
+ if(clock)clock.textContent=p.ok?
+  formatVideoTime(p.elapsedMs/1000)+" / "+formatVideoTime(p.durationMs/1000):
+  quotePlayback.active?"正確な引用開始時刻を確認できません":"— / —";
+ if(bar)bar.value=p.ok?p.percent:0;
+ if(hint)hint.textContent=p.ok?
+  "引用再生開始時刻からの推定経過時間です（動画の実再生位置をAPIから取得した値ではありません）。残り "+formatVideoTime(p.remainingMs/1000):
+  "動画の開始時刻と長さを確認できた場合だけ経過時間を表示します。";
+ if(p.ok&&state.automation.keepPosition===true){
+  const c=window.KananeoQuoteResume.checkpointFromProgress(p,{
+   verified:quotePlayback.verified===true,now,title:quotePlayback.item?.title||p.videoId
+  });
+  const previous=state.playback.quoteResumeCheckpoint;
+  if(c&&(!previous||previous.programId!==c.programId||
+     previous.videoId!==c.videoId||Math.floor(previous.offsetMs/5000)!==Math.floor(c.offsetMs/5000))){
+   state.playback.quoteResumeCheckpoint=c;
+   save();
+  }
+ }
+ const saved=state.playback.quoteResumeCheckpoint;
+ const next=window.KananeoQuoteResume.continueInfo(saved,state.lastProgramId);
+ if(checkpoint)checkpoint.textContent=next.ok?
+  "前枠 "+next.programId+" の "+next.videoId+"："+formatVideoTime(next.offsetMs/1000)+
+  " まで再生した記録があります。引用再生APIに途中位置の指定が確認できないため、自動的にこの位置から再生することはできません。":
+  "前枠から引き継ぐ再生位置の記録はありません。";
+ if(clear)clear.disabled=!saved;
+}
 function currentQueueList(){return state.player.currentQueueType==="stock"?state.stocks:state.requests;}
 function currentQueueItem(){
  return currentQueueList().find(x=>x.id===state.player.currentId)||
@@ -1246,6 +1295,8 @@ state.player.duration=Math.max(0,Number(item.lengthMs)||0)/1000;
 state.player.endedFor="";
 state.player.quotePollAutoSuspended=false;
 const startedAt=Date.now();
+// A new official quote starts from its own actual beginning, not an earlier frame's offset.
+state.playback.quoteResumeCheckpoint=null;
 state.player.quoteStartedAt=startedAt;
 state.player.quoteDurationMs=storedQuoteDurationMs(item);
 state.player.quoteVideoId=validation.videoId;
