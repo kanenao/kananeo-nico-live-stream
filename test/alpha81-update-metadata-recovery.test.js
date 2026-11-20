@@ -92,7 +92,7 @@ test("new alpha without YML does not falsely claim current; invalid API keeps or
  assert.equal(failed.phase,"error");
  assert.equal(failed.errorCode,"UPDATE_METADATA_NOT_FOUND");
 });
-test("a failed pinned alpha feed may retry GitHub without losing current status",async()=>{
+test("a stale feed after a verified newer alpha cannot falsely claim current",async()=>{
  const up=makeUpdater();let calls=0;
  up.checkForUpdates=async()=>{
   calls++;
@@ -101,8 +101,8 @@ test("a failed pinned alpha feed may retry GitHub without losing current status"
  };
  const svc=service(up);
  svc.start();
- assert.equal((await svc.check()).phase,"current");
- assert.equal((await svc.check()).phase,"current");
+ assert.equal((await svc.check()).errorCode,"UPDATE_FEED_MISMATCH");
+ assert.equal((await svc.check()).errorCode,"UPDATE_FEED_MISMATCH");
  assert.equal(up.feeds[0].provider,"generic");
  assert.equal(up.feeds[1].provider,"github");
  assert.equal(up.feeds[2].provider,"generic");
