@@ -102,6 +102,7 @@ test("refresh does not lose active playback metadata after pending queue removal
     kananeoApp:{niconico:{getCurrentQuotation:async()=>({ok:true,exists:true,currentVideoId:"sm123"})}}},
    clearQuoteAutoTimer:()=>{throw Error("same video must not clear auto-next");},
    scheduleQuoteAutoNext:()=>{},updateQuoteScheduleUi:()=>{},save:()=>{},render:()=>{},toast:()=>{}};
+  ctx.currentQueueList=()=>queueType==="stock"?ctx.state.stocks:ctx.state.requests;
   const refresh=vm.runInNewContext("("+refreshSource+")",ctx);
   await refresh({silent:true});
   assert.equal(ctx.quotePlayback.item.id,played.id);
