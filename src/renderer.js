@@ -82,6 +82,9 @@ let pollTimingSummary="";
 let pollVerifiedRound=false;
 let autoPollAttemptKey="";
 let autoPollPendingTimer=null;
+// An empty request queue suspends auto-poll for this exact quotation only.
+// A subsequent accepted request can re-arm it without restarting the video.
+let autoPollWaitingForRequestKey="";
 let quoteMetadataPending=null;
 let quoteMetadataAttempt={key:"",at:0};
 let quoteMetadataMessage="";
@@ -722,7 +725,7 @@ const pollResults=(pollRuntime.result||[]).map(item=>esc(item.name)+"："+Number
 html=hero("AUTOMATIC POLL","自動アンケート","投票を作成し、設定時間後に結果を取得。継続票が最多なら再投票、次動画票が最多ならリクエスト優先でニコ生へ引用再生します。")+
 '<div class="grid2">'+panel("アンケート内容","選択肢は2つです。表示名は投票結果と完全一致させます。",field("質問","poll-question",state.poll.question)+field("継続の選択肢","poll-continue",state.poll.continue)+field("次動画の選択肢","poll-next",state.poll.next))+
 panel("投票時間・判定ルール","投票時間は3〜300秒、結果表示は0〜120秒",field("投票待ち時間（秒）","poll-wait",state.poll.wait)+field("結果表示時間（秒）","poll-result",state.poll.result)+'<div class="muted">再投票の待機時間は結果から自動計算：継続票最多10〜60秒／同票10秒／無投票5秒。次回開始までの秒数を運営コメントでお知らせします。未再生リクエスト0件ならアンケートを省略します。</div>'+'<button class="btn" data-save-poll>設定を保存</button>')+'</div>'+
-panel("自動アンケート実行","放送主権限のあるログインで、配信中の放送IDを指定してください。",'<label class="switchrow"><span><b>引用再生開始時に自動アンケートを実行</b><small>初期OFF。アプリから引用再生を開始した動画ごとに投票を続けます。次動画へ切り替わってもON設定を維持します。</small></span><input type="checkbox" id="poll-auto-on-quote" '+(state.poll.autoOnQuote?"checked":"")+'></label><label class="switchrow"><span><b>アンケート結果・再投票予告・リクエストなしを運営コメントで通知</b><small>投票結果と次の投票までの秒数を通知し、未再生リクエストが0件なら投票せず運営コメントでお知らせします。初期ON。放送主権限が必要です。</small></span><input type="checkbox" id="poll-announce-results" '+(state.poll.announceResults!==false?"checked":"")+'></label><div class="banner"><i class="led"></i><div><b id="poll-status-label">'+esc(pollRuntime.status==="idle"?"停止中":pollRuntime.status==="voting"?"投票中":pollRuntime.status==="results"?"結果表示中":pollRuntime.status==="repeating"?"再投票準備中":pollRuntime.status==="next"?"次動画へ進みました":pollRuntime.status==="error"?"エラー":"処理中")+'</b><small id="poll-status-message">'+esc(pollRuntime.message)+'</small></div></div><div id="poll-results" class="empty">'+(pollResults||"投票結果はまだありません。")+'</div><div id="poll-timing-summary" class="muted">'+esc(pollTimingSummary||"短い動画では自動アンケートを省略します。")+'</div><div class="field"><label>動画の長さ（秒）を手動で補完（自動取得できない場合）</label><input class="input" id="poll-manual-duration" type="number" min="1" max="86400" placeholder="例：240"></div><div class="actions"><button class="btn" data-poll-duration-fetch>動画時間を自動取得</button><button class="btn" data-poll-duration-set>動画時間を登録</button></div><div class="muted">アプリ外から再生された動画は開始時刻を確認できない場合があります。そのときはアプリから引用再生を開始し直してください。</div><div class="actions"><button class="btn primary" data-poll-start '+(pollActive?"disabled":"")+'>自動アンケート開始</button><button class="btn" data-poll-stop '+(!pollActive?"disabled":"")+'>この回の投票を停止</button></div><div class="muted">次の動画でも自動投票を続ける場合は、上の自動アンケート設定をONのままにしてください。OFFにすると次動画からの自動投票を止めます。</div><div class="muted">結果がAPIから取得できない場合は自動スキップしません。動画の尺が短ければ投票を省略し、再投票は最大100回で停止します。</div>');
+panel("自動アンケート実行","放送主権限のあるログインで、配信中の放送IDを指定してください。",'<label class="switchrow"><span><b>引用再生開始時に自動アンケートを実行</b><small>初期OFF。次のリクエストが0件なら投票を休止し、新しいリクエストを受け付けると同じ動画で自動再開します。次動画でもON設定を維持します。</small></span><input type="checkbox" id="poll-auto-on-quote" '+(state.poll.autoOnQuote?"checked":"")+'></label><label class="switchrow"><span><b>アンケート結果・再投票予告・リクエストなしを運営コメントで通知</b><small>投票結果と次の投票までの秒数を通知し、未再生リクエストが0件なら投票せず運営コメントでお知らせします。初期ON。放送主権限が必要です。</small></span><input type="checkbox" id="poll-announce-results" '+(state.poll.announceResults!==false?"checked":"")+'></label><div class="banner"><i class="led"></i><div><b id="poll-status-label">'+esc(pollRuntime.status==="idle"?"停止中":pollRuntime.status==="voting"?"投票中":pollRuntime.status==="results"?"結果表示中":pollRuntime.status==="repeating"?"再投票準備中":pollRuntime.status==="next"?"次動画へ進みました":pollRuntime.status==="error"?"エラー":"処理中")+'</b><small id="poll-status-message">'+esc(pollRuntime.message)+'</small></div></div><div id="poll-results" class="empty">'+(pollResults||"投票結果はまだありません。")+'</div><div id="poll-timing-summary" class="muted">'+esc(pollTimingSummary||"短い動画では自動アンケートを省略します。")+'</div><div class="field"><label>動画の長さ（秒）を手動で補完（自動取得できない場合）</label><input class="input" id="poll-manual-duration" type="number" min="1" max="86400" placeholder="例：240"></div><div class="actions"><button class="btn" data-poll-duration-fetch>動画時間を自動取得</button><button class="btn" data-poll-duration-set>動画時間を登録</button></div><div class="muted">アプリ外から再生された動画は開始時刻を確認できない場合があります。そのときはアプリから引用再生を開始し直してください。</div><div class="actions"><button class="btn primary" data-poll-start '+(pollActive?"disabled":"")+'>自動アンケート開始</button><button class="btn" data-poll-stop '+(!pollActive?"disabled":"")+'>この回の投票を停止</button></div><div class="muted">リクエスト待機中は、新しいリクエストの受付後に現在の動画で自動投票を再開します（動画の残り時間が十分な場合）。完全に止めるには上の自動アンケート設定をOFFにしてください。</div><div class="muted">結果がAPIから取得できない場合は自動スキップしません。動画の尺が短ければ投票を省略し、再投票は最大100回で停止します。</div>');
 }else if(page==="automation"){
 html=hero("AUTOMATION","自動枠取り・延長","次枠取得・無料延長と、動画の再生時間に合わせた配信運用を管理します。")+
 '<div class="grid2">'+panel("次枠管理","番組情報と再生状態を引き継ぐ",toggle("auto-next","放送終了時に次枠取得を実行","アプリ本体で終了を監視し次枠取得を開始します。",state.automation.autoNext)+toggle("auto-create-next","前枠を引き継いで次枠を自動作成","タイトル・説明・タグ・公開設定を再利用して番組を自動作成（初期OFF）。作成された放送の本番開始は別操作です。",state.automation.autoCreate)+'<div class="muted" id="auto-next-status">'+esc(state.automation.autoNext?autoNextRuntime.message:"自動次枠監視はOFFです。")+'</div><button class="btn" data-auto-next-check '+(!state.automation.autoNext?"disabled":"")+'>今すぐ終了状態を確認</button>'+toggle("keep-position","再生位置を引き継ぐ","次枠でも現在位置を維持",state.automation.keepPosition))+
@@ -1475,9 +1478,39 @@ function cancelPendingAutoPoll(){
  if(autoPollPendingTimer!==null)clearTimeout(autoPollPendingTimer);
  autoPollPendingTimer=null;
 }
+function markAutoPollWaitingForRequests(programId,videoId,startedAt){
+ if(!state.poll.autoOnQuote)return false;
+ const key=window.KananeoAutoPoll.quotePollKey(programId,videoId,startedAt);
+ if(!key)return false;
+ autoPollWaitingForRequestKey=key;
+ // Quote-start auto polls already claimed this key. An empty queue is not a
+ // completed poll: allow exactly one new attempt on accepted request arrival.
+ if(autoPollAttemptKey===key)autoPollAttemptKey="";
+ return true;
+}
+function resumeAutoPollAfterRequestAccepted(){
+ if(!state.poll.autoOnQuote||!autoPollWaitingForRequestKey||
+    !window.KananeoPollNotices.hasPendingRequests(state.requests))return false;
+ const programId=quotePlayback.programId,videoId=quotePlayback.videoId;
+ const startedAt=state.player.quoteStartedAt;
+ const currentKey=window.KananeoAutoPoll.quotePollKey(programId,videoId,startedAt);
+ if(!quotePlayback.active||currentKey!==autoPollWaitingForRequestKey){
+  // A new live, stopped quotation or stale start timestamp must not revive
+  // an old poll. A future quote will follow its normal auto-poll path.
+  autoPollWaitingForRequestKey="";
+  return false;
+ }
+ autoPollWaitingForRequestKey="";
+ scheduleAutoPollOnQuote(programId,videoId,startedAt);
+ state.logs.unshift("リクエストを受け付けたため、現在の引用動画で自動アンケートを再開します。");
+ save();
+ return true;
+}
 function scheduleAutoPollOnQuote(programId,videoId,startedAt){
  cancelPendingAutoPoll();
  const key=window.KananeoAutoPoll.quotePollKey(programId,videoId,startedAt);
+ if(key&&autoPollWaitingForRequestKey&&autoPollWaitingForRequestKey!==key)
+  autoPollWaitingForRequestKey="";
  if(!key||!state.poll.autoOnQuote||autoPollAttemptKey===key)return;
  // A previous poll can still be finishing while the next quotation has started.
  // Do not consume the new quote's unique attempt until its own start is possible.
@@ -1672,7 +1705,8 @@ async function startAutomaticPoll(){
  // Do not run another automatic poll when no next unplayed request remains.
  // Stock autoplay may still continue independently without a vote.
  if(!window.KananeoPollNotices.hasPendingRequests(state.requests)){
-  pollTimingSummary="次の未再生リクエストがないためアンケートを省略しました。リクエストをお待ちしています。";
+  markAutoPollWaitingForRequests(programId,media.videoId,media.startedAt);
+  pollTimingSummary="次の未再生リクエストがないためアンケートを省略しました。リクエストを受け付け次第、現在の動画で自動アンケートを再開します。";
   setPollRuntime("skipped",pollTimingSummary,[]);
   await announceNoPendingRequests(programId,()=>
    setupGeneration===pollRunToken&&quotePlayback.active&&quotePlayback.verified===true&&
@@ -1767,7 +1801,8 @@ async function startAutomaticPoll(){
    // Requests can be removed while votes are being counted. Never start
    // another round without any pending requests, even if stock exists.
    if(!window.KananeoPollNotices.hasPendingRequests(state.requests)){
-    pollTimingSummary="未再生リクエストがなくなったためアンケートを終了しました。";
+    markAutoPollWaitingForRequests(programId,pollVideoId,state.player.quoteStartedAt);
+    pollTimingSummary="未再生リクエストがなくなったためアンケートを終了しました。次のリクエスト受付後に自動アンケートを再開します。";
     setPollRuntime("skipped",pollTimingSummary,fetched.items);
     await announceNoPendingRequests(programId,()=>
      token===pollRunToken&&pollRuntime.active&&safePollVideoMatches()&&
@@ -1824,10 +1859,13 @@ async function startAutomaticPoll(){
    if(!retryWait)return;
   }
   if(token===pollRunToken&&pollRuntime.active){
-   const message=pollRuntime.status==="skipped"?"動画尺が不足するため自動アンケートを省略しました。":"再投票100回の安全上限に達しました。";
+   const waitingForRequests=pollRuntime.status==="skipped"&&!!autoPollWaitingForRequestKey;
+   const message=waitingForRequests?
+    "リクエスト待機中です。新しいリクエストが届くと自動アンケートを再開します。":
+    pollRuntime.status==="skipped"?"動画尺が不足するため自動アンケートを省略しました。":"再投票100回の安全上限に達しました。";
    pollRuntime.active=false;
    resumeNaturalAfterPoll=pollVerifiedRound;
-   setPollRuntime("idle",message);toast(message);
+   setPollRuntime(waitingForRequests?"skipped":"idle",message);toast(message);
   }
  }catch(error){
   if(token!==pollRunToken)return;
@@ -2200,7 +2238,8 @@ return;
 }
 const item={id:"req-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8),title:validation.videoId,url:validation.url,videoId:validation.videoId,status:"queued",lengthMs:0,addedAt:new Date().toISOString(),source:"comment",requestUserId:userId,requestedBy:getUserDisplayName(comment,String(comment.userName||""))};
 state.requests.push(item);state.logs.unshift("コメントから動画リクエスト："+item.videoId);save();
-if(page==="requests")render();
+resumeAutoPollAfterRequestAccepted();
+if(page==="requests"||page==="poll")render();
 toast("コメントからリクエストを受け付けました："+item.videoId);
 queueCommentRequestReply(comment,state.requestSettings.replyAccepted,validation.videoId,"");
 }catch(error){
@@ -3165,7 +3204,11 @@ document.addEventListener("change",e=>{
    e.target.checked=false;return;
   }
   state.poll.autoOnQuote=e.target.checked===true;
-  if(!state.poll.autoOnQuote){cancelPendingAutoPoll();if(pollStartPending&&!pollRuntime.active)pollRunToken++;}
+  if(!state.poll.autoOnQuote){
+   autoPollWaitingForRequestKey="";
+   cancelPendingAutoPoll();
+   if(pollStartPending&&!pollRuntime.active)pollRunToken++;
+  }
   save();toast(state.poll.autoOnQuote?"引用再生連動アンケートをONにしました。":"引用再生連動アンケートをOFFにしました。");
   return;
  }
@@ -3198,7 +3241,9 @@ if(!validation?.ok){toast(validation?.message||"対応していない動画URL�
 if([...state.requests,...state.stocks].some(existing=>existing.videoId===validation.videoId)){toast("同じ動画は既にリクエストまたはストックに登録されています。");return;}
 const durationSeconds=Math.max(0,Number(document.getElementById("req-duration").value)||0);
 const item={id:"req-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8),title:title||validation.videoId,url:validation.url,videoId:validation.videoId,lengthMs:durationSeconds*1000,status:"queued",addedAt:new Date().toISOString()};
-state.requests.push(item);state.logs.unshift("動画をキューに追加："+item.title);save();render();toast("動画をキューに追加しました。");
+state.requests.push(item);state.logs.unshift("動画をキューに追加："+item.title);save();
+resumeAutoPollAfterRequestAccepted();
+render();toast("動画をキューに追加しました。");
 }catch{toast("動画URLを確認できませんでした。通信状態を確認してください。");}
 }
 if(e.target.id==="stock-form"){
