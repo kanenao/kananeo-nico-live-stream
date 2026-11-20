@@ -21,7 +21,9 @@ test("quote start schedules poll after prior cleanup; manual stop cancels only t
  assert.match(stop,/cancelPendingAutoPoll\(\)/);
  assert.match(stop,/stopAutomaticPoll\(\)/);
  assert.doesNotMatch(stop,/autoOnQuote=false/);
- assert.match(ui,/if\(!state\.poll\.autoOnQuote\)\{cancelPendingAutoPoll\(\)/);
+ assert.match(ui,/if\(!state\.poll\.autoOnQuote\)\{/);
+ assert.match(ui,/autoPollWaitingForRequestKey=""/);
+ assert.match(ui,/cancelPendingAutoPoll\(\)/);
 });
 test("script loads before renderer without shared-scope collisions",()=>{
  assert.ok(html.indexOf('src="auto-poll-policy.js"')<html.indexOf('src="renderer.js"'));

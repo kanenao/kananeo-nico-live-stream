@@ -53,7 +53,7 @@ function mockScheduleContext(){
  const ctx={
   state,quotePlayback:{active:true,programId:"lv123",videoId:"sm123"},
   pollRuntime:{active:false,status:"next"},pollStartPending:true,
-  autoPollAttemptKey:"lv123:sm111:1779999999000",autoPollPendingTimer:null,
+  autoPollAttemptKey:"lv123:sm111:1779999999000",autoPollPendingTimer:null,autoPollWaitingForRequestKey:"",
   window:{KananeoAutoPoll:autoPoll},save:()=>{},
   scheduled,starts:0,
   setTimeout:(fn,ms)=>{const task={fn,ms,cancelled:false};scheduled.push(task);return task;},
