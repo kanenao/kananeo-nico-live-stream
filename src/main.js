@@ -52,7 +52,7 @@ const {createOwnBroadcastMonitor}=require("./own-broadcast-monitor");
 const {buildRegisteredUserHistoryUrl,createRegisteredUserMonitor}=require("./registered-user-monitor");
 const {validateProgramControl,canMutateProgram,buildProgramMutationRequest,summarizeProgramMutation}=require("./program-control");
 const {validateManualProgramInput}=require("./manual-program-create");
-const {buildVideoMetadataRequest,parseVideoMetadataResponse}=require("./video-metadata");
+const {fetchVideoMetadataWithFallback}=require("./video-metadata");
 const {buildPreviousProgramRequest,parsePreviousProgram,
   buildCreateProgramRequest,parseCreateProgramResponse}=require("./inherited-program");
 const {editingMenus,editingContextMenu}=require("./editing-support");
@@ -315,19 +315,12 @@ async function createProgramFromApp(input){
  }finally{manualCreatePending=false;}
 }
 async function getNicoVideoMetadata(input){
- const request=buildVideoMetadataRequest(input);
- if(!request.ok)return request;
- let response;
- try{response=await niconicoSession.fetch(request.url,request.options);}
- catch{return {ok:false,code:"METADATA_NETWORK_ERROR",message:"動画時間を自動取得できませんでした。動画の長さを手動で設定してください。"};}
- if(!isTrustedNiconicoUrl(response.url||request.url))
-  return {ok:false,code:"METADATA_UNTRUSTED",message:"動画情報の応答先を確認できません。"};
- let body;
- try{body=await response.text();}
- catch{return {ok:false,code:"METADATA_INVALID",message:"動画時間を読み取れませんでした。"};}
- return parseVideoMetadataResponse(response.status,body,request.videoId);
+ // Use the app's Nico session only for validated official read-only GET URLs.
+ // The bounded fallback handles watch/v3_guest HTTP 406 without guessing the
+ // current video's length or inheriting a previous video's timing.
+ return fetchVideoMetadataWithFallback(input,request=>
+  niconicoSession.fetch(request.url,request.options));
 }
-
 async function createInheritedNextFrame(previousProgramId,expectedUserId){
  // Credentials never cross IPC into the renderer or persistent logs.
  if(!/^lv\d{1,20}$/.test(String(previousProgramId||""))||
