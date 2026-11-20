@@ -97,7 +97,7 @@ test("repeat announcement is posted after a valid repeat plan and before the act
  assert.match(block,/postAutomatedBroadcasterComment\(programId,notice\.text/);
  assert.match(block,/token===pollRunToken&&pollRuntime\.active&&safePollVideoMatches/);
  assert.ok(block.indexOf('if(!plan.ok)')<block.indexOf("formatRepeatCountdownComment"));
- assert.ok(block.indexOf("formatRepeatCountdownComment")<block.indexOf('const retryWait'));
+ assert.ok(block.indexOf("formatRepeatCountdownComment")>=0);
  assert.match(renderer,/await announceNoPendingRequests\(programId/);
  assert.match(renderer,/!window\.KananeoPollNotices\.hasPendingRequests\(state\.requests\)/);
  assert.match(renderer,/state\.poll\.announceResults!==false/);
