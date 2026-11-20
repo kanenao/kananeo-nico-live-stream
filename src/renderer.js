@@ -3208,6 +3208,12 @@ document.addEventListener("change",e=>{
    autoPollWaitingForRequestKey="";
    cancelPendingAutoPoll();
    if(pollStartPending&&!pollRuntime.active)pollRunToken++;
+  }else if(quotePlayback.active){
+   // Enabling auto mode after a quote has started must also subscribe to
+   // the next accepted request, instead of waiting for another video.
+   if(window.KananeoPollNotices.hasPendingRequests(state.requests))
+    scheduleAutoPollOnQuote(quotePlayback.programId,quotePlayback.videoId,state.player.quoteStartedAt);
+   else markAutoPollWaitingForRequests(quotePlayback.programId,quotePlayback.videoId,state.player.quoteStartedAt);
   }
   save();toast(state.poll.autoOnQuote?"引用再生連動アンケートをONにしました。":"引用再生連動アンケートをOFFにしました。");
   return;
