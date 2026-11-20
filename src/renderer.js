@@ -1634,6 +1634,28 @@ async function startAutomaticPoll(){
    if(!decision||!["next","repeat"].includes(decision.decision))throw new Error("投票結果を安全に判定できません。自動スキップを行いません。");
    const text=fetched.items.map(x=>String(x.name)+"："+Number(x.rate).toFixed(1)+"%").join(" / ");
    setPollRuntime("results",round+"回目の結果："+text+"。"+(decision.decision==="repeat"?"次回投票の待機を計算します。":"次動画が最多です。"),fetched.items);
+   // Only publish the verified result for the exact current program/video.
+   // A failed notice does not change the vote decision or force a skip.
+   if(state.poll.announceResults!==false&&safePollVideoMatches()){
+    const notice=window.KananeoPollResultComment.formatPollResultComment({
+     round,choices:input.choices,items:fetched.items,decision:decision.decision
+    });
+    if(notice.ok){
+     const reported=await postAutomatedBroadcasterComment(programId,notice.text,()=>
+      token===pollRunToken&&pollRuntime.active&&safePollVideoMatches()&&
+      state.poll.announceResults!==false);
+     if(token!==pollRunToken)return;
+     if(reported?.ok){
+      state.logs.unshift("投票結果を運営コメントで通知："+notice.text);
+     }else if(reported?.code!=="COMMENT_CANCELLED"){
+      const reason=reported?.message||"運営コメント送信に失敗しました。";
+      pollTimingSummary="結果の運営コメント通知に失敗："+reason.slice(0,150);
+      state.logs.unshift("投票結果の運営コメント通知に失敗："+String(reported?.code||"SEND_FAILED"));
+      setPollRuntime("results",pollRuntime.message+"（運営コメント通知は失敗）",fetched.items);
+     }
+     save();
+    }
+   }
    if(input.resultSeconds>0){
     const held=await waitForPoll(input.resultSeconds*1000,token);
     if(!held){await finishActiveEnquete(programId);return;}
@@ -1970,6 +1992,23 @@ if(repliedRequestComments.size>500)repliedRequestComments.delete(repliedRequestC
 requestReplyQueue.push({programId,text,videoId,code:reason||"ACCEPTED"});
 void processRequestReplyQueue();
 }
+// Serialize poll-result announcements with request acknowledgements to respect
+// Nico's 5-second broadcaster-comment limit and avoid dropping poll notices.
+function postAutomatedBroadcasterComment(programId,text,canSend){
+ const permitted=()=>{try{return canSend();}catch{return false;}};
+ const send=async()=>{
+  if(!permitted())return {ok:false,code:"COMMENT_CANCELLED"};
+  const waitMs=Math.max(0,5000-(Date.now()-lastRequestReplySentAt));
+  if(waitMs)await new Promise(resolve=>setTimeout(resolve,waitMs));
+  if(!permitted())return {ok:false,code:"COMMENT_CANCELLED"};
+  lastRequestReplySentAt=Date.now();
+  try{return await window.kananeoApp.niconico.postBroadcasterComment({programId,text});}
+  catch{return {ok:false,code:"SEND_FAILED",message:"運営コメントAPIに接続できませんでした。"};}
+ };
+ const pending=automatedBroadcasterCommentTail.then(send,send);
+ automatedBroadcasterCommentTail=pending.then(()=>{},()=>{});
+ return pending;
+}
 async function processRequestReplyQueue(){
 if(requestReplyBusy)return;
 requestReplyBusy=true;
@@ -1977,13 +2016,10 @@ try{
 while(requestReplyQueue.length){
 const item=requestReplyQueue.shift();
 if(!state.requestSettings?.replyEnabled||commentConnection.state!=="connected"||commentConnection.programId!==item.programId)continue;
-const waitMs=Math.max(0,5000-(Date.now()-lastRequestReplySentAt));
-if(waitMs)await new Promise(resolve=>setTimeout(resolve,waitMs));
-if(!state.requestSettings?.replyEnabled||commentConnection.state!=="connected"||commentConnection.programId!==item.programId)continue;
-let result;
-try{result=await window.kananeoApp.niconico.postBroadcasterComment({programId:item.programId,text:item.text});}
-catch{result={ok:false,code:"SEND_FAILED",message:"運営コメントの自動返信に失敗しました。"};}
-lastRequestReplySentAt=Date.now();
+const result=await postAutomatedBroadcasterComment(item.programId,item.text,()=>
+ state.requestSettings?.replyEnabled===true&&commentConnection.state==="connected"&&
+ commentConnection.programId===item.programId);
+if(result?.code==="COMMENT_CANCELLED")continue;
 if(result?.ok){
 state.logs.unshift("リクエスト受付結果を運営コメントで返信："+item.videoId);save();
 }else{
