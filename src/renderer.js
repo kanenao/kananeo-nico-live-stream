@@ -820,7 +820,7 @@ panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Ve
 if(page==="dashboard"){
  html+='<div class="banner" id="dashboard-alpha-update" hidden><i class="led"></i><div><b id="dashboard-alpha-update-title"></b><small id="dashboard-alpha-update-detail"></small></div><button type="button" data-go="settings">更新の詳細</button></div>';
 }
-if(page==="dashboard"&&updateCheckState.result?.updateAvailable){
+if(page==="dashboard"&&updateCheckState.result?.updateAvailable&&!document.getElementById("in-app-update-notice")){
 const latest=updateCheckState.result.latestVersion||"新しい版";
 html+='<div class="banner"><i class="led"></i><div><b>アップデートがあります：'+esc(latest)+'</b><small>新しいバージョンがGitHub Releasesで公開されています。内容を確認してください。</small></div><button type="button" data-go="settings">詳細を確認 →</button><button type="button" data-update-open-releases>配布ページ</button></div>';
 }
@@ -830,6 +830,7 @@ const options=sources.map(source=>'<option value="'+esc(source)+'" '+(librarySou
 html=html.replace('<div class="section"><p id="library-count">','<div class="field"><label>取り込み元で絞り込み</label><select class="input" id="library-source"><option value="">すべて</option>'+options+'</select></div><div class="section"><p id="library-count">');
 }
 document.getElementById("content").innerHTML=html;
+renderInAppUpdateNotice();
 if(page==="dashboard")renderDashboardAlphaUpdateStatus();
 if(page==="broadcast"){renderBroadcastManageVerification();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();renderStreamMonitorUi();}
 updateLiveVideoBounds();
@@ -2433,9 +2434,31 @@ async function handleRemoteControlRequest(request){
  }catch(error){result={ok:false,code:"REMOTE_ACTION_FAILED",message:error?.message||"操作を実行できませんでした。"};}
  window.kananeoApp.remote.resolveRequest(request.requestId,result);
 }
+function renderInAppUpdateNotice(){
+ const host=document.getElementById("in-app-update-notice");
+ if(!host)return;
+ const model=window.KananeoUpdateUi?.inAppUpdateNotice?.(autoUpdateState,updateCheckState.result);
+ if(!model)return;
+ host.hidden=!model.visible;
+ if(!model.visible)return;
+ const title=document.getElementById("in-app-update-title");
+ const detail=document.getElementById("in-app-update-detail");
+ const button=host.querySelector("[data-update-notice-action]");
+ const releases=host.querySelector("[data-update-open-releases]");
+ if(title)title.textContent=model.title;
+ if(detail)detail.textContent=model.detail;
+ if(button){
+  button.hidden=!model.action;
+  button.disabled=!model.action;
+  button.dataset.updateNoticeAction=model.action||"";
+  button.textContent=model.actionLabel||"";
+ }
+ if(releases)releases.hidden=!model.showReleases;
+}
 function renderDashboardAlphaUpdateStatus(){
  const banner=document.getElementById("dashboard-alpha-update");
  if(!banner)return;
+ if(document.getElementById("in-app-update-notice")){banner.hidden=true;return;}
  const s=autoUpdateState;
  const downloading=s.supported&&s.phase==="downloading";
  const downloaded=s.supported&&s.phase==="downloaded";
@@ -2467,6 +2490,7 @@ function applyAutoUpdateStatus(s){
  autoUpdateState={supported:s.supported===true,channel:String(s.channel||"alpha"),phase:String(s.phase||"idle"),message:String(s.message||"").slice(0,220),percent:Number(s.percent)||0,version:String(s.version||"").slice(0,70),errorCode:String(s.errorCode||"").slice(0,80),checkedAt:String(s.checkedAt||"").slice(0,50)};
  renderAutoUpdateStatus();
  renderDashboardAlphaUpdateStatus();
+ renderInAppUpdateNotice();
 }
 async function applyDownloadedUpdate(){
  if(autoUpdateState.phase!=="downloaded"){toast("更新のダウンロードが完了していません。");return;}
@@ -2530,6 +2554,7 @@ async function checkForApplicationUpdates(silent=false){
   updateCheckState={loading:false,result:null,error:error?.message||"アップデート情報を確認できませんでした。"};
  }
  renderUpdateCheck();
+ renderInAppUpdateNotice();
 if(page==="dashboard"&&updateCheckState.result?.updateAvailable)render();
 if(!silent&&updateCheckState.error)toast(updateCheckState.error);
 }
@@ -2671,6 +2696,16 @@ if(b.hasAttribute("data-release-history-more")){void fetchReleaseHistory();retur
 if(b.hasAttribute("data-release-history-open")){
  const result=await window.kananeoApp.updates.openRelease(b.dataset.releaseHistoryOpen);
  if(!result?.ok)toast(result?.message||"リリース詳細を開けませんでした。");
+ return;
+}
+if(b.hasAttribute("data-update-notice-action")){
+ const action=b.dataset.updateNoticeAction;
+ if(action==="apply")void applyDownloadedUpdate();
+ else if(action==="check")void manuallyCheckAutoUpdate();
+ else if(action==="releases"){
+  const result=await window.kananeoApp.updates.openReleases();
+  if(!result?.ok)toast(result?.message||"配布ページを開けませんでした。");
+ }
  return;
 }
 if(b.hasAttribute("data-update-check")){void checkForApplicationUpdates();return;}

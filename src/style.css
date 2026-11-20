@@ -150,3 +150,13 @@ input[type="range"]{accent-color:#8c7cff;cursor:pointer}
 .release-history-source{color:#a9b6d2;font-size:9px;font-weight:700;letter-spacing:.02em;margin:12px 0 6px}
 .release-history-source+.release-notes{margin-bottom:8px}
 .release-history-heading .tag{font-size:8px;vertical-align:middle;display:inline-block;margin-left:8px;color:#c8c0ff}
+
+/* In-app updates remain actionable on all pages, without interrupting a live stream. */
+.in-app-update-notice{margin:16px 38px 0;flex-wrap:wrap}
+.in-app-update-notice[hidden],#dashboard-alpha-update[hidden]{display:none!important}
+.in-app-update-notice .in-app-update-copy{flex:1;min-width:240px;overflow-wrap:anywhere}
+.in-app-update-notice button{margin-left:0;border:1px solid #514b83;background:#242f55;padding:10px 14px;border-radius:8px;cursor:pointer;color:#e7e5ff}
+.in-app-update-notice button.primary{background:linear-gradient(100deg,#7969f2,#558ce9);border:0;color:white}
+.in-app-update-notice button[hidden]{display:none!important}
+.in-app-update-notice button:disabled{opacity:.5;cursor:not-allowed}
+@media(max-width:1200px){.in-app-update-notice{margin:12px 25px 0}}
