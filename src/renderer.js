@@ -208,7 +208,7 @@ async function maybeAutoPlayOnOwnLive(info){
   save(); // A possibly accepted mutation must never be retried blindly.
   setAutoLiveQuoteMessage("番組 "+id+" で動画リクエストの引用再生を要求しています。");
   const played=await playNextQuoteItem({
-   triggeredByAuto:true,skipConfirmation:true,programId:id,
+   triggeredByAuto:true,skipConfirmation:true,programId:id,autoLive:true,
    endTime:state.lastProgramEndAt,selectedCandidate:selected
   });
   setAutoLiveQuoteMessage(played?"自動引用再生を開始しました。":"自動引用再生の要求に失敗しました。ログを確認して手動操作で再確認してください。");
@@ -1055,8 +1055,8 @@ save();
 quoteAutoSchedule=null;
 quoteAutoMessage="動画時間に到達しました。次の候補を選んでいます。";
 updateQuoteScheduleUi();
-if(token!==quoteAutoToken||!state.playback.quoteAutoNext)return;
-const advanced=await playNextQuoteItem({skipConfirmation:true,triggeredByAuto:true});
+if(token!==quoteAutoToken||!state.playback.quoteAutoNext||quotePlayback.programId!==programId)return;
+const advanced=await playNextQuoteItem({skipConfirmation:true,triggeredByAuto:true,programId});
 if(token!==quoteAutoToken)return;
 if(!advanced){
 quoteAutoMessage="次に再生できる動画がありません。必要に応じてキューへ追加してください。";
@@ -1230,7 +1230,7 @@ const list=selected.queue==="stock"?state.stocks:state.requests;
 const item=list[selected.index];
 if(!item||options.triggeredByAuto&&["completed","skipped","rejected","playing"].includes(String(item.status||"").toLowerCase()))return false;
 return await playQuotedQueueItem(item,selected.queue,options.skipConfirmation===true,{
- programId:options.programId||"",autoLive:options.triggeredByAuto===true
+ programId:options.programId||"",autoLive:options.autoLive===true
 });
 }
 async function playQueueItem(item,queueType="request"){
@@ -1426,7 +1426,10 @@ function activePollMedia(now=Date.now()){
    durationMs:storedQuoteDurationMs(activeQuotedQueueItem()),videoId};
 }
 function safePollVideoMatches(){
- return !!(quotePlayback.active&&pollVideoId&&(quotePlayback.videoId||state.player.quoteVideoId)===pollVideoId);
+ // A replay of the same video in another broadcast must not continue this poll.
+ return !!(quotePlayback.active&&pollCurrentProgramId&&
+  String(quotePlayback.programId||"").toLowerCase()===String(pollCurrentProgramId).toLowerCase()&&
+  pollVideoId&&String(quotePlayback.videoId||"").toLowerCase()===String(pollVideoId).toLowerCase());
 }
 function restoreQuoteAutoAfterVerifiedPoll(){
  if(!pollVideoId||!safePollVideoMatches())return false;
@@ -1662,9 +1665,9 @@ async function startAutomaticPoll(){
   if(token===pollRunToken){
    stopPollDeadlineGuard();
    await finishActiveEnquete(programId);
-   pollRuntime.active=false;pollCurrentProgramId="";
+   pollRuntime.active=false;
    if(resumeNaturalAfterPoll&&safePollVideoMatches())restoreQuoteAutoAfterVerifiedPoll();
-   pollVideoId="";pollVerifiedRound=false;
+   pollCurrentProgramId="";pollVideoId="";pollVerifiedRound=false;
    if(state.player.quotePollAutoSuspended){
     quoteAutoMessage="アンケート結果確認後の安全保留中です。次動画への移動は手動で行ってください。";
     updateQuoteScheduleUi();
