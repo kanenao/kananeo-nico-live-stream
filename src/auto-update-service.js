@@ -1,14 +1,17 @@
 "use strict";
 const {getReleaseChannel}=require("./update-channel");
 const {compareVersions}=require("./update-checker");
+const {fetchVerifiedAlphaReleases,selectAlphaUpdateRelease,isMetadataMissingError}=require("./update-metadata-recovery");
 
 /** Windows NSIS alpha-updater; never forces a restart during a live broadcast. */
 function describeUpdateError(error){
  const rawCode=String(error?.code||"").toUpperCase();
  const code=/^[A-Z][A-Z0-9_]{1,69}$/.test(rawCode)?rawCode:"UPDATE_FAILED";
  const detail=String(error?.message||"");
- if(/CHANNEL_FILE_NOT_FOUND|Cannot find.*\.yml|(?:HTTP|status)\s*404|404 Not Found/i.test(code+" "+detail))
+ if(isMetadataMissingError(error))
   return {code:"UPDATE_METADATA_NOT_FOUND",message:"GitHubに自動更新用のチャンネル情報が見つかりません。対象リリースの更新用YMLファイルを確認してください。"};
+ if(/(?:HTTP|status)\s*404|404 Not Found/i.test(code+" "+detail))
+  return {code:"UPDATE_RELEASE_NOT_FOUND",message:"GitHubの更新ファイルを取得できませんでした（HTTP 404）。配布版の確認または再試行をしてください。"};
  if(/403|429|RATE_LIMIT|FORBIDDEN/i.test(code+" "+detail))
   return {code:"UPDATE_ACCESS_LIMIT",message:"GitHubのアクセス制限により更新を確認できません。時間を置いて再試行してください。"};
  if(/ENOTFOUND|ETIMEDOUT|ECONN|EAI_AGAIN|ERR_NETWORK|network|net::|timeout/i.test(code+" "+detail))
@@ -19,7 +22,7 @@ function describeUpdateError(error){
   return {code:"UPDATE_PERMISSION_DENIED",message:"更新ファイルへのアクセスが拒否されました。Windowsのアクセス権を確認してください。"};
  return {code,message:"自動更新でエラーが発生しました（"+code+"）。設定から再確認するかGitHub Releasesで更新してください。"};
 }
-function createAutoUpdateService({app,updater,platform=process.platform,portable=false,notify=()=>{},schedule=setTimeout,repeat=setInterval}){
+function createAutoUpdateService({app,updater,platform=process.platform,portable=false,notify=()=>{},schedule=setTimeout,repeat=setInterval,releaseFetch=fetch}){
  const installedVersion=String(app?.getVersion?.()||"0.2.0-alpha.0");
  const channel=getReleaseChannel(installedVersion)||"alpha";
  const supported=platform==="win32"&&!!app?.isPackaged&&!portable&&!!updater;
@@ -30,7 +33,7 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
    !app?.isPackaged?"開発版からは自動更新できません。Windows Setup版でご利用ください。":
    "この環境ではWindows Setup版の自動更新を利用できません。"
  };
- let started=false,busy=false,installCalled=false;
+ let started=false,busy=false,installCalled=false,usingPinnedRelease=false;
  function publish(part){
   status={...status,...part};
   try{notify({...status});}catch{ /* UI may have been closed */ }
@@ -45,24 +48,59 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
   if(!supported||busy||["downloading","downloaded","installing"].includes(status.phase))return getStatus();
   busy=true;
   publish({phase:"checking",errorCode:"",checkedAt:new Date().toISOString(),message:"GitHub Releasesから"+channel+"チャンネルの更新を確認しています。"});
+  function settle(result){
+   // Some providers resolve before emitting an updater lifecycle event.
+   if(status.phase!=="checking")return;
+   const candidate=String(result?.updateInfo?.version||"");
+   const compared=candidate?compareVersions(candidate,installedVersion):null;
+   if(result?.isUpdateAvailable===false||compared!==null&&compared<=0){
+    publish({phase:"current",errorCode:"",message:"公開済みの最新版を使用しています。"});
+   }else if(compared!==null&&compared>0&&result?.downloadPromise){
+    publish({phase:"downloading",version:candidate,percent:0,message:"α版の更新が見つかりました。自動ダウンロードしています。"});
+   }else{
+    publish({phase:"error",errorCode:"UPDATE_CHECK_INCOMPLETE",
+     message:"更新確認の結果を読み取れませんでした。GitHub Releasesを確認してから再試行してください。"});
+   }
+  }
   try{
-   const result=await updater.checkForUpdates();
-   // Some providers settle the promise before emitting an update event. Never
-   // leave the UI stuck in "checking" if no lifecycle event was received.
-   if(status.phase==="checking"){
-    const candidate=String(result?.updateInfo?.version||"");
-    const compared=candidate?compareVersions(candidate,installedVersion):null;
-    if(result?.isUpdateAvailable===false||compared!==null&&compared<=0){
-     publish({phase:"current",message:"公開済みの最新版を使用しています。"});
-    }else if(compared!==null&&compared>0&&result?.downloadPromise){
-     publish({phase:"downloading",version:candidate,percent:0,message:"α版の更新が見つかりました。自動ダウンロードしています。"});
-    }else{
-     publish({phase:"error",errorCode:"UPDATE_CHECK_INCOMPLETE",
-      message:"更新確認の結果を読み取れませんでした。GitHub Releasesを確認してから再試行してください。"});
+   // A generic feed targets exactly one release; switch back for subsequent checks.
+   if(usingPinnedRelease){
+    updater.setFeedURL({provider:"github",owner:"kanenao",repo:"kananeo-nico-live-stream",channel});
+    usingPinnedRelease=false;
+   }
+   settle(await updater.checkForUpdates());
+  }catch(error){
+   if(channel!=="alpha"||!isMetadataMissingError(error)||typeof updater.setFeedURL!=="function"){
+    reportError(error);
+   }else{
+    // Never use an arbitrary URL from an exception or GitHub release body.
+    // Look up published assets on the fixed public GitHub API first.
+    const releases=await fetchVerifiedAlphaReleases(releaseFetch);
+    if(!releases){reportError(error);}
+    else{
+     const target=selectAlphaUpdateRelease(releases,installedVersion);
+     const newerPublished=releases.some(release=>release?.draft!==true&&
+      /^v\d+\.\d+\.\d+-alpha\.\d+$/.test(String(release?.tag_name||""))&&
+      compareVersions(String(release.tag_name).slice(1),installedVersion)>0);
+     if(!target){
+      if(newerPublished){
+       publish({phase:"error",errorCode:"UPDATE_METADATA_NOT_FOUND",
+        message:"新しいα版は公開されていますがalpha.ymlとSetup版が揃っていません。配布ページから更新してください。"});
+      }else{
+       publish({phase:"current",errorCode:"",message:"GitHubの公開済みα版を確認しました。現在のバージョンが最新版です。"});
+      }
+     }else{
+      try{
+       publish({phase:"checking",errorCode:"",
+        message:"確認済みα版 "+target.version+" の更新情報から再取得しています。"});
+       updater.setFeedURL({provider:"generic",url:target.url,channel:"alpha"});
+       usingPinnedRelease=true;
+       settle(await updater.checkForUpdates());
+      }catch(retryError){reportError(retryError);}
+     }
     }
    }
-  }catch(error){reportError(error);}
-  finally{busy=false;}
+  }finally{busy=false;}
   return getStatus();
  }
  function installReadyUpdate({relaunch=false}={}){
