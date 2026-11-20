@@ -63,7 +63,7 @@ let bgmError="";
 let bgmCurrentId="";
 let bgmAudio=null;
 let remoteControlUi={loading:false,lastRefreshAt:0,status:{running:false,mode:"localhost",protocol:"http",host:"127.0.0.1",port:0,url:"",devices:[],storageHealthy:true,storageMessage:""},lanOptions:{addresses:[],certificateName:"",privateKeyName:""},pairingCode:"",pairingExpiresAt:null,error:""};
-let quotePlayback={active:false,verified:false,programId:"",videoId:"",queueType:"",itemId:"",message:"ニコ生への引用再生は停止中です。"};
+let quotePlayback={active:false,verified:false,programId:"",videoId:"",queueType:"",itemId:"",item:null,message:"ニコ生への引用再生は停止中です。"};
 let quoteAutoTimer=null;
 let quoteAutoToken=0;
 let quoteAutoSchedule=null;
@@ -699,7 +699,7 @@ const waiting=state.requests.filter(x=>!["completed","skipped","rejected"].inclu
 const requestRows=state.requests.map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+(x.status==="playing"?"再生中":x.status==="completed"?"再生済み":x.status==="skipped"?"スキップ":x.status==="rejected"?"引用不可":"待機中")+'</td><td>'+esc(x.title)+(x.requestUserId?'<div class="muted">リクエスト者：'+esc(getRequesterDisplayName(x))+'</div>':"")+'</td><td>'+esc(x.videoId||x.url)+'</td><td><button class="btn" data-play="'+esc(x.id)+'">プレビュー</button> <button class="btn primary" data-quote-request="'+esc(x.id)+'">ニコ生へ送る</button> <button class="btn" data-up="'+i+'" '+(i===0?"disabled":"")+'>&uarr;</button> <button class="btn" data-down="'+i+'" '+(i===state.requests.length-1?"disabled":"")+'>&darr;</button> <button class="btn" data-remove="'+esc(x.id)+'">削除</button></td></tr>').join("");
 html=hero("VIEWER REQUESTS","動画リクエスト","視聴者から受け付けた動画を管理します。プレビューとニコ生への引用再生は別操作です。")+
 panel("放送開始時の動画リクエスト自動再生","自分の番組がON_AIRになったら先頭のリクエストを一度だけ引用再生します。",'<label class="switchrow"><span><b>番組開始時に動画を自動再生</b><small>初期OFF。自分の放送のみ。リクエスト優先、ストックはストック自動再生ON時だけ利用。番組ごとに一回だけ試行します。</small></span><input type="checkbox" id="request-auto-on-live" '+(state.playback.autoPlayOnOwnLive?"checked":"")+'></label><div class="muted">配信開始の検知後に放送状態と引用状態を確認します。すでに別の動画を引用再生中の場合は変更しません。</div><div class="muted" id="request-auto-status">自動再生の状態：'+esc(autoLiveQuoteMessage)+'</div>')+
-panel("動画リクエストを追加","動画ID・watch URLと、分かる場合は動画時間も登録します。",'<form id="request-form" class="grid3">'+field("動画タイトル（任意）","req-title","","未入力なら動画IDを表示")+field("動画URL / ID","req-url","","sm12345678 または動画URL")+field("動画時間（秒・任意）","req-duration","","例：240")+'<button class="btn primary">キューに追加</button></form><label class="switchrow"><span><b>コメントからリクエスト自動受付</b><small>明示コマンドのみ受付。NGユーザー・NGワード・重複・上限を順に確認します。</small></span><input type="checkbox" id="request-from-comments" '+(state.requestSettings.acceptComments?"checked":"")+'></label><div class="field"><label>1ユーザーあたりの未再生リクエスト上限（1〜50）</label><input class="input" id="request-max-per-user" type="number" min="1" max="50" value="'+(state.requestSettings.maxPerUser||5)+'"></div><label class="switchrow"><span><b>受付結果を運営コメントで自動返信</b><small>初期設定OFF。配信主権限が必要で、送信間隔は最低5秒に制限します。</small></span><input type="checkbox" id="request-reply-enabled" '+(state.requestSettings.replyEnabled?"checked":"")+'></label><div class="field"><label>受付時の返信（80文字以内）</label><textarea class="input" id="request-reply-accepted" rows="2" maxlength="80">'+esc(state.requestSettings.replyAccepted||initial.requestSettings.replyAccepted)+'</textarea></div><div class="field"><label>却下時の返信（80文字以内）</label><textarea class="input" id="request-reply-rejected" rows="2" maxlength="80">'+esc(state.requestSettings.replyRejected||initial.requestSettings.replyRejected)+'</textarea></div><div class="muted">使用できる置換：{video_id}、{comment_no}、{reason}。受付返信はキュー登録後、却下返信はNG・重複・上限などの判定後に送信します。一般コメントとしてではなく、ニコ生の運営コメントとして投稿されます。</div><div class="muted">「プレビュー」は動画ページを開くだけです。「ニコ生へ送る」は放送中の番組に引用再生を要求します。</div>')+
+panel("動画リクエストを追加","動画ID・watch URLと、分かる場合は動画時間も登録します。",'<form id="request-form" class="grid3">'+field("動画タイトル（任意）","req-title","","未入力なら動画IDを表示")+field("動画URL / ID","req-url","","sm12345678 または動画URL")+field("動画時間（秒・任意）","req-duration","","例：240")+'<button class="btn primary">キューに追加</button></form><label class="switchrow"><span><b>コメントからリクエスト自動受付</b><small>明示コマンドのみ受付。NGユーザー・NGワード・重複・上限を順に確認します。</small></span><input type="checkbox" id="request-from-comments" '+(state.requestSettings.acceptComments?"checked":"")+'></label><div class="field"><label>1ユーザーあたりの未再生リクエスト上限（1〜50）</label><input class="input" id="request-max-per-user" type="number" min="1" max="50" value="'+(state.requestSettings.maxPerUser||5)+'"></div><label class="switchrow"><span><b>受付結果を運営コメントで自動返信</b><small>初期設定OFF。配信主権限が必要で、送信間隔は最低5秒に制限します。</small></span><input type="checkbox" id="request-reply-enabled" '+(state.requestSettings.replyEnabled?"checked":"")+'></label><div class="field"><label>受付時の返信（80文字以内）</label><textarea class="input" id="request-reply-accepted" rows="2" maxlength="80">'+esc(state.requestSettings.replyAccepted||initial.requestSettings.replyAccepted)+'</textarea></div><div class="field"><label>却下時の返信（80文字以内）</label><textarea class="input" id="request-reply-rejected" rows="2" maxlength="80">'+esc(state.requestSettings.replyRejected||initial.requestSettings.replyRejected)+'</textarea></div><div class="muted">使用できる置換：{video_id}、{comment_no}、{reason}。受付返信はキュー登録後、却下返信はNG・重複・上限などの判定後に送信します。一般コメントとしてではなく、ニコ生の運営コメントとして投稿されます。</div><div class="muted">「プレビュー」では一覧から削除しません。ニコ生の引用再生が確認された動画だけリクエスト／ストックから自動削除し、再生履歴に残します。</div>')+
 panel("リクエストキュー",waiting+" 件が未再生",state.requests.length?'<table class="table"><thead><tr><th>#</th><th>状態</th><th>タイトル</th><th>動画ID</th><th>操作</th></tr></thead><tbody>'+requestRows+'</tbody></table><div class="actions"><button class="btn" data-player-next>次の動画をプレビュー</button><button class="btn primary" data-quote-next>次の動画をニコ生へ引用再生</button><button class="btn" data-clear>リクエストを全消去</button><button class="btn" data-go="stocks">ストックを管理</button></div>':'<div class="empty">リクエストキューは空です。</div>');
 }else if(page==="stocks"){
 const waiting=state.stocks.filter(x=>!["completed","skipped","rejected"].includes(x.status)).length;
@@ -943,7 +943,12 @@ const h=Math.floor(seconds/3600),m=Math.floor((seconds%3600)/60),sec=seconds%60;
 return h?String(h)+":"+String(m).padStart(2,"0")+":"+String(sec).padStart(2,"0"):String(m)+":"+String(sec).padStart(2,"0");
 }
 function currentQueueList(){return state.player.currentQueueType==="stock"?state.stocks:state.requests;}
-function currentQueueItem(){return currentQueueList().find(x=>x.id===state.player.currentId)||state.requests.find(x=>x.id===state.player.currentId)||state.stocks.find(x=>x.id===state.player.currentId)||null;}
+function currentQueueItem(){
+ return currentQueueList().find(x=>x.id===state.player.currentId)||
+  state.requests.find(x=>x.id===state.player.currentId)||
+  state.stocks.find(x=>x.id===state.player.currentId)||
+  (quotePlayback.active&&quotePlayback.item?.id===state.player.currentId?quotePlayback.item:null);
+}
 function clearQuoteAutoTimer(message){
 if(quoteAutoTimer)clearTimeout(quoteAutoTimer);
 quoteAutoTimer=null;
@@ -964,6 +969,11 @@ node.textContent=message;
 }
 function activeQuotedQueueItem(){
  const activeVideoId=String(quotePlayback.videoId||"").toLowerCase();
+ // Played videos leave pending queues. Keep their current runtime snapshot
+ // for video length, poll timing, stock autoplay policy, and now-playing UI.
+ if(quotePlayback.active&&quotePlayback.item&&
+    String(quotePlayback.item.videoId||"").toLowerCase()===activeVideoId)
+  return quotePlayback.item;
  return window.KananeoQuoteTiming.findQuotedItem(activeVideoId,state.requests,state.stocks);
 }
 function storedQuoteDurationMs(item){
@@ -1090,7 +1100,18 @@ if(page==="player")render();
 return result;
 }
 const previousItemId=quotePlayback.itemId;
-const matched=result.exists?[...state.requests,...state.stocks].find(item=>item.videoId===result.currentVideoId):null;
+const previousQuote=quotePlayback;
+const normalizedVideoId=String(result.currentVideoId||"").toLowerCase();
+// Prefer the exact quotation this app started; otherwise a duplicate queued
+// video ID could accidentally replace the current playback record.
+const retained=result.exists&&previousQuote.active&&previousQuote.programId===programId&&
+ String(previousQuote.videoId||"").toLowerCase()===normalizedVideoId&&
+ String(previousQuote.item?.videoId||"").toLowerCase()===normalizedVideoId?
+ previousQuote.item:null;
+const matchedInQueue=result.exists?[...state.requests,...state.stocks].find(item=>
+ String(item.videoId||"").toLowerCase()===normalizedVideoId):null;
+const matched=retained||matchedInQueue;
+const retainedQueueType=retained?previousQuote.queueType:"";
 if(previousItemId!==matched?.id){
 clearQuoteAutoTimer(result.exists?"引用再生の対象が変わりました。":"引用再生は停止しています。");
 if(previousItemId){
@@ -1101,7 +1122,18 @@ if(matched){
 for(const list of [state.requests,state.stocks])list.forEach(item=>{if(item.status==="playing"&&item.id!==matched.id)item.status="queued";});
 matched.status="playing";
 }
-quotePlayback={active:!!result.exists,verified:true,programId,videoId:result.currentVideoId||"",queueType:matched?(state.stocks.includes(matched)?"stock":"request"):"",itemId:matched?.id||"",message:result.exists?"ニコ生の引用再生状態を確認しました。":"現在、引用再生は行われていません。"};
+// A delayed positive read confirms an earlier accepted quotation. Remove only
+// its own pending queue entry, never an unrelated entry or just-previewed item.
+if(retained){
+ const retired=window.KananeoQuoteQueue.retireVerifiedQuote(state,retainedQueueType,retained,{
+  ok:true,verified:true,currentVideoId:normalizedVideoId
+ });
+ if(retired.removed)state.logs.unshift("引用再生を確認してキューから自動削除："+String(retained.title||normalizedVideoId));
+}
+quotePlayback={active:!!result.exists,verified:true,programId,videoId:result.currentVideoId||"",
+ queueType:retained?retainedQueueType:matchedInQueue?(state.stocks.includes(matchedInQueue)?"stock":"request"):"",
+ itemId:matched?.id||"",item:retained||null,
+ message:result.exists?"ニコ生の引用再生状態を確認しました。":"現在、引用再生は行われていません。"};
 if(matched){state.player.currentId=matched.id;state.player.currentQueueType=quotePlayback.queueType;}
 if(!result.exists){
  if(state.player.currentId===previousItemId)state.player.currentId="";
@@ -1145,6 +1177,36 @@ if(page==="player")render();
 updateQuoteScheduleUi();
 return result;
 }
+async function confirmStartedQuoteForQueue(programId,videoId,itemId){
+ // Some successfully accepted quote mutations are not immediately reflected
+ // in getCurrentQuotation. Retry read-only verification without risking
+ // deletion of a still-unplayed request or stock entry.
+ for(let attempt=0;attempt<3;attempt++){
+  await new Promise(resolve=>setTimeout(resolve,1500));
+  if(!quotePlayback.active||quotePlayback.programId!==programId||
+     String(quotePlayback.videoId||"").toLowerCase()!==String(videoId||"").toLowerCase()||
+     quotePlayback.itemId!==itemId||!quotePlayback.item)return;
+  let observed=null;
+  try{observed=await window.kananeoApp.niconico.getCurrentQuotation({programId});}
+  catch{}
+  if(!quotePlayback.active||quotePlayback.programId!==programId||
+     String(quotePlayback.videoId||"").toLowerCase()!==String(videoId||"").toLowerCase()||
+     quotePlayback.itemId!==itemId||!quotePlayback.item)return;
+  if(observed?.ok&&observed.exists&&
+     String(observed.currentVideoId||"").toLowerCase()===String(videoId||"").toLowerCase()){
+   const retired=window.KananeoQuoteQueue.retireVerifiedQuote(
+    state,quotePlayback.queueType,quotePlayback.item,
+    {ok:true,verified:true,currentVideoId:videoId});
+   quotePlayback.verified=true;
+   if(retired.removed){
+    state.logs.unshift("引用再生を確認してキューから自動削除："+String(quotePlayback.item.title||videoId));
+    save();
+    if(page==="requests"||page==="stocks"||page==="player")render();
+   }
+   return;
+  }
+ }
+}
 async function playQuotedQueueItem(item,queueType="request",skipConfirmation=false,options={}){
 if(!item)return false;
 const programId=options.programId||state.lastProgramId||commentConnection.programId;
@@ -1185,9 +1247,20 @@ state.player.quoteStartedAt=startedAt;
 state.player.quoteDurationMs=storedQuoteDurationMs(item);
 state.player.quoteVideoId=validation.videoId;
 state.player.quoteExpectedEndAt=state.player.quoteDurationMs>0?startedAt+state.player.quoteDurationMs+Number(state.playback.nextIntervalSeconds||0)*1000:0;
-quotePlayback={active:true,verified:!!result.verified,programId,videoId:result.videoId,queueType,itemId:item.id,message:result.message};
+quotePlayback={active:true,verified:!!result.verified,programId,videoId:result.videoId||validation.videoId,
+ queueType,itemId:item.id,item,message:result.message};
 quoteMetadataMessage="";
 state.logs.unshift("ニコ生へ引用再生："+item.title);
+// API acceptance alone is not playback confirmation. Retire this one queue
+// entry only after verifying the live now quotes the expected video.
+if(result.verified===true){
+ const retired=window.KananeoQuoteQueue.retireVerifiedQuote(state,queueType,item,{
+  ok:true,verified:true,currentVideoId:result.currentVideoId
+ });
+ if(retired.removed)state.logs.unshift("引用再生開始を確認してキューから自動削除："+item.title);
+}else{
+ void confirmStartedQuoteForQueue(programId,validation.videoId,item.id);
+}
 scheduleQuoteAutoNext(item,startedAt);
 scheduleAutoPollOnQuote(programId,validation.videoId,startedAt);
 if(storedQuoteDurationMs(item)<=0)void ensureCurrentQuoteDuration();
