@@ -27,8 +27,8 @@ test("history IPC is guarded and uses public GitHub release API",()=>{
 });
 test("version history release version increments and remains alpha",()=>{
  assert.match(pkg.version,/^\d+\.\d+\.\d+-alpha\.\d+$/);
- assert.equal(pkg.version,"0.2.0-alpha.77");
- assert.match(index,/ALPHA 77/);
+ assert.equal(pkg.version,"0.2.1-alpha.78");
+ assert.match(index,/ALPHA 78/);
 });
 
 test("version history displays bundled changes and distinguishes offline entries",()=>{
