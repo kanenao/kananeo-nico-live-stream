@@ -82,6 +82,9 @@ test("new alpha without YML does not falsely claim current; invalid API keeps or
  const status=await svc.check();
  assert.equal(status.phase,"error");
  assert.equal(status.errorCode,"UPDATE_METADATA_NOT_FOUND");
+ const empty=service(makeUpdater(),async()=>({status:200,url:API_URL,headers:{get:()=>""},text:async()=>"[]"}));
+ empty.start();
+ assert.equal((await empty.check()).errorCode,"UPDATE_METADATA_NOT_FOUND");
  const offline=service(makeUpdater(),async()=>{throw Error("offline");});
  offline.start();
  const failed=await offline.check();
