@@ -52,6 +52,6 @@ function isGitHubUpdateNotFound(error){
  const detail=String(error?.message||"").slice(0,2000);
  return isMetadataMissingError(error)||status===404||
   /^(?:ERR_HTTP_404|HTTP_404|UPDATE_RELEASE_NOT_FOUND|ERR_UPDATER_CHANNEL_FILE_NOT_FOUND)$/.test(code)||
-  /(?:HTTP|status|response status)\\s*(?:code\\s*)?[:=]?\\s*404\\b|\\b404 Not Found\\b/i.test(detail);
+  /(?:HTTP|status|response status)\s*(?:code\s*)?[:=]?\s*404\b|\b404 Not Found\b/i.test(detail);
 }
 module.exports={API_URL,RELEASE_BASE,selectAlphaUpdateRelease,fetchVerifiedAlphaReleases,isMetadataMissingError,isGitHubUpdateNotFound};
