@@ -52,6 +52,7 @@ test("renderer shows separate quotation progress and persists a marker every fiv
  assert.match(renderer,/function currentQuoteProgress\(/);
  assert.match(renderer,/quoteProgress\(\{/);
  assert.match(renderer,/quoteResumeCheckpoint=c/);
+ assert.match(renderer,/state\.player\.quoteProgramId=programId;\/\/|state\.player\.quoteProgramId=programId;/);
  assert.match(renderer,/Math\.floor\(previous\.offsetMs\/5000\)/);
  assert.match(renderer,/id="quote-time-label"/);
  assert.match(renderer,/id="quote-time-progress"/);
