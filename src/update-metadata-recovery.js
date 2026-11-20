@@ -43,6 +43,7 @@ function isMetadataMissingError(error){
  const detail=String(error?.message||"");
  // Match only missing channel information, not arbitrary 404s for unrelated API calls.
  return code==="ERR_UPDATER_CHANNEL_FILE_NOT_FOUND"||
-  /\bCannot find (?:alpha|beta|latest)\.yml\b/i.test(detail);
+  /\bCannot find (?:alpha|beta|latest)\.yml\b/i.test(detail)||
+  /https:\/\/github\.com\/kanenao\/kananeo-nico-live-stream\/releases\/download\/[^\s]+\/(?:alpha|beta|latest)\.yml[^\s]*.*(?:404|Not Found)/i.test(detail);
 }
 module.exports={API_URL,RELEASE_BASE,selectAlphaUpdateRelease,fetchVerifiedAlphaReleases,isMetadataMissingError};
