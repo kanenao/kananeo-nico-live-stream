@@ -1,5 +1,6 @@
 "use strict";
 const {getReleaseChannel}=require("./update-channel");
+const {compareVersions}=require("./update-checker");
 
 /** Windows NSIS alpha-updater; never forces a restart during a live broadcast. */
 function describeUpdateError(error){
@@ -19,10 +20,11 @@ function describeUpdateError(error){
  return {code,message:"自動更新でエラーが発生しました（"+code+"）。設定から再確認するかGitHub Releasesで更新してください。"};
 }
 function createAutoUpdateService({app,updater,platform=process.platform,portable=false,notify=()=>{},schedule=setTimeout,repeat=setInterval}){
- const channel=getReleaseChannel(app?.getVersion?.()||"0.2.0-alpha.0")||"alpha";
+ const installedVersion=String(app?.getVersion?.()||"0.2.0-alpha.0");
+ const channel=getReleaseChannel(installedVersion)||"alpha";
  const supported=platform==="win32"&&!!app?.isPackaged&&!portable&&!!updater;
  let status={
-  supported,channel,phase:supported?"idle":"unavailable",version:"",percent:0,errorCode:"",checkedAt:"",
+  supported,channel,currentVersion:installedVersion,phase:supported?"idle":"unavailable",version:"",percent:0,errorCode:"",checkedAt:"",
   message:supported?"自動更新の初期化が完了しました。":
    portable?"Portable版は自動インストールできません。Setup版をインストールしてください。":
    !app?.isPackaged?"開発版からは自動更新できません。Windows Setup版でご利用ください。":
@@ -45,20 +47,32 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
   publish({phase:"checking",errorCode:"",checkedAt:new Date().toISOString(),message:"GitHub Releasesから"+channel+"チャンネルの更新を確認しています。"});
   try{
    const result=await updater.checkForUpdates();
-   if(status.phase==="checking"&&result?.isUpdateAvailable===false)
-    publish({phase:"current",message:"公開済みの最新版を使用しています。"});
+   // Some providers settle the promise before emitting an update event. Never
+   // leave the UI stuck in "checking" if no lifecycle event was received.
+   if(status.phase==="checking"){
+    const candidate=String(result?.updateInfo?.version||"");
+    const compared=candidate?compareVersions(candidate,installedVersion):null;
+    if(result?.isUpdateAvailable===false||compared!==null&&compared<=0){
+     publish({phase:"current",message:"公開済みの最新版を使用しています。"});
+    }else if(compared!==null&&compared>0&&result?.downloadPromise){
+     publish({phase:"downloading",version:candidate,percent:0,message:"α版の更新が見つかりました。自動ダウンロードしています。"});
+    }else{
+     publish({phase:"error",errorCode:"UPDATE_CHECK_INCOMPLETE",
+      message:"更新確認の結果を読み取れませんでした。GitHub Releasesを確認してから再試行してください。"});
+    }
+   }
   }catch(error){reportError(error);}
   finally{busy=false;}
   return getStatus();
  }
- function installReadyUpdate(){
+ function installReadyUpdate({relaunch=false}={}){
   if(!supported||status.phase!=="downloaded"||installCalled)return false;
   installCalled=true;
   try{
-   publish({phase:"installing",message:"アプリ終了後に更新を適用しています。"});
+   publish({phase:"installing",message:relaunch?"更新を適用してアプリを再起動します。":"アプリ終了後に更新を適用しています。"});
    // NSIS full-installer, silent, do not relaunch automatically. Caller has
    // already stopped comments/remote server before invoking this.
-   updater.quitAndInstall(true,false);
+   updater.quitAndInstall(true,relaunch===true);
    return true;
   }catch(error){
    installCalled=false;
@@ -83,11 +97,15 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
    phase:"downloading",version:String(info?.version||"").slice(0,70),percent:0,errorCode:"",
    message:"新しいバージョンを自動ダウンロードしています。"
   }));
-  updater.on("update-not-available",()=>publish({phase:"current",message:"公開済みの最新版です。"}));
-  updater.on("download-progress",info=>publish({
-   phase:"downloading",percent:Math.min(100,Math.max(0,Math.round(Number(info?.percent)||0))),
-   message:"更新ファイルをダウンロードしています。"
-  }));
+  updater.on("update-not-available",()=>{
+   if(["downloaded","installing","downloading"].includes(status.phase))return;
+   publish({phase:"current",message:"公開済みの最新版です。"});
+  });
+  updater.on("download-progress",info=>{
+   if(status.phase==="downloaded"||status.phase==="installing")return;
+   publish({phase:"downloading",percent:Math.min(100,Math.max(0,Math.round(Number(info?.percent)||0))),
+    message:"更新ファイルをダウンロードしています。"});
+  });
   updater.on("update-downloaded",info=>publish({
    phase:"downloaded",version:String(info?.version||status.version).slice(0,70),percent:100,
    message:"更新ファイルを取得しました。終了時に適用できます。"

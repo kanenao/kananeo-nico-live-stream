@@ -91,6 +91,7 @@ let commentRecoveryActive = false;
 let finalQuitInProgress = false;
 let autoUpdateService = null;
 let autoUpdateInitializationFailed = false;
+let relaunchAfterAutoUpdate = false;
 let playerWindow = null;
 let playerMonitorTimer = null;
 let playerMonitorBusy = false;
@@ -2635,8 +2636,9 @@ function registerIpcHandlers() {
    ipcMain.handle("app:auto-update-apply",event=>{
      if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"許可されていない操作です。"};
      if(autoUpdateService?.getStatus().phase!=="downloaded")return {ok:false,code:"UPDATE_NOT_READY",message:"更新ファイルのダウンロードが完了していません。"};
+     relaunchAfterAutoUpdate=true;
      setImmediate(()=>app.quit());
-     return {ok:true,message:"コメントとリモート操作を終了後、更新を適用します。"};
+     return {ok:true,message:"コメントとリモート操作を終了後、更新を適用して再起動します。"};
    });
    ipcMain.handle("app:release-history",async(event,page,force)=>{
      if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
@@ -2733,7 +2735,7 @@ app.on("before-quit",event=>{
     closeVideoPlayer();
     // The first 'before-quit' is cancelled for async shutdown cleanup.
     // Explicitly hand off to the NSIS updater after cleanup is complete.
-    if(!autoUpdateService?.installReadyUpdate())app.quit();
+    if(!autoUpdateService?.installReadyUpdate({relaunch:relaunchAfterAutoUpdate}))app.quit();
   });
 });
 app.on("window-all-closed",()=>{if(process.platform!=="darwin")app.quit();});

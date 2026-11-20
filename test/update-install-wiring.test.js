@@ -9,7 +9,7 @@ test("the downloaded update travels from renderer through a guarded IPC to grace
  assert.match(main,/ipcMain\.handle\("app:auto-update-apply"/);
  assert.match(main,/getStatus\(\)\.phase!=="downloaded"/);
  assert.match(main,/settleBeforeQuit\(/);
- assert.match(main,/autoUpdateService\?\.installReadyUpdate\(\)/);
+ assert.match(main,/autoUpdateService\?\.installReadyUpdate\(\{relaunch:relaunchAfterAutoUpdate\}\)/);
  assert.match(preload,/applyAuto:\(\)=>ipcRenderer\.invoke\("app:auto-update-apply"\)/);
  assert.match(renderer,/data-update-auto-apply/);
  assert.match(renderer,/function applyDownloadedUpdate\(/);

@@ -814,8 +814,11 @@ html=hero("VERSION HISTORY","バージョン更新履歴","各バージョンで
 panel("公開バージョン一覧","GitHub Releasesの実際のリリースノートを新しい順に表示します。詳細情報のない版はその旨を表示します。",'<div class="grid2"><div class="field"><label>バージョン・追加機能・修正内容で検索</label><input class="input" id="release-history-search" placeholder="例：alpha.65 / 自動更新" value="'+esc(releaseHistoryState.query)+'"></div><div class="field"><label>公開区分</label><select class="input" id="release-history-type"><option value="all" '+(releaseHistoryState.type==="all"?"selected":"")+'>すべて</option><option value="alpha" '+(releaseHistoryState.type==="alpha"?"selected":"")+'>α開発版</option><option value="beta" '+(releaseHistoryState.type==="beta"?"selected":"")+'>βテスト版</option><option value="stable" '+(releaseHistoryState.type==="stable"?"selected":"")+'>製品版</option></select></div></div><div class="actions"><button class="btn" data-release-history-refresh>最新の履歴を再取得</button><button class="btn" data-update-open-releases>GitHub Releases一覧</button></div><div class="muted" id="release-history-status"></div><div class="release-history-list" id="release-history-list"></div><div class="actions"><button class="btn primary" data-release-history-more>過去のバージョンをさらに表示</button></div>');
 }else{
 html=hero("APPLICATION SETTINGS","設定","アプリのバージョンとローカル設定を管理します。")+
-panel("自動更新・アップデート確認","Windows Setup版は利用中のα・β・製品版に合わせて更新を自動ダウンロードします。Portable版は最新のSetup版へ切り替えてください。",'<div class="row"><div><b>現在のバージョン</b><small>このアプリにインストールされているバージョン</small></div><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>自動更新</b><span id="auto-update-status">確認中</span></div><div id="auto-update-details" class="muted"></div><div class="row"><b>確認状態</b><span id="update-check-status">未確認</span></div><div id="update-release-details"></div><div class="actions"><button class="btn primary" type="button" data-update-auto-check>自動更新を再確認</button><button class="btn primary" type="button" data-update-auto-apply hidden>更新を適用して終了</button><button class="btn" type="button" data-update-diagnostic-copy>更新診断をコピー</button><button class="btn" type="button" data-update-check>公開版を確認</button><button class="btn" type="button" data-update-open-releases>GitHub Releasesを開く</button><button class="btn" type="button" data-go="changelog">バージョン更新履歴を見る</button></div>')+
+panel("自動更新・アップデート確認","Windows Setup版は利用中のα・β・製品版に合わせて更新を自動ダウンロードします。Portable版は最新のSetup版へ切り替えてください。",'<div class="row"><div><b>現在のバージョン</b><small>このアプリにインストールされているバージョン</small></div><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>自動更新</b><span id="auto-update-status">確認中</span></div><div id="auto-update-details" class="muted"></div><div class="row"><b>確認状態</b><span id="update-check-status">未確認</span></div><div id="update-release-details"></div><div class="actions"><button class="btn primary" type="button" data-update-auto-check>自動更新を再確認</button><button class="btn primary" type="button" data-update-auto-apply hidden>更新を適用して再起動</button><button class="btn" type="button" data-update-diagnostic-copy>更新診断をコピー</button><button class="btn" type="button" data-update-check>公開版を確認</button><button class="btn" type="button" data-update-open-releases>GitHub Releasesを開く</button><button class="btn" type="button" data-go="changelog">バージョン更新履歴を見る</button></div>')+
 panel("バージョン情報","kananeo nico live stream",'<div class="row"><b>Version</b><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>Runtime</b><span>Electron 45.2.3</span></div><div class="row"><b>Status</b><span>Alpha（開発版） / localhost・LAN リモート対応</span></div>');
+}
+if(page==="dashboard"){
+ html+='<div class="banner" id="dashboard-alpha-update" hidden><i class="led"></i><div><b id="dashboard-alpha-update-title"></b><small id="dashboard-alpha-update-detail"></small></div><button type="button" data-go="settings">更新の詳細</button></div>';
 }
 if(page==="dashboard"&&updateCheckState.result?.updateAvailable){
 const latest=updateCheckState.result.latestVersion||"新しい版";
@@ -827,6 +830,7 @@ const options=sources.map(source=>'<option value="'+esc(source)+'" '+(librarySou
 html=html.replace('<div class="section"><p id="library-count">','<div class="field"><label>取り込み元で絞り込み</label><select class="input" id="library-source"><option value="">すべて</option>'+options+'</select></div><div class="section"><p id="library-count">');
 }
 document.getElementById("content").innerHTML=html;
+if(page==="dashboard")renderDashboardAlphaUpdateStatus();
 if(page==="broadcast"){renderBroadcastManageVerification();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();renderStreamMonitorUi();}
 updateLiveVideoBounds();
 if(page==="voice"){renderSpeechVoices();updateSpeechQueueUi();}
@@ -2429,13 +2433,28 @@ async function handleRemoteControlRequest(request){
  }catch(error){result={ok:false,code:"REMOTE_ACTION_FAILED",message:error?.message||"操作を実行できませんでした。"};}
  window.kananeoApp.remote.resolveRequest(request.requestId,result);
 }
+function renderDashboardAlphaUpdateStatus(){
+ const banner=document.getElementById("dashboard-alpha-update");
+ if(!banner)return;
+ const s=autoUpdateState;
+ const downloading=s.supported&&s.phase==="downloading";
+ const downloaded=s.supported&&s.phase==="downloaded";
+ banner.hidden=!downloading&&!downloaded;
+ if(banner.hidden)return;
+ const title=document.getElementById("dashboard-alpha-update-title");
+ const detail=document.getElementById("dashboard-alpha-update-detail");
+ if(title)title.textContent=downloaded?"α版アップデートの準備ができました":("α版の更新ファイルを取得中："+Math.round(s.percent)+"%");
+ if(detail)detail.textContent=downloaded?
+  "対象 "+(s.version||"新しいバージョン")+"。アプリ終了時に自動適用、または設定から更新して再起動できます。":
+  "対象 "+(s.version||"新しいバージョン")+"。ダウンロード完了後に安全なタイミングで更新します。";
+}
 function renderAutoUpdateStatus(){
  const status=document.getElementById("auto-update-status"),details=document.getElementById("auto-update-details"),button=document.querySelector("[data-update-auto-check]"),apply=document.querySelector("[data-update-auto-apply]");
  if(!status||!details)return;
  const s=autoUpdateState;
  status.textContent=s.message||"状態不明";
  details.textContent=s.phase==="downloading"?"ダウンロード："+s.percent+"%"+(s.version?" / "+s.version:""):
-   s.phase==="downloaded"?"ダウンロード済み："+(s.version||"新しいバージョン")+"。終了時に適用します。":
+   s.phase==="downloaded"?"ダウンロード済み："+(s.version||"新しいバージョン")+"。通常終了時に自動適用、または今すぐ更新して再起動できます。":
    s.phase==="installing"?"アプリを終了して更新を適用しています。":
    s.phase==="error"?"エラーコード："+(s.errorCode||"UPDATE_FAILED")+"。更新診断をコピーして報告できます。":
    !s.supported?"自動更新はWindows Setup版に対応します。Portable版では「公開版を確認」から更新情報を確認し、最新版Setupをインストールしてください。":
@@ -2447,14 +2466,15 @@ function applyAutoUpdateStatus(s){
  if(!s||typeof s!=="object")return;
  autoUpdateState={supported:s.supported===true,channel:String(s.channel||"alpha"),phase:String(s.phase||"idle"),message:String(s.message||"").slice(0,220),percent:Number(s.percent)||0,version:String(s.version||"").slice(0,70),errorCode:String(s.errorCode||"").slice(0,80),checkedAt:String(s.checkedAt||"").slice(0,50)};
  renderAutoUpdateStatus();
+ renderDashboardAlphaUpdateStatus();
 }
 async function applyDownloadedUpdate(){
  if(autoUpdateState.phase!=="downloaded"){toast("更新のダウンロードが完了していません。");return;}
- if(!confirm("アプリを終了し、新しいバージョンをインストールしますか？\n\nコメント取得・放送監視・リモート接続を終了します。配信中なら終了後に実行してください。"))return;
+ if(!confirm("アプリを終了し、新しいバージョンをインストールして再起動しますか？\n\nコメント取得・放送監視・リモート接続を終了します。配信中なら終了後に実行してください。"))return;
  try{
   const result=await window.kananeoApp.updates.applyAuto();
   if(!result?.ok)toast(result?.message||"更新を適用できませんでした。");
-  else toast("アプリを終了して更新を適用します。");
+  else toast("アプリを終了して更新を適用し、再起動します。");
  }catch{toast("更新処理を開始できませんでした。");}
 }
 async function copyUpdateDiagnostic(){
