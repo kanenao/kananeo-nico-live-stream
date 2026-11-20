@@ -36,8 +36,12 @@ function classifyChangeMessages(messages,files){
  if(!lines.length)return {kind:"none",reason:"新しい開発コミットがありません。"};
  // Feature-level changes are identified by explicit commit intent. An
  // ambiguous change is conservatively a patch, never a stable/major release.
- if(lines.some(s=>/^(?:feat(?:\((?!small\))[^)]*\))?!?:|feature:|breaking:|大規模(?:機能)?追加[:：]?|重大な仕様変更[:：]?)/i.test(s)||
-     /BREAKING[ -]CHANGE\s*:/i.test(s)))
+ const productChange=files.some(file=>/^src\//.test(String(file)));
+ const breaking=lines.some(s=>/^(?:breaking:|重大な仕様変更[:：]?)/i.test(s)||
+   /BREAKING[ -]CHANGE\s*:/i.test(s)||
+   /^feat(?:\([^)]*\))?!:/i.test(s));
+ const newFeature=lines.some(s=>/^(?:feat(?:\((?!small\))[^)]*\))?:|feature:|大規模(?:機能)?追加[:：]?)/i.test(s));
+ if(breaking||productChange&&newFeature)
   return {kind:"feature",reason:"新機能または大規模な仕様変更を検出しました。"};
  return {kind:"patch",reason:"不具合修正・小規模改善・保守変更として判定しました。"};
 }
