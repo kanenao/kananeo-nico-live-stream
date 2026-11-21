@@ -99,7 +99,7 @@ test("broadcast panel uses real updater and existing request/quote/poll IPC acti
 
 test("broadcast quick model reads defined videoLibraryLoading/videoLibraryError without ReferenceError",()=>{
  const vm=require("node:vm");
- const match=renderer.match(/function broadcastToolModel\([^]*?\n}\nfunction renderBroadcastToolsUi/);
+ const match=renderer.replace(/\r\n/g,"\n").match(/function broadcastToolModel\([^]*?\n}\nfunction renderBroadcastToolsUi/);
  assert.ok(match,"broadcast quick model must remain accessible to regression test");
  const body=match[0].replace(/\nfunction renderBroadcastToolsUi$/,"");
  const context={
