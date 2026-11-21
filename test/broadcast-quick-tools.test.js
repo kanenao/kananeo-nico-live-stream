@@ -96,3 +96,28 @@ test("broadcast panel uses real updater and existing request/quote/poll IPC acti
  assert.match(renderer,/resumeAutoPollAfterRequestAccepted/);
  assert.match(renderer,/updateBroadcastQuoteToolsTime\(now\)/);
 });
+
+test("broadcast quick model reads defined videoLibraryLoading/videoLibraryError without ReferenceError",()=>{
+ const vm=require("node:vm");
+ const match=renderer.match(/function broadcastToolModel\([^]*?\n}\nfunction renderBroadcastToolsUi/);
+ assert.ok(match,"broadcast quick model must remain accessible to regression test");
+ const body=match[0].replace(/\nfunction renderBroadcastToolsUi$/,"");
+ const context={
+  state:{poll:{autoOnQuote:false},requests:[],stocks:[]},
+  pollRuntime:{status:"idle",active:false,message:""},
+  pollStartPending:false,autoPollWaitingForRequestKey:"",
+  quotePlayback:{active:false,verified:false,videoId:"",item:null},
+  videoLibraryData:{items:[{videoId:"sm12345"}]},
+  videoLibraryLoading:true,videoLibraryError:"取得エラー",
+  currentQuoteProgress:()=>({ok:false})
+ };
+ // Evaluate the real model with the same variable names used by the Electron renderer.
+ const model=vm.runInNewContext(body+";broadcastToolModel()",context);
+ assert.equal(model.libraryLoading,true);
+ assert.equal(model.libraryError,"取得エラー");
+ assert.equal(model.library.length,1);
+ assert.equal(model.library[0].videoId,"sm12345");
+ assert.equal(model.pollEnabled,false);
+ const markup=ui.render(model);
+ assert.match(markup,/ライブラリを読み込み中です/);
+});
