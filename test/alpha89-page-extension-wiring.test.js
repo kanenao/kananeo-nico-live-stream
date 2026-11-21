@@ -1,0 +1,46 @@
+"use strict";
+const test=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path");
+const read=p=>fs.readFileSync(path.join(__dirname,"..",p),"utf8").replace(/\r\n/g,"\n");
+const renderer=read("src/renderer.js"),html=read("src/index.html");
+const preload=read("src/preload.js"),main=read("src/main.js");
+test("program controls and 24h monitor have their own navigation pages",()=>{
+ assert.match(html,/data-page="programs">[^<]*番組枠の作成・終了/);
+ assert.match(html,/data-page="monitor">[^<]*24時間放送監視/);
+ assert.match(renderer,/programs:"番組枠の作成・終了"/);
+ assert.match(renderer,/monitor:"24時間放送監視"/);
+ const broadcast=renderer.slice(renderer.indexOf('}else if(page==="broadcast"){'),renderer.indexOf('}else if(page==="programs"){'));
+ const programs=renderer.slice(renderer.indexOf('}else if(page==="programs"){'),renderer.indexOf('}else if(page==="monitor"){'));
+ const monitor=renderer.slice(renderer.indexOf('}else if(page==="monitor"){'),renderer.indexOf('}else if(page==="voice"){'));
+ assert.doesNotMatch(broadcast,/panel\("24時間放送監視"/);
+ assert.doesNotMatch(broadcast,/panel\("番組枠の作成・終了"/);
+ assert.match(programs,/id="create-program-title"/);
+ assert.match(programs,/data-program-end/);
+ assert.match(programs,/id="broadcast-manage-id"/);
+ assert.match(monitor,/id="stream-monitor-users"/);
+ assert.match(monitor,/id="stream-monitor-targets"/);
+ assert.match(monitor,/id="stream-monitor-status"/);
+ assert.match(renderer,/if\(page==="programs"\)renderBroadcastManageVerification\(\)/);
+ assert.match(renderer,/if\(page==="monitor"\)renderStreamMonitorUi\(\)/);
+});
+test("main process does not auto-extend by paid methods or for other accounts",()=>{
+ assert.match(main,/getAutoExtensionMonitor\(\)/);
+ assert.match(main,/getOwnBroadcast,checkProgram:checkNiconicoProgram/);
+ assert.match(main,/selectFreeExtensionMethod\(available.methods\)/);
+ assert.match(main,/if\(!owned\)return/);
+ assert.match(main,/shouldTryAutoExtend\(checked\)/);
+ assert.match(main,/await checkNiconicoProgram\(due.programId\)/);
+ assert.match(main,/niconico:auto-extension-configure/);
+ assert.match(main,/niconico:auto-extension-status/);
+ assert.match(main,/await restoreAutoExtensionSettings\(\)/);
+});
+test("auto-extension settings are wired and truthful about free-only limits",()=>{
+ assert.match(preload,/configureAutoExtension:input=>ipcRenderer.invoke\("niconico:auto-extension-configure"/);
+ assert.match(preload,/onAutoExtensionStatus:callback/);
+ assert.match(renderer,/id="auto-extension-status"/);
+ assert.match(renderer,/自動無料延長を有効にする/);
+ assert.match(renderer,/有料・ポイント消費はしません/);
+ assert.match(renderer,/configureAutoExtension\(\{enabled:desiredAutoExtend\}\)/);
+ assert.match(renderer,/syncAutoExtensionSettings\(\)/);
+ assert.match(renderer,/onAutoExtensionStatus\?\.\(applyAutoExtensionStatus\)/);
+ assert.doesNotMatch(renderer,/延長APIの仕様・条件を実機確認後に有効化します/);
+});
