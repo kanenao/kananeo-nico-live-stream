@@ -1,5 +1,5 @@
 (() => {
-const names={audit:"監査ログ",remote:"リモート操作",dashboard:"ダッシュボード",broadcast:"放送・枠管理",comments:"コメントビューア",requests:"動画リクエスト",stocks:"ストック",library:"動画ライブラリ",poll:"自動アンケート",player:"プレイヤー・BGM",automation:"自動枠取り・延長",external:"OBS・外部ツール",voice:"音声・自動応答",users:"ユーザー・NG管理",logs:"履歴・バックアップ",changelog:"バージョン・更新情報",settings:"設定"};
+const names={audit:"監査ログ",remote:"リモート操作",dashboard:"ダッシュボード",broadcast:"放送・枠管理",programs:"番組枠の作成・終了",monitor:"24時間放送監視",comments:"コメントビューア",requests:"動画リクエスト",stocks:"ストック",library:"動画ライブラリ",poll:"自動アンケート",player:"プレイヤー・BGM",automation:"自動枠取り・延長",external:"OBS・外部ツール",voice:"音声・自動応答",users:"ユーザー・NG管理",logs:"履歴・バックアップ",changelog:"バージョン・更新情報",settings:"設定"};
 const key="kananeo-beta2";
 const COMMENT_VIEW_STORAGE_KEY=key+"-comment-view";
 const BROADCAST_COMMENT_COLUMNS=[{key:"number",label:"番号"},{key:"time",label:"時刻"},{key:"user",label:"投稿者"},{key:"userId",label:"ユーザーID"},{key:"content",label:"コメント本文"},{key:"type",label:"種別"}];
@@ -235,7 +235,7 @@ function applyOwnMonitorStatus(status){
  if(!status||typeof status!=="object")return;
  ownMonitorStatus=status;
  for(const item of status.activePrograms||[])void maybeAutoPlayOnOwnLive(item);
- if(page==="broadcast")renderStreamMonitorUi();
+ if(page==="monitor")renderStreamMonitorUi();
 }
 async function handleOwnBroadcastLive(info){
  const programId=String(info?.programId||"").toLowerCase();
@@ -246,7 +246,7 @@ async function handleOwnBroadcastLive(info){
   state.streamMonitor.targets.unshift(target);
  }
  if(target){target.status="onAir";target.title=String(info.title||programId).slice(0,200);}
- if(state.streamMonitor.lastOwnNotifiedProgramId===programId){save();if(page==="broadcast")renderStreamMonitorUi();return;}
+ if(state.streamMonitor.lastOwnNotifiedProgramId===programId){save();if(page==="monitor")renderStreamMonitorUi();return;}
  state.streamMonitor.lastOwnNotifiedProgramId=programId;
  addStreamMonitorHistory("live",programId,"自分の放送開始を自動検知しました。");
  save();void adoptCreatedBroadcast(programId);
@@ -260,7 +260,7 @@ async function handleOwnBroadcastLive(info){
   const result=await window.kananeoApp.niconico.openLiveVideo(programId);
   if(result?.ok){liveVideoState={open:true,status:"loading",programId,message:"自分の放送画面を表示しています。"};page="broadcast";render();}
  }
- if(page==="broadcast")renderStreamMonitorUi();
+ if(page==="monitor")renderStreamMonitorUi();
 }
 function saveStreamMonitorSettings(){
  const textarea=document.getElementById("stream-monitor-targets");
@@ -402,7 +402,7 @@ async function checkAutoNextFrame(){
 function applyRegisteredMonitorStatus(status){
  if(!status||typeof status!=="object")return;
  registeredMonitorStatus=status;
- if(page==="broadcast")renderStreamMonitorUi();
+ if(page==="monitor")renderStreamMonitorUi();
 }
 async function syncRegisteredUserMonitor(){
  if(!window.kananeoApp?.niconico?.configureRegisteredUserMonitor)return;
@@ -437,7 +437,7 @@ async function onRegisteredUserLive(info){
   if(!active)void startComments(id);
   else if(commentConnection.programId.toLowerCase()!==id)addStreamMonitorHistory("info",id,"別番組のコメント受信中につき自動切替を保留しました。");
  }
- if(page==="broadcast")renderStreamMonitorUi();
+ if(page==="monitor")renderStreamMonitorUi();
 }
 function startStreamMonitor(){
  if(!state.streamMonitor.targets?.length&&!state.streamMonitor.userIds?.length){toast("自分の放送監視は常時稼働中です。追加のユーザーや番組を登録してください。");return;}
@@ -445,6 +445,26 @@ function startStreamMonitor(){
 }
 function stopStreamMonitor(){
  state.streamMonitor.enabled=false;streamMonitorRuntime.generation++;addStreamMonitorHistory("stopped","","放送監視を停止しました。");save();void syncRegisteredUserMonitor();streamMonitorRuntime.nextCheckAt=0;streamMonitorRuntime.message="監視を停止しました。";renderStreamMonitorUi();toast("放送監視を停止しました。");
+}
+let autoExtensionRuntime={enabled:false,busy:false,phase:"disabled",message:"自動無料延長はOFFです。"};
+function applyAutoExtensionStatus(status){
+ if(!status||typeof status!=="object")return;
+ autoExtensionRuntime=status;
+ const host=document.getElementById("auto-extension-status");
+ if(host)host.textContent=String(status.message||"延長状態を確認しています。");
+}
+async function syncAutoExtensionSettings(){
+ try{
+  const status=await window.kananeoApp.niconico.getAutoExtensionStatus?.();
+  if(status?.ok)applyAutoExtensionStatus(status.status);
+  if(state.automation.autoExtend===true&&status?.status?.enabled!==true){
+   const enabled=await window.kananeoApp.niconico.configureAutoExtension?.({enabled:true});
+   if(enabled?.ok)applyAutoExtensionStatus(enabled.status);
+   else {state.automation.autoExtend=false;save();toast(enabled?.message||"自動延長の有効化に失敗しました。");}
+  }else if(status?.status?.enabled===true&&state.automation.autoExtend!==true){
+   state.automation.autoExtend=true;save();
+  }
+ }catch(error){applyAutoExtensionStatus({enabled:false,phase:"error",message:String(error?.message||"自動延長の状態を取得できません。")});}
 }
 function renderExtensionOptions(){
 const node=document.getElementById("extension-options");
@@ -767,7 +787,7 @@ panel("自動アンケート実行","放送主権限のあるログインで、�
 }else if(page==="automation"){
 html=hero("AUTOMATION","自動枠取り・延長","次枠取得・無料延長と、動画の再生時間に合わせた配信運用を管理します。")+
 '<div class="grid2">'+panel("次枠管理","番組情報と再生状態を引き継ぐ",toggle("auto-next","放送終了時に次枠取得を実行","アプリ本体で終了を監視し次枠取得を開始します。",state.automation.autoNext)+toggle("auto-create-next","前枠を引き継いで次枠を自動作成","タイトル・説明・タグ・公開設定を再利用して番組を自動作成（初期OFF）。作成された放送の本番開始は別操作です。",state.automation.autoCreate)+'<div class="muted" id="auto-next-status">'+esc(state.automation.autoNext?autoNextRuntime.message:"自動次枠監視はOFFです。")+'</div><button class="btn" data-auto-next-check '+(!state.automation.autoNext?"disabled":"")+'>今すぐ終了状態を確認</button>'+toggle("keep-position","再生位置を引き継ぐ","次枠でも現在位置を維持",state.automation.keepPosition))+
-panel("自動延長","動画の残り時間と枠の残り時間を同期",toggle("auto-extend","自動延長を有効にする","延長APIの仕様・条件を実機確認後に有効化します",state.automation.autoExtend)+toggle("adjust-video","動画の長さに合わせて延長時間を調整","動画終了後の黒画面・ロスタイムを抑える",state.automation.adjustVideo)+field("基本追加時間（秒）","extend",state.automation.extend)+'<button class="btn primary" data-save-auto>設定を保存</button>')+'</div>'+panel("延長可能な方法を確認","現在の放送で利用できる延長方法・分数を読み取ります。ここでは延長操作を実行しません。",'<div class="actions"><button class="btn primary" data-extension-check '+(extensionOptionsState.loading?"disabled":"")+ '>延長方法を確認</button><span class="muted" id="extension-updated">'+(extensionOptionsState.updatedAt?"更新："+new Date(extensionOptionsState.updatedAt).toLocaleTimeString("ja-JP"):"未確認")+'</span></div><div id="extension-options" class="empty">'+esc(extensionOptionsState.error||(extensionOptionsState.methods.length?extensionOptionsState.methods.map(x=>x.type+"："+x.minutes+"分").join(" / "):"放送IDを確認してから延長方法を取得してください。"))+'</div>');
+panel("自動延長","動画の残り時間と枠の残り時間を同期",toggle("auto-extend","自動無料延長を有効にする","アプリ起動中、自分の配信が終了5分前になったら無料延長のみ自動試行します。有料・ポイント消費はしません。",state.automation.autoExtend)+'<div class="empty" id="auto-extension-status">'+esc(autoExtensionRuntime.message)+'</div><div class="muted">ニコ生側が無料延長を提供しない場合やAPI仕様が異なる場合、延長は失敗します。送信後の時刻が未確認の場合は二重要求を防ぎ、公式管理画面での確認を案内します。アプリ終了中・PCスリープ中は動作しません。</div>'+'<button class="btn primary" data-save-auto>設定を保存</button>')+'</div>'+panel("延長可能な方法を確認","現在の放送で利用できる延長方法・分数を読み取ります。ここでは延長操作を実行しません。",'<div class="actions"><button class="btn primary" data-extension-check '+(extensionOptionsState.loading?"disabled":"")+ '>延長方法を確認</button><span class="muted" id="extension-updated">'+(extensionOptionsState.updatedAt?"更新："+new Date(extensionOptionsState.updatedAt).toLocaleTimeString("ja-JP"):"未確認")+'</span></div><div id="extension-options" class="empty">'+esc(extensionOptionsState.error||(extensionOptionsState.methods.length?extensionOptionsState.methods.map(x=>x.type+"："+x.minutes+"分").join(" / "):"放送IDを確認してから延長方法を取得してください。"))+'</div>');
 }else if(page==="external"){
 html=hero("EXTERNAL TOOLS","OBS・外部配信ツール","OBS Studio / N Air / XSplitの起動パスを登録します。外部操作は未実装です。")+
 '<div class="grid3">'+panel("OBS Studio","実行ファイルのパス",field("OBS実行ファイル","obs",state.external.obs,"obs64.exe"))+panel("N Air","実行ファイルのパス",field("N Air実行ファイル","nair",state.external.nair,"N Air.exe"))+panel("XSplit","実行ファイルのパス",field("XSplit実行ファイル","xsplit",state.external.xsplit,"XSplit.exe"))+'</div><button class="btn primary" data-save-paths>パスを保存</button>';
@@ -813,7 +833,7 @@ html=hero("LIVE SESSION","放送・枠管理","放送画面とコメントに加
 '<div class="grid2">'+
 panel("ニコニコアカウント接続","公式ログインを専用セッションで開く",'<div class="empty" id="auth-status"><b>'+authTitle+'</b><br>'+authText+'</div><div class="actions"><button class="btn primary" data-nico-login>公式ログインを開く</button><button class="btn" data-nico-refresh>状態を再確認</button><button class="btn" data-nico-logout>このアプリからログアウト</button></div>')+
 panel("番組ページを確認","放送IDまたはニコ生番組URLを入力",'<div class="field"><label>放送ID / URL</label><input class="input" id="live-id" value="'+esc(state.lastProgramId||"")+'" placeholder="lv123456789 または放送URL" maxlength="512"></div><div class="actions"><button class="btn primary" data-nico-check>番組ページを確認</button></div><div class="empty" id="program-result">確認結果はここに表示します。</div>')+
-panel("番組枠の作成・終了","作成後の自動番組開始と、開始・終了ボタンを利用できます。",'<div class="field"><label>番組タイトル</label><input class="input" id="create-program-title" maxlength="200" placeholder="例：配信タイトル"></div><div class="field"><label>番組説明</label><textarea class="input" id="create-program-description" maxlength="10000" rows="3" placeholder="番組の説明"></textarea></div><div class="grid2"><div class="field"><label>番組カテゴリ</label><input class="input" id="create-program-category" maxlength="100" value="一般" placeholder="例：一般"></div><div class="field"><label>タグ（カンマ区切り、最大10件）</label><input class="input" id="create-program-tags" maxlength="1000" placeholder="例：雑談, 生放送"></div></div><label class="switchrow"><span><b>会員限定で作成</b><small>OFFは一般公開の枠になります。合言葉・非公開枠は公式作成画面で設定してください。</small></span><input type="checkbox" id="create-program-member-only"></label><div class="actions"><button class="btn primary" data-create-program-in-app>アプリから番組を作成（実験的）</button><button class="btn" data-broadcast-create>公式番組作成画面を開く</button><button class="btn" data-broadcast-own-fetch>自分の最新番組を取得</button></div><div class="muted">番組作成APIは仕様変更の可能性があります。作成に失敗した場合は公式画面を使用してください。送信前に確認し、同じ内容の重複送信を防止します。</div><div class="field"><label>管理する放送ID</label><input class="input" id="broadcast-manage-id" value="'+esc(state.lastProgramId||"")+'" placeholder="lv123456789" maxlength="512"></div><div class="actions"><button class="btn" data-broadcast-verify>放送ID・状態を確認</button><button class="btn primary" data-program-start>▶ 番組開始</button><button class="btn danger" data-program-end>■ 番組終了</button><button class="btn" data-broadcast-manage disabled>番組管理画面を開く</button></div><div class="empty" id="broadcast-manage-result">確認結果は90秒間有効です。</div><label class="switchrow"><span><b>枠作成直後に番組開始を自動実行</b><small>新しい自分の番組だけが対象です。OBSや映像送出は別途必要です（実験的）。</small></span><input id="auto-start-program" type="checkbox" '+(state.automation.autoStartProgram?"checked":"")+'></label><div class="muted">番組開始・終了はログイン中の自分の番組だけを操作します。ニコニコのAPI仕様変更で操作できない場合があります。</div>')+
+
 '</div>'+
 '<div class="broadcast-live-layout">'+
 '<section class="panel broadcast-video-panel"><div class="broadcast-panel-heading"><div><h2>放送画面</h2><p>ニコ生公式の視聴ページをアプリ内に表示します。</p></div><span class="live-state-pill" id="broadcast-live-status">未表示</span></div>'+
@@ -827,8 +847,16 @@ panel("番組枠の作成・終了","作成後の自動番組開始と、開始�
 '<div id="broadcast-comments-list" class="ncv-comment-list"><div class="empty">コメント受信を開始すると、ここに一覧表示します。</div></div><div id="broadcast-comment-context" class="ncv-context-menu" hidden></div>'+
 '<details class="ncv-display-settings"><summary>コメント表示をカスタマイズ（文字サイズ・列・並び順・色）</summary><div id="broadcast-comment-settings-controls"></div></details><div class="muted">コメント番号をクリックすると既読位置を記録、ダブルクリックで解除できます。投稿者名をクリックすると、そのユーザーのコメントだけを表示します。</div></section>'+
 '</div>'+
-panel("24時間放送監視","登録した番組ページをアプリ起動中に定期確認します。放送開始時は通知し、任意でコメント取得を自動開始します。",'<div class="row"><div><b>ログイン中の自分の放送を自動監視：常時ON</b><small>起動後すぐに監視開始。セッション切れでも再ログイン後に自動復帰します（約15秒間隔）。</small></div><button class="btn" type="button" data-own-monitor-check>今すぐ確認</button></div><div class="field"><label>登録する配信者のユーザーID・プロフィールURL（1行に1件、最大30人）</label><textarea class="input" id="stream-monitor-users" rows="3" placeholder="12345678\nhttps://www.nicovideo.jp/user/12345678">'+esc((state.streamMonitor.userIds||[]).join("\n"))+'</textarea></div><div class="field"><label>追加で監視する放送ID・公式番組URL（1行に1件、最大50件）</label><textarea class="input" id="stream-monitor-targets" rows="4" placeholder="lv123456789\nlv987654321">'+esc((state.streamMonitor.targets||[]).map(x=>x.programId).join("\n"))+'</textarea></div><div class="grid2"><div class="field"><label>確認間隔</label><select class="input" id="stream-monitor-interval"><option value="30" '+(state.streamMonitor.intervalSeconds===30?"selected":"")+'>30秒</option><option value="60" '+(state.streamMonitor.intervalSeconds===60?"selected":"")+'>1分</option><option value="120" '+(state.streamMonitor.intervalSeconds===120?"selected":"")+'>2分</option><option value="300" '+(state.streamMonitor.intervalSeconds===300?"selected":"")+'>5分</option></select></div><label class="switchrow"><span><b>放送開始時にコメント取得</b><small>受信コメントをPC内へ保存します。別番組を受信中は切り替えません。</small></span><input type="checkbox" id="stream-monitor-auto-comments" '+(state.streamMonitor.autoComments?"checked":"")+'></label></div><label class="switchrow"><span><b>新規放送を検知したら放送画面も自動表示</b><small>既に別の放送画面を表示している場合は自動切替しません。初期OFF。</small></span><input type="checkbox" id="stream-monitor-auto-video" '+(state.streamMonitor.autoVideo?"checked":"")+'></label><label class="switchrow"><span><b>登録配信者が放送開始したらWindows通知</b><small>アプリを最小化していても、新しい放送を初めて検知したとき通知します。初期OFF。アプリ起動中のみ。</small></span><input type="checkbox" id="stream-monitor-notify-live" '+(state.streamMonitor.notifyOnLive?"checked":"")+'></label><div class="actions"><button class="btn" type="button" data-stream-monitor-own-fetch>自分の番組を取得</button><button class="btn" type="button" data-stream-monitor-save>監視対象を保存</button><button class="btn primary" type="button" data-stream-monitor-start '+(state.streamMonitor.enabled?"disabled":"")+'>監視開始</button><button class="btn danger" type="button" data-stream-monitor-stop '+(!state.streamMonitor.enabled?"disabled":"")+'>監視停止</button><button class="btn" type="button" data-stream-monitor-check>今すぐ確認</button></div><div id="stream-monitor-status" class="section"></div><div class="muted">アカウント放送履歴は非公開APIに依存します。監視停止・対象変更時は処理中の古い確認結果を破棄します。監視はアプリが起動している間に動作します。PCのスリープ中・アプリ終了中は確認できません。登録ユーザーの監視はElectron本体で動作します。自動連携は放送IDの追加、任意のコメント受信・映像表示です。映像ファイルの自動録画は未実装です。</div>')+
 '<div class="banner"><i class="led"></i><div><b>表示について</b><small>放送映像はニコニコ公式視聴ページを専用セッションで表示します。コメント一覧はこのアプリが受信したNDGRコメントを表示します。配信ページの仕様や視聴権限により映像が表示できない場合があります。</small></div></div>';
+}else if(page==="programs"){
+html=hero("PROGRAM CONTROL","番組枠の作成・終了","番組の新規作成、放送開始・終了と、自分の番組の確認をこのページで行います。")+
+'<div class="grid2">'+
+panel("番組枠の作成・終了","作成後の自動番組開始と、開始・終了ボタンを利用できます。",'<div class="field"><label>番組タイトル</label><input class="input" id="create-program-title" maxlength="200" placeholder="例：配信タイトル"></div><div class="field"><label>番組説明</label><textarea class="input" id="create-program-description" maxlength="10000" rows="3" placeholder="番組の説明"></textarea></div><div class="grid2"><div class="field"><label>番組カテゴリ</label><input class="input" id="create-program-category" maxlength="100" value="一般" placeholder="例：一般"></div><div class="field"><label>タグ（カンマ区切り、最大10件）</label><input class="input" id="create-program-tags" maxlength="1000" placeholder="例：雑談, 生放送"></div></div><label class="switchrow"><span><b>会員限定で作成</b><small>OFFは一般公開の枠になります。合言葉・非公開枠は公式作成画面で設定してください。</small></span><input type="checkbox" id="create-program-member-only"></label><div class="actions"><button class="btn primary" data-create-program-in-app>アプリから番組を作成（実験的）</button><button class="btn" data-broadcast-create>公式番組作成画面を開く</button><button class="btn" data-broadcast-own-fetch>自分の最新番組を取得</button></div><div class="muted">番組作成APIは仕様変更の可能性があります。作成に失敗した場合は公式画面を使用してください。送信前に確認し、同じ内容の重複送信を防止します。</div><div class="field"><label>管理する放送ID</label><input class="input" id="broadcast-manage-id" value="'+esc(state.lastProgramId||"")+'" placeholder="lv123456789" maxlength="512"></div><div class="actions"><button class="btn" data-broadcast-verify>放送ID・状態を確認</button><button class="btn primary" data-program-start>▶ 番組開始</button><button class="btn danger" data-program-end>■ 番組終了</button><button class="btn" data-broadcast-manage disabled>番組管理画面を開く</button></div><div class="empty" id="broadcast-manage-result">確認結果は90秒間有効です。</div><label class="switchrow"><span><b>枠作成直後に番組開始を自動実行</b><small>新しい自分の番組だけが対象です。OBSや映像送出は別途必要です（実験的）。</small></span><input id="auto-start-program" type="checkbox" '+(state.automation.autoStartProgram?"checked":"")+'></label><div class="muted">番組開始・終了はログイン中の自分の番組だけを操作します。ニコニコのAPI仕様変更で操作できない場合があります。</div>')+
+'</div>';
+}else if(page==="monitor"){
+html=hero("LIVE MONITOR","24時間放送監視","自分の放送と登録配信者をアプリ起動中に監視します。アプリ終了時・PCスリープ中は監視できません。")+
+panel("24時間放送監視","登録した番組ページをアプリ起動中に定期確認します。放送開始時は通知し、任意でコメント取得を自動開始します。",'<div class="row"><div><b>ログイン中の自分の放送を自動監視：常時ON</b><small>起動後すぐに監視開始。セッション切れでも再ログイン後に自動復帰します（約15秒間隔）。</small></div><button class="btn" type="button" data-own-monitor-check>今すぐ確認</button></div><div class="field"><label>登録する配信者のユーザーID・プロフィールURL（1行に1件、最大30人）</label><textarea class="input" id="stream-monitor-users" rows="3" placeholder="12345678\nhttps://www.nicovideo.jp/user/12345678">'+esc((state.streamMonitor.userIds||[]).join("\n"))+'</textarea></div><div class="field"><label>追加で監視する放送ID・公式番組URL（1行に1件、最大50件）</label><textarea class="input" id="stream-monitor-targets" rows="4" placeholder="lv123456789\nlv987654321">'+esc((state.streamMonitor.targets||[]).map(x=>x.programId).join("\n"))+'</textarea></div><div class="grid2"><div class="field"><label>確認間隔</label><select class="input" id="stream-monitor-interval"><option value="30" '+(state.streamMonitor.intervalSeconds===30?"selected":"")+'>30秒</option><option value="60" '+(state.streamMonitor.intervalSeconds===60?"selected":"")+'>1分</option><option value="120" '+(state.streamMonitor.intervalSeconds===120?"selected":"")+'>2分</option><option value="300" '+(state.streamMonitor.intervalSeconds===300?"selected":"")+'>5分</option></select></div><label class="switchrow"><span><b>放送開始時にコメント取得</b><small>受信コメントをPC内へ保存します。別番組を受信中は切り替えません。</small></span><input type="checkbox" id="stream-monitor-auto-comments" '+(state.streamMonitor.autoComments?"checked":"")+'></label></div><label class="switchrow"><span><b>新規放送を検知したら放送画面も自動表示</b><small>既に別の放送画面を表示している場合は自動切替しません。初期OFF。</small></span><input type="checkbox" id="stream-monitor-auto-video" '+(state.streamMonitor.autoVideo?"checked":"")+'></label><label class="switchrow"><span><b>登録配信者が放送開始したらWindows通知</b><small>アプリを最小化していても、新しい放送を初めて検知したとき通知します。初期OFF。アプリ起動中のみ。</small></span><input type="checkbox" id="stream-monitor-notify-live" '+(state.streamMonitor.notifyOnLive?"checked":"")+'></label><div class="actions"><button class="btn" type="button" data-stream-monitor-own-fetch>自分の番組を取得</button><button class="btn" type="button" data-stream-monitor-save>監視対象を保存</button><button class="btn primary" type="button" data-stream-monitor-start '+(state.streamMonitor.enabled?"disabled":"")+'>監視開始</button><button class="btn danger" type="button" data-stream-monitor-stop '+(!state.streamMonitor.enabled?"disabled":"")+'>監視停止</button><button class="btn" type="button" data-stream-monitor-check>今すぐ確認</button></div><div id="stream-monitor-status" class="section"></div><div class="muted">アカウント放送履歴は非公開APIに依存します。監視停止・対象変更時は処理中の古い確認結果を破棄します。監視はアプリが起動している間に動作します。PCのスリープ中・アプリ終了中は確認できません。登録ユーザーの監視はElectron本体で動作します。自動連携は放送IDの追加、任意のコメント受信・映像表示です。映像ファイルの自動録画は未実装です。</div>')+
+'<div class="banner"><i class="led"></i><div><b>監視を継続するには</b><small>アプリを起動したままにしてください。自分の放送は起動中に自動監視されます。追加対象は「監視開始」を有効にしてください。</small></div></div>';
 }else if(page==="voice"){
 const speechAvailable=!!(window.speechSynthesis&&typeof window.SpeechSynthesisUtterance==="function");
 const mutedSpeechRows=(state.voice.mutedUserIds||[]).map(userId=>{
@@ -876,7 +904,9 @@ html=html.replace('<div class="section"><p id="library-count">','<div class="fie
 document.getElementById("content").innerHTML=html;
 renderInAppUpdateNotice();
 if(page==="dashboard")renderDashboardAlphaUpdateStatus();
-if(page==="broadcast"){renderBroadcastToolsUi();renderBroadcastManageVerification();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();renderStreamMonitorUi();}
+if(page==="broadcast"){renderBroadcastToolsUi();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();}
+if(page==="programs")renderBroadcastManageVerification();
+if(page==="monitor")renderStreamMonitorUi();
 updateLiveVideoBounds();
 if(page==="voice"){renderSpeechVoices();updateSpeechQueueUi();}
 if(page==="settings"){renderUpdateCheck();renderAutoUpdateStatus();}
@@ -3207,9 +3237,11 @@ if(b.hasAttribute("data-save-auto")){
  state.automation.autoCreate=enableAutoCreate;
  state.automation.autoNext=document.querySelector('[data-toggle="auto-next"]').checked||enableAutoCreate;
  state.automation.keepPosition=document.querySelector('[data-toggle="keep-position"]').checked;
- state.automation.autoExtend=document.querySelector('[data-toggle="auto-extend"]').checked;
- state.automation.adjustVideo=document.querySelector('[data-toggle="adjust-video"]').checked;
- state.automation.extend=+document.getElementById("extend").value||30;
+ const desiredAutoExtend=document.querySelector('[data-toggle="auto-extend"]')?.checked===true;
+ const configured=await window.kananeoApp.niconico.configureAutoExtension({enabled:desiredAutoExtend});
+ if(!configured?.ok){toast(configured?.message||"自動延長設定を保存できませんでした。");return;}
+ state.automation.autoExtend=desiredAutoExtend;
+ applyAutoExtensionStatus(configured.status);
  save();void syncAutoNextSettings();render();toast(enableAutoCreate?"前枠引き継ぎ自動作成を有効にしました。":"自動化設定を保存しました。");
 }
 if(b.hasAttribute("data-save-paths")){state.external={obs:document.getElementById("obs").value,nair:document.getElementById("nair").value,xsplit:document.getElementById("xsplit").value};save();toast("外部ツールのパスを保存しました");}
@@ -3463,6 +3495,8 @@ if(window.kananeoApp?.niconico){window.kananeoApp.niconico.getSessionStatus().th
     window.kananeoApp.niconico.onRegisteredUserLive?.(info=>{void onRegisteredUserLive(info);});
     window.kananeoApp.niconico.onRegisteredUserMonitorStatus?.(applyRegisteredMonitorStatus);
     window.kananeoApp.niconico.onOwnMonitorStatus?.(applyOwnMonitorStatus);
+    window.kananeoApp.niconico.onAutoExtensionStatus?.(applyAutoExtensionStatus);
+    void syncAutoExtensionSettings();
     window.kananeoApp.niconico.onOwnMonitorLive?.(info=>{void handleOwnBroadcastLive(info);});
     void window.kananeoApp.niconico.getOwnMonitorStatus?.().then(result=>{
      if(!result?.ok)return;
