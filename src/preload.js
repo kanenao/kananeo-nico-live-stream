@@ -137,6 +137,14 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
     focusVideo:()=>ipcRenderer.invoke("niconico:focus-video"),
     closeVideo:()=>ipcRenderer.invoke("niconico:close-video"),
     getExtensionOptions:input=>ipcRenderer.invoke("niconico:get-extension-options",input),
+    getAutoExtensionStatus:()=>ipcRenderer.invoke("niconico:auto-extension-status"),
+    configureAutoExtension:input=>ipcRenderer.invoke("niconico:auto-extension-configure",input),
+    onAutoExtensionStatus:callback=>{
+      if(typeof callback!=="function")return ()=>{};
+      const listener=(_event,status)=>callback(status);
+      ipcRenderer.on("niconico:auto-extension-status",listener);
+      return ()=>ipcRenderer.removeListener("niconico:auto-extension-status",listener);
+    },
     getProgramStatistics:input=>ipcRenderer.invoke("niconico:get-program-statistics",input),
     getSessionStatus:()=>ipcRenderer.invoke("niconico:get-session-status"),
     logout:()=>ipcRenderer.invoke("niconico:logout"),
