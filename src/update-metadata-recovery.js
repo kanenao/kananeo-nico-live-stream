@@ -18,8 +18,12 @@ function selectAlphaUpdateRelease(releases,currentVersion){
   if(!(compareVersions(tag.slice(1),currentVersion)>0))continue;
   const assets=Array.isArray(release.assets)?release.assets:[];
   if(!assets.some(asset=>asset?.name==="alpha.yml"&&Number(asset.size)>0))continue;
-  if(!assets.some(asset=>/^[A-Za-z0-9. _-]+-Setup-x64\.exe$/.test(String(asset?.name||""))&&Number(asset.size)>0))continue;
-  valid.push({tag,version:tag.slice(1),url:RELEASE_BASE+encodeURIComponent(tag)+"/"});
+  const version=tag.slice(1);
+  const installer=assets.find(asset=>asset?.name==="kananeo.nico.live.stream-"+version+"-Setup-x64.exe"&&Number(asset.size)>0);
+  if(!installer)continue;
+  valid.push({tag,version,url:RELEASE_BASE+encodeURIComponent(tag)+"/",
+    installer:{name:installer.name,size:Number(installer.size),id:Number(installer.id)||0,
+     digest:String(installer.digest||"")}});
  }
  valid.sort((left,right)=>compareVersions(right.version,left.version));
  return valid[0]||null;
