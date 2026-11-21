@@ -669,6 +669,58 @@ async function fetchReleaseHistory(reset=false){
  }finally{releaseHistoryState.loading=false;renderReleaseHistoryRows();}
 }
 
+function broadcastToolModel(now=Date.now()){
+ return {
+  pollEnabled:state.poll.autoOnQuote===true,pollStatus:pollRuntime.status,
+  pollActive:pollRuntime.active,pollStartPending,
+  waitingForRequests:!!autoPollWaitingForRequestKey,pollMessage:pollRuntime.message,
+  quote:{active:quotePlayback.active,verified:quotePlayback.verified,
+   videoId:quotePlayback.videoId,title:quotePlayback.item?.title||quotePlayback.videoId,
+   progress:currentQuoteProgress(now)},
+  requests:state.requests,library:videoLibraryData.items,libraryLoading,libraryError
+ };
+}
+function renderBroadcastToolsUi(){
+ const host=document.getElementById("broadcast-quick-tools");
+ if(!host)return;
+ if(!window.KananeoBroadcastQuickTools){host.textContent="動画管理の画面を読み込めませんでした。アプリを再起動してください。";return;}
+ host.innerHTML=window.KananeoBroadcastQuickTools.render(broadcastToolModel());
+}
+function updateBroadcastQuoteToolsTime(now=Date.now()){
+ const label=document.getElementById("broadcast-quote-time");
+ if(!label||!window.KananeoBroadcastQuickTools)return;
+ const clock=window.KananeoBroadcastQuickTools.quoteClock(broadcastToolModel(now).quote);
+ const remaining=document.getElementById("broadcast-quote-remaining");
+ const progress=document.getElementById("broadcast-quote-progress");
+ const stateLabel=document.getElementById("broadcast-quote-state");
+ const title=document.getElementById("broadcast-quote-title");
+ const hint=document.getElementById("broadcast-quote-hint");
+ label.textContent=clock.time;
+ if(remaining)remaining.textContent=clock.remaining;
+ if(progress)progress.value=clock.percent;
+ if(stateLabel)stateLabel.textContent=clock.state;
+ if(title)title.textContent=clock.title;
+ if(hint)hint.textContent=clock.hint;
+}
+function updateBroadcastPollToolsUi(){
+ const label=document.getElementById("broadcast-poll-state");
+ if(!label||!window.KananeoBroadcastQuickTools)return;
+ label.textContent=window.KananeoBroadcastQuickTools.pollLabel(broadcastToolModel());
+ const message=document.getElementById("broadcast-poll-message");
+ if(message)message.textContent=pollRuntime.message||"アンケートの開始に備えています。";
+ const start=document.querySelector("#broadcast-quick-tools [data-poll-start]");
+ const stop=document.querySelector("#broadcast-quick-tools [data-poll-stop]");
+ if(start)start.disabled=pollRuntime.active||pollStartPending;
+ if(stop)stop.disabled=!pollRuntime.active;
+}
+function renderBroadcastLibraryPreview(){
+ const host=document.getElementById("broadcast-library-preview");
+ if(!host||!window.KananeoBroadcastQuickTools)return;
+ host.innerHTML=window.KananeoBroadcastQuickTools.libraryPreview(videoLibraryData.items,videoLibraryLoading,videoLibraryError);
+ const count=document.getElementById("broadcast-library-count");
+ if(count)count.textContent=videoLibraryData.items.length.toLocaleString("ja-JP");
+}
+
 function render(){
 document.getElementById("crumb").textContent=names[page];
 document.querySelectorAll("[data-page]").forEach(b=>b.classList.toggle("active",b.dataset.page===page));
@@ -755,7 +807,8 @@ panel("受信コメント",'<span id="comment-count">'+receivedComments.length+'
 }else if(page==="broadcast"){
 const authTitle=nicoStatus.authenticated?"ログインCookieを確認しました":"ニコニコにログインしていません";
 const authText=nicoStatus.authenticated?"このアプリ専用のセッションにログインCookieがあります。Cookie値は表示しません。":"下のボタンからニコニコ公式ログインを開いてください。パスワードはアプリに入力しません。";
-html=hero("LIVE SESSION","放送・枠管理","放送映像を左側に表示し、NCV風のコメント一覧を右側に並べて確認できます。")+
+html=hero("LIVE SESSION","放送・枠管理","放送画面とコメントに加え、自動アンケート・引用再生時間・動画リクエストをこの画面で操作できます。")+
+'<div id="broadcast-quick-tools"></div>'+
 '<div class="grid2">'+
 panel("ニコニコアカウント接続","公式ログインを専用セッションで開く",'<div class="empty" id="auth-status"><b>'+authTitle+'</b><br>'+authText+'</div><div class="actions"><button class="btn primary" data-nico-login>公式ログインを開く</button><button class="btn" data-nico-refresh>状態を再確認</button><button class="btn" data-nico-logout>このアプリからログアウト</button></div>')+
 panel("番組ページを確認","放送IDまたはニコ生番組URLを入力",'<div class="field"><label>放送ID / URL</label><input class="input" id="live-id" value="'+esc(state.lastProgramId||"")+'" placeholder="lv123456789 または放送URL" maxlength="512"></div><div class="actions"><button class="btn primary" data-nico-check>番組ページを確認</button></div><div class="empty" id="program-result">確認結果はここに表示します。</div>')+
@@ -822,7 +875,7 @@ html=html.replace('<div class="section"><p id="library-count">','<div class="fie
 document.getElementById("content").innerHTML=html;
 renderInAppUpdateNotice();
 if(page==="dashboard")renderDashboardAlphaUpdateStatus();
-if(page==="broadcast"){renderBroadcastManageVerification();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();renderStreamMonitorUi();}
+if(page==="broadcast"){renderBroadcastToolsUi();renderBroadcastManageVerification();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();renderStreamMonitorUi();}
 updateLiveVideoBounds();
 if(page==="voice"){renderSpeechVoices();updateSpeechQueueUi();}
 if(page==="settings"){renderUpdateCheck();renderAutoUpdateStatus();}
