@@ -40,11 +40,20 @@ test("failed update offers safe retry, but unsupported Portable uses external re
   {...available,automaticUpdateAvailable:false});
  assert.equal(missingManifest.action,"releases");
 });
-test("latest version and unrelated error do not show a false update notice",()=>{
- assert.equal(inAppUpdateNotice({supported:true,phase:"current"},{...available,updateAvailable:false}).visible,false);
- assert.equal(inAppUpdateNotice({supported:true,phase:"error",message:"ERR"},null).visible,false);
- assert.equal(inAppUpdateNotice({supported:true,phase:"idle"},null).action,"");
+test("latest version, errors and idle states retain a truthful visible update status",()=>{
+ const latest=inAppUpdateNotice({supported:true,phase:"current"},{...available,updateAvailable:false});
+ assert.equal(latest.visible,true);
+ assert.match(latest.title,/最新版/);
+ assert.doesNotMatch(latest.title,/新しいα版が公開/);
+ const error=inAppUpdateNotice({supported:true,phase:"error",message:"ERR"},null);
+ assert.equal(error.visible,true);
+ assert.match(error.detail,/ERR/);
+ assert.equal(error.action,"check");
+ const idle=inAppUpdateNotice({supported:true,phase:"idle"},null);
+ assert.equal(idle.visible,true);
+ assert.equal(idle.action,"check");
 });
+
 test("renderer connects global notice buttons to actual updater IPC and graceful exit",()=>{
  const index=read("src/index.html");
  const renderer=read("src/renderer.js");
