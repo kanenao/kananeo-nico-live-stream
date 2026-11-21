@@ -46,7 +46,7 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
   return getStatus();
  }
  async function check(){
-  if(!supported||busy||["downloading","downloaded","installing"].includes(status.phase))return getStatus();
+  if(!supported||busy||["downloading","downloaded","downloaded-manual","installing"].includes(status.phase))return getStatus();
   busy=true;
   let verifiedAvailableVersion="";
   publish({phase:"checking",errorCode:"",source:"",checkedAt:new Date().toISOString(),
