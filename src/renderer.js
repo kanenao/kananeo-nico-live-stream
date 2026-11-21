@@ -1181,6 +1181,7 @@ if(!result?.ok){
 quotePlayback={...quotePlayback,message:result?.message||"引用再生状態を取得できませんでした。"};
 if(!silent)toast(quotePlayback.message);
 if(page==="player")render();
+if(page==="broadcast")renderBroadcastToolsUi();
 return result;
 }
 const previousItemId=quotePlayback.itemId;
@@ -1258,6 +1259,7 @@ if(!result.exists){
 }
 save();
 if(page==="player")render();
+if(page==="broadcast")renderBroadcastToolsUi();
 updateQuoteScheduleUi();
 return result;
 }
@@ -1353,6 +1355,7 @@ scheduleAutoPollOnQuote(programId,validation.videoId,startedAt);
 if(storedQuoteDurationMs(item)<=0)void ensureCurrentQuoteDuration();
 save();
 if(page==="requests"||page==="stocks"||page==="player")render();
+if(page==="broadcast")renderBroadcastToolsUi();
 toast(result.message||"引用再生の要求を送信しました。");
 return true;
 }catch{toast("引用再生APIに接続できませんでした。");return false;}
@@ -1370,7 +1373,7 @@ const stoppedItemId=quotePlayback.itemId;
 quotePlayback={active:false,verified:true,programId,videoId:"",queueType:"",itemId:"",message:"ニコ生側では引用再生が既に停止しています。"};
 state.player.quoteStartedAt=0;state.player.quoteDurationMs=0;state.player.quoteVideoId="";state.player.quoteProgramId="";state.player.quoteExpectedEndAt=0;
 for(const list of [state.requests,state.stocks])list.forEach(x=>{if(x.id===stoppedItemId&&x.status==="playing")x.status="queued";});
-if(state.player.currentId===stoppedItemId){state.player.currentId="";}save();if(page==="player")render();toast(quotePlayback.message);return;
+if(state.player.currentId===stoppedItemId){state.player.currentId="";}save();if(page==="player")render();if(page==="broadcast")renderBroadcastToolsUi();toast(quotePlayback.message);return;
 }
 const result=await window.kananeoApp.niconico.stopQuotedVideo({programId,confirmed:true});
 if(!result?.ok){toast(result?.message||"引用再生を停止できませんでした。");return;}
@@ -1379,7 +1382,7 @@ const stoppedItemId=quotePlayback.itemId;
 quotePlayback={active:false,verified:true,programId,videoId:"",queueType:"",itemId:"",message:result.message};
 state.player.quoteStartedAt=0;state.player.quoteDurationMs=0;state.player.quoteVideoId="";state.player.quoteExpectedEndAt=0;
 for(const list of [state.requests,state.stocks])list.forEach(x=>{if(x.id===stoppedItemId&&x.status==="playing")x.status="queued";});
-if(state.player.currentId===stoppedItemId){state.player.currentId="";}save();if(page==="player"||page==="requests"||page==="stocks")render();toast(result.message);
+if(state.player.currentId===stoppedItemId){state.player.currentId="";}save();if(page==="player"||page==="requests"||page==="stocks")render();if(page==="broadcast")renderBroadcastToolsUi();toast(result.message);
 }
 async function playNextQuoteItem(options={}){
 const endAt=Number(options.endTime??state.lastProgramEndAt);
