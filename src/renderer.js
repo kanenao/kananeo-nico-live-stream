@@ -894,7 +894,7 @@ const result=await window.kananeoApp.videoLibrary.get();
 if(!result?.ok)throw new Error(result?.message||"動画ライブラリを読み込めませんでした。");
 videoLibraryData=result.library||{version:1,items:[],history:[],updatedAt:""};
 }catch(error){videoLibraryError=error?.message||"動画ライブラリを読み込めませんでした。";if(!silent)toast(videoLibraryError);}
-finally{videoLibraryLoading=false;if(page==="library"){render();renderVideoLibraryRows();}}
+finally{videoLibraryLoading=false;if(page==="library"){render();renderVideoLibraryRows();}if(page==="broadcast")renderBroadcastLibraryPreview();}
 }
 function librarySourceLabel(source){
 return ({manual:"手動登録","watch-later":"あとで見る",mylist:"マイリスト",series:"シリーズ",text:"テキスト取り込み",json:"JSON取り込み"}[source]||source||"不明");
@@ -935,7 +935,7 @@ videoId:item.videoId,url:item.url,title:item.title,lengthMs:item.lengthMs||0,
 queueType:["request","stock","library"].includes(queueType)?queueType:"library",
 playbackType:playbackType==="quotation"?"quotation":"preview"
 });
-if(result?.ok){videoLibraryData=result.library;if(page==="library"){render();renderVideoLibraryRows();}}
+if(result?.ok){videoLibraryData=result.library;if(page==="library"){render();renderVideoLibraryRows();}if(page==="broadcast")renderBroadcastLibraryPreview();}
 }catch{}
 }
 function renderVideoLibraryRows(){
@@ -1024,6 +1024,7 @@ function updateQuoteProgressUi(now=Date.now()){
   " まで再生した記録があります。引用再生APIに途中位置の指定が確認できないため、自動的にこの位置から再生することはできません。":
   "前枠から引き継ぐ再生位置の記録はありません。";
  if(clear)clear.disabled=!saved;
+ updateBroadcastQuoteToolsTime(now);
 }
 function currentQueueList(){return state.player.currentQueueType==="stock"?state.stocks:state.requests;}
 function currentQueueItem(){
@@ -1469,6 +1470,7 @@ const start=document.querySelector("[data-poll-start]");
 const stop=document.querySelector("[data-poll-stop]");
 if(start)start.disabled=pollRuntime.active;
 if(stop)stop.disabled=!pollRuntime.active;
+ updateBroadcastPollToolsUi();
 }
 function stopPollDeadlineGuard(){
  if(pollDeadlineTimer)clearTimeout(pollDeadlineTimer);
@@ -3306,7 +3308,7 @@ document.addEventListener("change",e=>{
     scheduleAutoPollOnQuote(quotePlayback.programId,quotePlayback.videoId,state.player.quoteStartedAt);
    else markAutoPollWaitingForRequests(quotePlayback.programId,quotePlayback.videoId,state.player.quoteStartedAt);
   }
-  save();toast(state.poll.autoOnQuote?"引用再生連動アンケートをONにしました。":"引用再生連動アンケートをOFFにしました。");
+  save();updateBroadcastPollToolsUi();toast(state.poll.autoOnQuote?"引用再生連動アンケートをONにしました。":"引用再生連動アンケートをOFFにしました。");
   return;
  }
  if(e.target.id==="request-auto-on-live"){
