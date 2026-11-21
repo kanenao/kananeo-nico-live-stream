@@ -119,5 +119,6 @@ test("broadcast quick model reads defined videoLibraryLoading/videoLibraryError 
  assert.equal(model.library[0].videoId,"sm12345");
  assert.equal(model.pollEnabled,false);
  const markup=ui.render(model);
- assert.match(markup,/ライブラリを読み込み中です/);
+ assert.match(markup,/sm12345/);
+ assert.match(ui.render({...model,library:[]}),/ライブラリを読み込み中です/);
 });
