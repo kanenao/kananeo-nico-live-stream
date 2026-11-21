@@ -2820,12 +2820,17 @@ function renderAutoUpdateStatus(){
  status.textContent=s.message||"状態不明";
  details.textContent=s.phase==="downloading"?"ダウンロード："+s.percent+"%"+(s.version?" / "+s.version:""):
    s.phase==="downloaded"?"ダウンロード済み："+(s.version||"新しいバージョン")+"。通常終了時に自動適用、または今すぐ更新して再起動できます。":
+   s.phase==="downloaded-manual"?"公式SetupをSHA256検証済み："+(s.version||"新しいバージョン")+"。下のボタンでインストーラーを起動して更新してください（自動上書きではありません）。":
    s.phase==="installing"?"アプリを終了して更新を適用しています。":
    s.phase==="error"?"エラーコード："+(s.errorCode||"UPDATE_FAILED")+"。更新診断をコピーして報告できます。":
    !s.supported?"自動更新はWindows Setup版に対応します。Portable版では「公開版を確認」から更新情報を確認し、最新版Setupをインストールしてください。":
    "利用チャンネル："+({alpha:"α開発版",beta:"βテスト版",latest:"製品版"}[s.channel]||"不明")+"。更新はアプリ終了時に適用し、配信中に強制再起動しません。";
- if(button)button.disabled=!s.supported||["checking","downloading","downloaded","installing"].includes(s.phase);
- if(apply){apply.hidden=s.phase!=="downloaded";apply.disabled=s.phase!=="downloaded";}
+ if(button)button.disabled=!s.supported||["checking","downloading","downloaded","downloaded-manual","installing"].includes(s.phase);
+ if(apply){
+  const ready=s.phase==="downloaded"||s.phase==="downloaded-manual";
+  apply.hidden=!ready;apply.disabled=!ready;
+  apply.textContent=s.phase==="downloaded-manual"?"インストーラーを起動":"更新を適用して再起動";
+}
 }
 function applyAutoUpdateStatus(s){
  if(!s||typeof s!=="object")return;
@@ -2836,12 +2841,15 @@ function applyAutoUpdateStatus(s){
  if(page==="changelog")renderReleaseHistoryRows();
 }
 async function applyDownloadedUpdate(){
- if(autoUpdateState.phase!=="downloaded"){toast("更新のダウンロードが完了していません。");return;}
- if(!confirm("アプリを終了し、新しいバージョンをインストールして再起動しますか？\n\nコメント取得・放送監視・リモート接続を終了します。配信中なら終了後に実行してください。"))return;
+ const external=autoUpdateState.phase==="downloaded-manual";
+ if(autoUpdateState.phase!=="downloaded"&&!external){toast("更新のダウンロードが完了していません。");return;}
+ const message=external?"SHA256検証済みのSetup版を起動します。インストール画面が表示された後にアプリを終了します。\\n\\n配信中の場合は終了後に実行してください。続行しますか？":
+  "アプリを終了し、新しいバージョンをインストールして再起動しますか？\\n\\nコメント取得・放送監視・リモート接続を終了します。配信中なら終了後に実行してください。";
+ if(!confirm(message))return;
  try{
   const result=await window.kananeoApp.updates.applyAuto();
   if(!result?.ok)toast(result?.message||"更新を適用できませんでした。");
-  else toast("アプリを終了して更新を適用し、再起動します。");
+  else toast(external?"公式Setup版を起動しました。画面に従って更新してください。":"アプリを終了して更新を適用し、再起動します。");
  }catch{toast("更新処理を開始できませんでした。");}
 }
 async function copyUpdateDiagnostic(){
