@@ -22,7 +22,7 @@ function describeUpdateError(error){
   return {code:"UPDATE_PERMISSION_DENIED",message:"更新ファイルへのアクセスが拒否されました。Windowsのアクセス権を確認してください。"};
  return {code,message:"自動更新でエラーが発生しました（"+code+"）。設定から再確認するかGitHub Releasesで更新してください。"};
 }
-function createAutoUpdateService({app,updater,platform=process.platform,portable=false,notify=()=>{},schedule=setTimeout,repeat=setInterval,releaseFetch=fetch}){
+function createAutoUpdateService({app,updater,platform=process.platform,portable=false,notify=()=>{},schedule=setTimeout,repeat=setInterval,releaseFetch=fetch,fallbackDownload=null,launchInstaller=null}){
  const installedVersion=String(app?.getVersion?.()||"0.2.0-alpha.0");
  const channel=getReleaseChannel(installedVersion)||"alpha";
  const supported=platform==="win32"&&!!app?.isPackaged&&!portable&&!!updater;
@@ -34,6 +34,7 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
    "この環境ではWindows Setup版の自動更新を利用できません。"
  };
  let started=false,busy=false,installCalled=false,usingPinnedRelease=false;
+ let verifiedTarget=null,fallbackFilePath="";
  function publish(part){
   status={...status,...part};
   try{notify({...status});}catch{ /* UI may have been closed */ }
@@ -45,7 +46,7 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
   return getStatus();
  }
  async function check(){
-  if(!supported||busy||["downloading","downloaded","installing"].includes(status.phase))return getStatus();
+  if(!supported||busy||["downloading","downloaded","downloaded-manual","installing"].includes(status.phase))return getStatus();
   busy=true;
   let verifiedAvailableVersion="";
   publish({phase:"checking",errorCode:"",source:"",checkedAt:new Date().toISOString(),
@@ -95,6 +96,7 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
    return {checked:false};
   }
   function pinVerifiedRelease(target){
+   verifiedTarget=target;
    updater.setFeedURL({provider:"generic",url:target.url,channel:"alpha"});
    usingPinnedRelease=true;
    verifiedAvailableVersion=target.version;
@@ -104,6 +106,35 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
   function resetToGitHub(){
    updater.setFeedURL({provider:"github",owner:"kanenao",repo:"kananeo-nico-live-stream",channel});
    usingPinnedRelease=false;
+  }
+  async function tryVerifiedInstallerFallback(){
+   // Fall back only after a known HTTP 404 on the official verified updater
+   // routes. The official asset digest is checked before the Setup is usable.
+   if(!verifiedTarget||typeof fallbackDownload!=="function")return false;
+   publish({phase:"downloading",source:"github-asset-fallback",version:verifiedTarget.version,
+    percent:0,errorCode:"",
+    message:"更新サーバーの404を検出しました。公式GitHubのSetup版を別経路で検証・取得しています。"});
+   try{
+    const downloaded=await fallbackDownload(verifiedTarget,percent=>{
+     if(status.phase!=="downloading"||status.source!=="github-asset-fallback")return;
+     publish({percent:Math.max(0,Math.min(100,Math.floor(Number(percent)||0)))});
+    });
+    if(!downloaded||downloaded.version!==verifiedTarget.version||
+      typeof downloaded.filePath!=="string"||!downloaded.filePath)
+      throw Object.assign(Error("安全確認されたSetup版を取得できませんでした。"),{code:"UPDATE_VERIFY_FAILED"});
+    fallbackFilePath=downloaded.filePath;
+    publish({phase:"downloaded-manual",version:verifiedTarget.version,percent:100,
+     errorCode:"",source:downloaded.source||"github-asset-fallback",
+     message:"公式GitHubのSetup版を検証・取得しました。「インストーラーを起動」から更新できます。自動的な上書きインストールではありません。"});
+   }catch(error){
+    fallbackFilePath="";
+    const code=String(error?.code||"");
+    publish({phase:"error",errorCode:code==="DOWNLOAD_VERIFY_FAILED"||code==="DOWNLOAD_SIZE_MISMATCH"?"UPDATE_VERIFY_FAILED":"UPDATE_FALLBACK_FAILED",
+     message:code==="DOWNLOAD_VERIFY_FAILED"||code==="DOWNLOAD_SIZE_MISMATCH"?
+      "公式配布ファイルの検証に失敗しました。ファイルは適用しません。":
+      "GitHub公式の予備ダウンロードにも失敗しました。配布ページからSetup版を確認してください。"});
+   }
+   return true;
   }
   async function handleVerifiedAlpha(releases){
    const checked=selectVerifiedTarget(releases);
@@ -145,16 +176,33 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
      resetToGitHub();
      publish({source:"github-fallback"});
      await runFeed();
-    }catch(retryError){reportError(retryError);}
+    }catch(retryError){if(!await tryVerifiedInstallerFallback())reportError(retryError);}
    }else if(channel==="alpha"&&isGitHubUpdateNotFound(error)&&
             typeof updater.setFeedURL==="function"){
     const retryReleases=await fetchVerifiedAlphaReleases(releaseFetch);
     try{
      if(!await handleVerifiedAlpha(retryReleases))reportError(error);
-    }catch(retryError){reportError(retryError);}
+    }catch(retryError){if(!await tryVerifiedInstallerFallback())reportError(retryError);}
    }else reportError(error);
   }finally{busy=false;}
   return getStatus();
+ }
+ async function launchFallbackInstaller(){
+  if(!supported||status.phase!=="downloaded-manual"||!fallbackFilePath||
+    installCalled||typeof launchInstaller!=="function")
+   return {ok:false,code:"UPDATE_NOT_READY",message:"検証済みSetup版が準備できていません。"};
+  installCalled=true;
+  try{
+   const result=await launchInstaller(fallbackFilePath);
+   if(typeof result==="string"&&result)throw Error(result);
+   publish({phase:"installing",message:"Setup版を起動しました。画面に従ってインストールしてください。"});
+   return {ok:true,message:"Setup版を起動しました。アプリを終了します。"};
+  }catch{
+   installCalled=false;
+   publish({phase:"downloaded-manual",errorCode:"UPDATE_INSTALLER_LAUNCH_FAILED",
+    message:"Setup版を起動できませんでした。Windowsのアクセス権やセキュリティ設定を確認してください。"});
+   return {ok:false,code:"UPDATE_INSTALLER_LAUNCH_FAILED",message:"Setup版を起動できませんでした。"};
+  }
  }
  function installReadyUpdate({relaunch=false}={}){
   if(!supported||status.phase!=="downloaded"||installCalled)return false;
@@ -201,12 +249,12 @@ function createAutoUpdateService({app,updater,platform=process.platform,portable
    phase:"downloaded",version:String(info?.version||status.version).slice(0,70),percent:100,
    message:"更新ファイルを取得しました。終了時に適用できます。"
   }));
-  updater.on("error",reportError);
+  updater.on("error",error=>{if(!busy&&status.phase!=="downloaded-manual")reportError(error);});
   schedule(()=>{void check();},12000);
   repeat(()=>{void check();},30*60*1000);
   publish({});
   return getStatus();
  }
- return {start,check,getStatus,installReadyUpdate,reportError};
+ return {start,check,getStatus,installReadyUpdate,launchFallbackInstaller,reportError};
 }
 module.exports={createAutoUpdateService,describeUpdateError};

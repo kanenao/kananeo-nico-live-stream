@@ -7,7 +7,9 @@ const preload=fs.readFileSync(path.join(src,"preload.js"),"utf8");
 const renderer=fs.readFileSync(path.join(src,"renderer.js"),"utf8");
 test("the downloaded update travels from renderer through a guarded IPC to graceful shutdown",()=>{
  assert.match(main,/ipcMain\.handle\("app:auto-update-apply"/);
- assert.match(main,/getStatus\(\)\.phase!=="downloaded"/);
+ assert.match(main,/phase!=="downloaded"/);
+ assert.match(main,/phase==="downloaded-manual"/);
+ assert.match(main,/launchFallbackInstaller\(\)/);
  assert.match(main,/settleBeforeQuit\(/);
  assert.match(main,/autoUpdateService\?\.installReadyUpdate\(\{relaunch:relaunchAfterAutoUpdate\}\)/);
  assert.match(preload,/applyAuto:\(\)=>ipcRenderer\.invoke\("app:auto-update-apply"\)/);

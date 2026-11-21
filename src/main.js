@@ -58,6 +58,7 @@ const {buildPreviousProgramRequest,parsePreviousProgram,
   buildCreateProgramRequest,parseCreateProgramResponse}=require("./inherited-program");
 const {editingMenus,editingContextMenu}=require("./editing-support");
 const { createAutoUpdateService } = require("./auto-update-service");
+const {downloadVerifiedInstaller}=require("./verified-installer-fallback");
 const { settleBeforeQuit } = require("./quit-helpers");
 const {
   ALLOWED_BGM_EXTENSIONS, MAX_BGM_TRACK_BYTES, MAX_BGM_TRACKS,
@@ -2709,9 +2710,17 @@ function registerIpcHandlers() {
      if(event.sender!==mainWindow?.webContents)return {supported:false,phase:"unavailable",message:"この操作は許可されていません。"};
      return autoUpdateService?.check()||{supported:false,phase:autoUpdateInitializationFailed?"error":"unavailable",errorCode:autoUpdateInitializationFailed?"UPDATER_INIT_FAILED":"",message:autoUpdateInitializationFailed?"更新モジュールを初期化できませんでした。":"自動更新を準備しています。"};
    });
-   ipcMain.handle("app:auto-update-apply",event=>{
+   ipcMain.handle("app:auto-update-apply",async event=>{
      if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"許可されていない操作です。"};
-     if(autoUpdateService?.getStatus().phase!=="downloaded")return {ok:false,code:"UPDATE_NOT_READY",message:"更新ファイルのダウンロードが完了していません。"};
+     const phase=autoUpdateService?.getStatus().phase;
+     if(phase==="downloaded-manual"){
+       const launched=await autoUpdateService.launchFallbackInstaller();
+       if(!launched?.ok)return launched;
+       relaunchAfterAutoUpdate=false;
+       setImmediate(()=>app.quit());
+       return {ok:true,message:"検証済みSetup版を起動しました。アプリ終了後に画面の案内に従ってインストールしてください。"};
+     }
+     if(phase!=="downloaded")return {ok:false,code:"UPDATE_NOT_READY",message:"更新ファイルのダウンロードが完了していません。"};
      relaunchAfterAutoUpdate=true;
      setImmediate(()=>app.quit());
      return {ok:true,message:"コメントとリモート操作を終了後、更新を適用して再起動します。"};
@@ -2783,6 +2792,10 @@ app.whenReady().then(async()=>{
     const {autoUpdater}=require("electron-updater");
     autoUpdateService=createAutoUpdateService({
       app,updater:autoUpdater,portable:!!process.env.PORTABLE_EXECUTABLE_FILE,
+      fallbackDownload:(target,onProgress)=>downloadVerifiedInstaller(target,{
+        directory:path.join(app.getPath("userData"),"verified-update-installer"),onProgress
+      }),
+      launchInstaller:file=>shell.openPath(file),
       notify:status=>{if(mainWindow&&!mainWindow.isDestroyed())mainWindow.webContents.send("app:auto-update-status",status);}
     });
     autoUpdateService.start();

@@ -7,6 +7,11 @@ function inAppUpdateNotice(status={},release=null){
  const candidate=String(status?.version||release?.latestVersion||"").slice(0,70);
  const available=release?.ok===true&&release?.updateAvailable===true;
  const normal={visible:true,title:"自動更新",detail:"更新状況を確認しています。",action:"",actionLabel:"",showReleases:false};
+ if(supported&&phase==="downloaded-manual"){
+  return {...normal,visible:true,title:"公式Setup版の取得と検証が完了： "+(candidate||"新しいバージョン"),
+   detail:"更新用サービスで404が発生したため、GitHub公式配布ファイルをSHA256で検証して取得しました。「インストーラーを起動」後、画面に従って更新してください。",
+   action:"apply",actionLabel:"インストーラーを起動",showReleases:true};
+ }
  if(supported&&phase==="downloaded"){
   return {...normal,visible:true,title:"アプリの更新準備ができました： "+(candidate||"新しいバージョン"),
    detail:"ダウンロード完了。放送終了後に「更新して再起動」を押すか、通常終了時に自動適用できます。",
