@@ -1,5 +1,5 @@
 (() => {
-const names={audit:"監査ログ",remote:"リモート操作",dashboard:"ダッシュボード",broadcast:"放送・枠管理",comments:"コメントビューア",requests:"動画リクエスト",stocks:"ストック",library:"動画ライブラリ",poll:"自動アンケート",player:"プレイヤー・BGM",automation:"自動枠取り・延長",external:"OBS・外部ツール",voice:"音声・自動応答",users:"ユーザー・NG管理",logs:"履歴・バックアップ",changelog:"バージョン更新履歴",settings:"設定"};
+const names={audit:"監査ログ",remote:"リモート操作",dashboard:"ダッシュボード",broadcast:"放送・枠管理",comments:"コメントビューア",requests:"動画リクエスト",stocks:"ストック",library:"動画ライブラリ",poll:"自動アンケート",player:"プレイヤー・BGM",automation:"自動枠取り・延長",external:"OBS・外部ツール",voice:"音声・自動応答",users:"ユーザー・NG管理",logs:"履歴・バックアップ",changelog:"バージョン・更新情報",settings:"設定"};
 const key="kananeo-beta2";
 const COMMENT_VIEW_STORAGE_KEY=key+"-comment-view";
 const BROADCAST_COMMENT_COLUMNS=[{key:"number",label:"番号"},{key:"time",label:"時刻"},{key:"user",label:"投稿者"},{key:"userId",label:"ユーザーID"},{key:"content",label:"コメント本文"},{key:"type",label:"種別"}];
@@ -629,47 +629,24 @@ async function revokeRemoteDeviceFromUi(deviceId){
 function renderReleaseHistoryRows(){
  const list=document.getElementById("release-history-list");
  if(!list)return;
+ const ui=window.KananeoReleaseHistoryUi;
+ if(!ui){list.textContent="更新履歴の表示機能を読み込めませんでした。アプリを再起動してください。";return;}
  const status=document.getElementById("release-history-status");
+ const summary=document.getElementById("release-history-summary");
  const more=document.querySelector("[data-release-history-more]");
- const query=releaseHistoryState.query.trim().toLocaleLowerCase("ja-JP");
- const items=releaseHistoryState.items.filter(item=>{
-  const kind=/-alpha\./.test(item.version)?"alpha":/-(?:beta|rc)\./.test(item.version)?"beta":"stable";
-  if(releaseHistoryState.type!=="all"&&releaseHistoryState.type!==kind)return false;
-  if(!query)return true;
-  return [item.version,item.title,...(item.notes||[]),...(item.details||[])].join(" ").toLocaleLowerCase("ja-JP").includes(query);
- });
- const scope=releaseHistoryState.offline?"アプリ同梱の履歴（公開状況は未確認）":"GitHub Releasesの公開履歴";
+ const rendered=ui.releaseHistoryEntries(releaseHistoryState,window.kananeoApp.version);
+ if(summary)summary.innerHTML=ui.releaseHistorySummary(releaseHistoryState,window.kananeoApp.version,updateCheckState,autoUpdateState);
+ list.innerHTML=rendered.markup;
+ const scope=releaseHistoryState.offline?"アプリ同梱の履歴（GitHubでの公開は未確認）":"GitHubで取得したリリース履歴";
  if(status)status.textContent=releaseHistoryState.loading?"変更履歴を取得しています…":
   releaseHistoryState.error||((releaseHistoryState.warning?releaseHistoryState.warning+" ":"")+
-   scope+"：読み込み済み "+releaseHistoryState.items.length+" バージョン"+
-   (releaseHistoryState.hasMore?"（続きがあります）":""));
- list.innerHTML=items.map(item=>{
-  const type=/-alpha\./.test(item.version)?"α開発版":/-(?:beta|rc)\./.test(item.version)?"βテスト版":"製品版";
-  const localOnly=item.localOnly===true;
-  const date=item.publishedAt?new Date(item.publishedAt).toLocaleString("ja-JP"):"公開日時未確認";
-  const details=Array.isArray(item.details)?item.details:[];
-  const notes=Array.isArray(item.notes)?item.notes:[];
-  const renderNotes=rows=>'<ul class="release-notes">'+rows.map(note=>'<li>'+esc(note)+'</li>').join("")+'</ul>';
-  const detailsHtml=details.length?'<div class="release-history-source">アプリ同梱の詳細更新履歴</div>'+renderNotes(details):"";
-  const notesHtml=notes.length?'<div class="release-history-source">GitHub Releasesの変更概要</div>'+renderNotes(notes):"";
-  const noDetails=!details.length&&!notes.length?
-   '<div class="muted">この版の詳しい変更内容は記録されていません。公開済みの情報をご確認ください。</div>':"";
-  const installer=localOnly?"配布情報未確認":item.setupAvailable?"Setupあり":"Setup未確認";
-  const link=localOnly
-   ?'<button class="btn" data-update-open-releases>GitHub公開一覧</button>'
-   :'<button class="btn" data-release-history-open="'+esc(item.tag)+'">GitHubで詳細</button>';
-  const installed=item.version===String(window.kananeoApp.version||"");
-  return '<article class="release-history-item">'+
-   '<div class="release-history-heading"><div><b>'+esc(item.version)+
-   (installed?' <span class="tag">使用中</span>':"")+
-   '</b><small>'+esc(type)+" / "+esc(date)+" / "+installer+
-   (localOnly?" / 公開未確認":"")+'</small></div>'+link+'</div>'+
-   detailsHtml+notesHtml+noDetails+'</article>';
- }).join("")||'<div class="empty">'+(releaseHistoryState.loading?"履歴を読み込み中です…":releaseHistoryState.items.length?"検索条件に一致するバージョンはありません。":"公開済みのバージョンを取得できませんでした。")+'</div>';
+  scope+"：読み込み済み "+releaseHistoryState.items.length+" 件／現在の絞り込み "+rendered.count+" 件"+
+  (releaseHistoryState.hasMore?"。さらに古い履歴を読み込めます。":""));
  if(more){more.hidden=!releaseHistoryState.hasMore;more.disabled=releaseHistoryState.loading;}
  const refresh=document.querySelector("[data-release-history-refresh]");
  if(refresh)refresh.disabled=releaseHistoryState.loading;
 }
+
 async function fetchReleaseHistory(reset=false){
  if(releaseHistoryState.loading)return;
  if(reset){releaseHistoryState.page=0;releaseHistoryState.items=[];releaseHistoryState.hasMore=true;releaseHistoryState.offline=false;releaseHistoryState.warning="";}
@@ -822,8 +799,9 @@ panel("監査ログ検索","再起動後も保存履歴を復元し、直近500�
 html=hero("ACTIVITY & BACKUP","履歴・バックアップ","設定データのJSON書き出し・読み込み。")+
 panel("システムログ","操作履歴",state.logs.map(x=>`<div class="row"><i></i><b>${esc(x)}</b></div>`).join("")+'<div class="actions"><button class="btn primary" data-export>設定JSONを書き出す</button><button class="btn" data-clear-logs>ログを消去</button></div>');
 }else if(page==="changelog"){
-html=hero("VERSION HISTORY","バージョン更新履歴","各バージョンで追加・変更した機能や修正内容を掲載しています。")+
-panel("公開バージョン一覧","GitHub Releasesの実際のリリースノートを新しい順に表示します。詳細情報のない版はその旨を表示します。",'<div class="grid2"><div class="field"><label>バージョン・追加機能・修正内容で検索</label><input class="input" id="release-history-search" placeholder="例：alpha.65 / 自動更新" value="'+esc(releaseHistoryState.query)+'"></div><div class="field"><label>公開区分</label><select class="input" id="release-history-type"><option value="all" '+(releaseHistoryState.type==="all"?"selected":"")+'>すべて</option><option value="alpha" '+(releaseHistoryState.type==="alpha"?"selected":"")+'>α開発版</option><option value="beta" '+(releaseHistoryState.type==="beta"?"selected":"")+'>βテスト版</option><option value="stable" '+(releaseHistoryState.type==="stable"?"selected":"")+'>製品版</option></select></div></div><div class="actions"><button class="btn" data-release-history-refresh>最新の履歴を再取得</button><button class="btn" data-update-open-releases>GitHub Releases一覧</button></div><div class="muted" id="release-history-status"></div><div class="release-history-list" id="release-history-list"></div><div class="actions"><button class="btn primary" data-release-history-more>過去のバージョンをさらに表示</button></div>');
+ html=hero("VERSION & RELEASES","バージョン・更新情報","現在のバージョン、アップデート状況、これまでの変更点をまとめて確認できます。")+
+ panel("アプリのバージョンと更新状態","現在インストールされている版と、確認できた公開版を分けて表示します。",'<div id="release-history-summary" aria-live="polite"></div>')+
+ panel("バージョン別の変更履歴","最初は主な変更点のみ表示します。「すべての変更内容を見る」を押すと詳細を確認できます。",'<div class="grid2 release-history-filters"><div class="field"><label for="release-history-search">バージョン・変更内容を検索</label><input class="input" id="release-history-search" placeholder="例：alpha.65 / 自動更新" value="'+esc(releaseHistoryState.query)+'"></div><div class="field"><label for="release-history-type">公開区分で絞り込む</label><select class="input" id="release-history-type"><option value="all" '+(releaseHistoryState.type==="all"?"selected":"")+'>すべて</option><option value="alpha" '+(releaseHistoryState.type==="alpha"?"selected":"")+'>α開発版</option><option value="beta" '+(releaseHistoryState.type==="beta"?"selected":"")+'>βテスト版</option><option value="stable" '+(releaseHistoryState.type==="stable"?"selected":"")+'>製品版</option></select></div></div><div class="actions"><button class="btn" type="button" data-release-history-refresh>最新の履歴を再取得</button><button class="btn" type="button" data-update-open-releases>GitHub Releases一覧</button></div><div class="release-history-status" id="release-history-status" role="status"></div><div class="release-history-list" id="release-history-list"></div><div class="actions"><button class="btn primary" type="button" data-release-history-more>古いバージョンをさらに表示</button></div>');
 }else{
 html=hero("APPLICATION SETTINGS","設定","アプリのバージョンとローカル設定を管理します。")+
 panel("自動更新・アップデート確認","Windows Setup版は利用中のα・β・製品版に合わせて更新を自動ダウンロードします。Portable版は最新のSetup版へ切り替えてください。",'<div class="row"><div><b>現在のバージョン</b><small>このアプリにインストールされているバージョン</small></div><span>'+esc(window.kananeoApp.version)+'</span></div><div class="row"><b>自動更新</b><span id="auto-update-status">確認中</span></div><div id="auto-update-details" class="muted"></div><div class="row"><b>確認状態</b><span id="update-check-status">未確認</span></div><div id="update-release-details"></div><div class="actions"><button class="btn primary" type="button" data-update-auto-check>自動更新を再確認</button><button class="btn primary" type="button" data-update-auto-apply hidden>更新を適用して再起動</button><button class="btn" type="button" data-update-diagnostic-copy>更新診断をコピー</button><button class="btn" type="button" data-update-check>公開版を確認</button><button class="btn" type="button" data-update-open-releases>GitHub Releasesを開く</button><button class="btn" type="button" data-go="changelog">バージョン更新履歴を見る</button></div>')+
@@ -2766,6 +2744,7 @@ function applyAutoUpdateStatus(s){
  renderAutoUpdateStatus();
  renderDashboardAlphaUpdateStatus();
  renderInAppUpdateNotice();
+ if(page==="changelog")renderReleaseHistoryRows();
 }
 async function applyDownloadedUpdate(){
  if(autoUpdateState.phase!=="downloaded"){toast("更新のダウンロードが完了していません。");return;}
@@ -2831,6 +2810,7 @@ async function checkForApplicationUpdates(silent=false){
  }
  renderUpdateCheck();
  renderInAppUpdateNotice();
+if(page==="changelog")renderReleaseHistoryRows();
 if(page==="dashboard"&&updateCheckState.result?.updateAvailable)render();
 if(!silent&&updateCheckState.error)toast(updateCheckState.error);
 }

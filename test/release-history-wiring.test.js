@@ -4,16 +4,17 @@ const fs=require("node:fs"),path=require("node:path");
 const root=path.resolve(__dirname,"..");
 const read=relative=>fs.readFileSync(path.join(root,relative),"utf8");
 const main=read("src/main.js"),preload=read("src/preload.js"),renderer=read("src/renderer.js");
-const index=read("src/index.html"),pkg=JSON.parse(read("package.json"));
+const index=read("src/index.html"),releaseUi=read("src/release-history-ui.js"),pkg=JSON.parse(read("package.json"));
 test("version history exists in the app navigation and shows actual release notes",()=>{
  assert.match(index,/data-page="changelog"/);
- assert.match(renderer,/changelog:"バージョン更新履歴"/);
- assert.match(renderer,/各バージョンで追加・変更した機能や修正内容を掲載しています。/);
+ assert.match(renderer,/changelog:"バージョン・更新情報"/);
+ assert.match(renderer,/バージョン別の変更履歴/);
+ assert.match(index,/release-history-ui\.js/);
  assert.match(renderer,/renderReleaseHistoryRows/);
  assert.match(renderer,/data-release-history-more/);
  assert.match(renderer,/release-history-search/);
  assert.match(renderer,/release-history-type/);
- assert.match(renderer,/data-release-history-open/);
+ assert.match(releaseUi,/data-release-history-open/);
 });
 test("history IPC is guarded and uses public GitHub release API",()=>{
  assert.match(main,/ipcMain\.handle\("app:release-history"/);
@@ -35,7 +36,8 @@ test("version history displays bundled changes and distinguishes offline entries
  assert.match(main,/loadBundledHistory/);
  assert.match(main,/attachBundledDetails/);
  assert.match(main,/localHistoryFallback/);
- assert.match(renderer,/アプリ同梱の詳細更新履歴/);
- assert.match(renderer,/公開未確認/);
- assert.match(renderer,/使用中/);
+ assert.match(releaseUi,/アプリ同梱の詳細更新履歴/);
+ assert.match(releaseUi,/公開情報未確認/);
+ assert.match(releaseUi,/使用中/);
+ assert.match(renderer,/releaseHistorySummary/);
 });
