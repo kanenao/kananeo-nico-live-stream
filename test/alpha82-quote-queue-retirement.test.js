@@ -46,6 +46,7 @@ function playbackContext(queueType="request",confirmed=true,accepted=true){
     {ok:false,message:"failed"}
   }}},
   recordVideoPlaybackHistory:async(...args)=>events.push(["history",args[1],args[2]]),
+  clearShortPollCompletion:()=>events.push(["short-quote-cleared"]),
   storedQuoteDurationMs:x=>x.lengthMs,scheduleQuoteAutoNext:()=>events.push(["quote-scheduled"]),
   scheduleAutoPollOnQuote:()=>events.push(["poll-scheduled"]),
   confirmStartedQuoteForQueue:()=>events.push(["retry"]),save:()=>events.push(["save"]),
@@ -93,7 +94,7 @@ test("delayed verification removes the exact queued item; other live video canno
 test("refresh does not lose active playback metadata after pending queue removal",async()=>{
  for(const queueType of ["request","stock"]){
   const played=item("played");
-  const ctx={quotePlayback:{active:true,verified:true,programId:"lv123",videoId:"sm123",queueType,itemId:played.id,item:played},
+  const ctx={shortPollCompletion:null,clearShortPollCompletion:()=>{},quotePlayback:{active:true,verified:true,programId:"lv123",videoId:"sm123",queueType,itemId:played.id,item:played},
    state:{requests:[],stocks:[],lastProgramId:"lv123",player:{currentId:played.id,currentQueueType:queueType,
     quoteProgramId:"lv123",quoteVideoId:"sm123",quoteStartedAt:1780000000000,quoteDurationMs:120000},
     logs:[],playback:{quoteAutoNext:false}},
