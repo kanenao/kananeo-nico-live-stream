@@ -160,3 +160,47 @@ input[type="range"]{accent-color:#8c7cff;cursor:pointer}
 .in-app-update-notice button[hidden]{display:none!important}
 .in-app-update-notice button:disabled{opacity:.5;cursor:not-allowed}
 @media(max-width:1200px){.in-app-update-notice{margin:12px 25px 0}}
+
+/* Readable release overview and version-by-version notes */
+.release-overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.release-overview-cell{min-width:0;display:flex;flex-direction:column;gap:9px;padding:19px;border:1px solid #3b4968;border-radius:12px;background:linear-gradient(145deg,#182641,#101b30)}
+.release-overview-cell>span{color:#aab8d2;font-size:11px;font-weight:700}
+.release-overview-cell strong{color:#f2f5ff;font-size:18px;line-height:1.35;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.release-overview-cell small{color:#a5b2ca;font-size:11px;line-height:1.65;overflow-wrap:anywhere}
+.release-overview-state.available{border-color:#9c8df1;background:#231f44}
+.release-overview-state.available strong{color:#e4deff}
+.release-overview-state.ready{border-color:#4a806f}
+.release-overview-state.error{border-color:#a9676f}
+.release-overview-state.checking{border-color:#60789e}
+.release-overview-state strong{font-size:16px}
+.release-overview-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:14px 0 0}
+.release-overview-actions .btn,.release-history-item .btn{font-size:11px;padding:11px 15px;cursor:pointer}
+.release-overview-help{color:#9caac3;font-size:11px;line-height:1.65}
+.release-history-filters .field label{font-size:11px}
+.release-history-filters .input{font-size:12px;padding:12px}
+.release-history-status{color:#a8b6cd;font-size:11px;line-height:1.65;margin:15px 0 6px;overflow-wrap:anywhere}
+.release-history-list{gap:14px}
+.release-history-item{padding:20px 22px;border-radius:12px;background:#101b30}
+.release-history-featured{border-color:#7f75c4;background:linear-gradient(150deg,#1b2140,#111b30 55%)}
+.release-history-heading{align-items:flex-start;margin-bottom:13px}
+.release-history-heading-main{min-width:0;flex:1}
+.release-history-heading b{display:block;margin:8px 0 5px;color:#f1f2ff;font-size:18px;line-height:1.4;overflow-wrap:anywhere}
+.release-history-heading small{font-size:11px;line-height:1.65;color:#a9b6cc}
+.release-history-heading .btn{flex-shrink:0}
+.release-history-meta{display:flex;gap:7px;align-items:center;flex-wrap:wrap;font-size:10px;color:#b9c8e4}
+.release-history-pill{padding:4px 9px;border-radius:999px;border:1px solid #485a7b;color:#c5d2e8;font-size:10px}
+.release-history-pill.installed{border-color:#6f9f91;color:#b8f2d8;background:#183d36}
+.release-history-release-title{color:#e0e4ef;font-size:12px;line-height:1.6;margin:6px 0}
+.release-history-preview{display:grid;gap:8px;padding-left:21px;margin:12px 0;color:#d6e1f5;font-size:12px;line-height:1.75}
+.release-history-preview li{overflow-wrap:anywhere}
+.release-history-empty-note{color:#9baac2;font-size:11px}
+.release-history-disclosure{border-top:1px solid #34425c;padding-top:12px;margin-top:14px}
+.release-history-disclosure summary{cursor:pointer;color:#cabdff;font-weight:750;font-size:12px;line-height:1.7}
+.release-history-disclosure summary:hover{color:#fff}
+.release-history-disclosure summary:focus-visible{outline:2px solid #9b90fc;outline-offset:4px;border-radius:3px}
+.release-history-full{margin-top:14px;padding:10px 15px;border-radius:9px;background:#0d1628}
+.release-history-note-group h3{font-size:12px;color:#b6c3df;margin:11px 0 8px}
+.release-history-note-group + .release-history-note-group{border-top:1px solid #2a3955;margin-top:13px}
+.release-history-full .release-notes{font-size:12px;gap:9px;line-height:1.75}
+@media(max-width:1400px){.release-overview{grid-template-columns:repeat(2,minmax(0,1fr))}.release-overview-state{grid-column:1/-1}}
+@media(max-width:1150px){.release-overview{grid-template-columns:1fr}.release-overview-state{grid-column:auto}.release-history-heading{flex-wrap:wrap}}
