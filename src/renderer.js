@@ -3108,6 +3108,27 @@ return;
 }
 
 if(b.hasAttribute("data-library-export")){exportVideoLibrary();return;}
+if(b.hasAttribute("data-broadcast-library-request")){
+ const videoId=String(b.dataset.broadcastLibraryRequest||"");
+ const item=videoLibraryData.items.find(x=>String(x.videoId||"").toLowerCase()===videoId.toLowerCase());
+ if(!item){toast("動画ライブラリに対象の動画が見つかりません。");return;}
+ b.disabled=true;
+ try{
+  const verification=await window.kananeoApp.niconico.validateVideo(item.videoId);
+  const requestId="req-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8);
+  const candidate=window.KananeoBroadcastQuickTools.prepareLibraryRequest(item,verification,state.requests,state.stocks,requestId);
+  if(!candidate.ok){toast(candidate.message);return;}
+  if(state.requests.length>=MAX_QUEUE_ITEMS){toast("再生キューは最大1,000件です。");return;}
+  state.requests.push(candidate.item);
+  state.logs.unshift("動画ライブラリからリクエストを追加："+candidate.item.title);
+  save();
+  resumeAutoPollAfterRequestAccepted();
+  render();
+  toast("動画ライブラリからリクエストへ追加しました。引用再生はまだ開始していません。");
+ }catch{toast("動画の検証に失敗しました。通信状態をご確認ください。");}
+ finally{b.disabled=false;}
+ return;
+}
 if(b.hasAttribute("data-library-play")){void playLibraryVideo(b.dataset.libraryPlay);return;}
 if(b.hasAttribute("data-library-edit")){libraryEditId=b.dataset.libraryEdit;renderVideoLibraryRows();return;}
 if(b.hasAttribute("data-library-edit-cancel")){libraryEditId="";renderVideoLibraryRows();return;}
