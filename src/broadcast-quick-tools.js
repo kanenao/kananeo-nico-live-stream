@@ -66,6 +66,7 @@
   const clock=quoteClock(model.quote);
   const pending=pendingRequests(model.requests);
   const lib=Array.isArray(model.library)?model.library:[];
+  const availableStock=(Array.isArray(model.stocks)?model.stocks:[]).some(x=>x&&!["completed","skipped","rejected","playing"].includes(x.status));
   return '<section class="broadcast-quick-tools" aria-label="放送中の動画・アンケート管理">'+
    '<header class="broadcast-tools-heading"><div><span class="broadcast-tools-eyebrow">BROADCAST TOOLS</span><h2>配信中の操作・動画管理</h2><p>アンケート、引用再生時間、リクエストと保存済み動画をここでまとめて確認できます。</p></div>'+
    '<button class="btn" type="button" data-go="player">プレイヤーの詳細設定</button></header>'+
@@ -86,10 +87,10 @@
    '<div class="broadcast-tool-actions"><button class="btn" type="button" data-quote-refresh>引用状態を再確認</button><button class="btn" type="button" data-go="player">時間・再生設定</button></div></section></div>'+
    '<section class="broadcast-tool-card broadcast-tool-requests" aria-label="動画リクエスト・ライブラリ">'+
    '<div class="broadcast-tool-card-head"><div><h3>動画リクエスト・ライブラリ</h3><p>先にリクエストを再生し、保存動画は必要なものだけキューへ追加できます。</p></div>'+
-   '<span class="broadcast-tool-state">未再生 '+pending.length+' 件 ・ 保存 '+lib.length+' 件</span></div>'+
+   '<span class="broadcast-tool-state">未再生 '+pending.length+' 件 ・ 保存 <span id="broadcast-library-count">'+lib.length+'</span> 件</span></div>'+
    '<div class="broadcast-tool-queue-grid"><div><div class="broadcast-tool-subhead"><h4>リクエストキュー</h4><button class="btn" type="button" data-go="requests">すべて見る</button></div>'+
    requestPreview(model.requests)+
-   '<div class="broadcast-tool-actions"><button class="btn primary" type="button" data-quote-next '+(pending.length?'':"disabled")+'>次の候補をニコ生で引用</button>'+
+   '<div class="broadcast-tool-actions"><button class="btn primary" type="button" data-quote-next '+(pending.length||availableStock?'':"disabled")+'>次の候補をニコ生で引用</button>'+
    '<button class="btn" type="button" data-go="stocks">ストックを開く</button></div></div>'+
    '<div><div class="broadcast-tool-subhead"><h4>保存済み動画</h4><button class="btn" type="button" data-go="library">ライブラリ管理</button></div>'+
    '<div id="broadcast-library-preview">'+libraryPreview(lib,model.libraryLoading,model.libraryError)+'</div></div></div>'+
