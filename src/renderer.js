@@ -677,7 +677,7 @@ function broadcastToolModel(now=Date.now()){
   quote:{active:quotePlayback.active,verified:quotePlayback.verified,
    videoId:quotePlayback.videoId,title:quotePlayback.item?.title||quotePlayback.videoId,
    progress:currentQuoteProgress(now)},
-  requests:state.requests,library:videoLibraryData.items,libraryLoading,libraryError
+  requests:state.requests,stocks:state.stocks,library:videoLibraryData.items,libraryLoading,libraryError
  };
 }
 function renderBroadcastToolsUi(){
