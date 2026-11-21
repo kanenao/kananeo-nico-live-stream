@@ -38,7 +38,7 @@ test("auto extension is due only for an active verified program within 5 minutes
 test("disabled monitor never sends a mutation; enabling monitors and extends the owned broadcast",async()=>{
  const {monitor,sent}=mock();
  await monitor.poll();assert.equal(sent.length,0);
- monitor.configure({enabled:true});await monitor.poll();
+ monitor.configure({enabled:true});await new Promise(resolve=>setImmediate(resolve));await monitor.poll();
  assert.equal(sent.length,1);
  assert.deepEqual(sent[0],{programId:"lv123",minutes:30,expectedEndTime:epoch/1000+180});
  assert.equal(monitor.status().phase,"extended");
@@ -46,6 +46,7 @@ test("disabled monitor never sends a mutation; enabling monitors and extends the
 });
 test("extension request occurs once for same program end time, even on repeated polling",async()=>{
  const {monitor,sent}=mock();monitor.configure({enabled:true});
+ await new Promise(resolve=>setImmediate(resolve));
  await monitor.poll();await monitor.poll();await monitor.poll();
  assert.equal(sent.length,1);monitor.dispose();
 });
@@ -53,20 +54,20 @@ test("never calls the extension API when only paid methods exist",async()=>{
  let calls=0;
  const {monitor}=mock({getOptions:async()=>({ok:true,methods:[{type:"point",minutes:30}]}),
   extend:async()=>{calls++;return {ok:true};}});
- monitor.configure({enabled:true});await monitor.poll();
+ monitor.configure({enabled:true});await new Promise(resolve=>setImmediate(resolve));await monitor.poll();
  assert.equal(calls,0);assert.equal(monitor.status().phase,"unavailable");monitor.dispose();
 });
 test("never extends another person's program or programs not on air",async()=>{
  let calls=0;
  const {monitor,setOwned}=mock({extend:async()=>{calls++;return {ok:true};}});
  setOwned({ok:true,programs:[program({programId:"lv222",status:"ENDED"})]});
- monitor.configure({enabled:true});await monitor.poll();
+ monitor.configure({enabled:true});await new Promise(resolve=>setImmediate(resolve));await monitor.poll();
  assert.equal(calls,0);monitor.dispose();
 });
 test("ambiguous response is not resent until a new verified end-time window",async()=>{
  let calls=0;
  const {monitor,setProgram}=mock({extend:async()=>{calls++;return {ok:false,message:"延長応答不明"};}});
- monitor.configure({enabled:true});await monitor.poll();await monitor.poll();
+ monitor.configure({enabled:true});await new Promise(resolve=>setImmediate(resolve));await monitor.poll();await monitor.poll();
  assert.equal(calls,1);
  setProgram(program({end:epoch/1000+240}));await monitor.poll();
  assert.equal(calls,2);monitor.dispose();
@@ -75,6 +76,6 @@ test("unavailable or not yet due does not request free extension",async()=>{
  let calls=0;
  const {monitor,setProgram}=mock({getOptions:async()=>{calls++;return {ok:true,methods:[{type:"free",minutes:30}]};}});
  setProgram(program({end:epoch/1000+600}));
- monitor.configure({enabled:true});await monitor.poll();
+ monitor.configure({enabled:true});await new Promise(resolve=>setImmediate(resolve));await monitor.poll();
  assert.equal(calls,0);monitor.dispose();
 });
