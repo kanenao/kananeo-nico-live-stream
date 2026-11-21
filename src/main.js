@@ -37,6 +37,7 @@ const { decideEnqueteResult } = require("./poll-engine");
 const { buildEnqueteRequest, mapEnqueteHttpError, parseEnqueteResultResponse } = require("./enquete-api");
 const { buildStatisticsRequest, parseStatisticsResponse } = require("./program-api");
 const { buildExtensionOptionsRequest, parseExtensionOptionsResponse } = require("./extension-api");
+const {buildFreeExtensionRequest,selectFreeExtensionMethod,shouldTryAutoExtend,createAutoExtensionMonitor}=require("./auto-extension-monitor");
 const {
   buildGetCurrentQuotationRequest, buildPlayQuotationRequest, buildStopQuotationRequest,
   parseCurrentQuotationResponse, parseQuotationMutationResponse
@@ -75,6 +76,7 @@ let broadcastWindow = null;
 let recentlyCreatedId="";
 let nextFrameMonitor=null;
 let ownBroadcastMonitor=null;
+let autoExtensionMonitor=null;
 let registeredUserMonitor=null;
 let liveVideoView = null;
 let liveVideoProgramId = "";
@@ -212,6 +214,30 @@ function getOwnBroadcastMonitor(){
   });
  }
  return ownBroadcastMonitor;
+}
+function getAutoExtensionMonitor(){
+ if(!autoExtensionMonitor){
+  autoExtensionMonitor=createAutoExtensionMonitor({
+   getOwnBroadcast,checkProgram:checkNiconicoProgram,getOptions:getProgramExtensionOptions,
+   extend:performAutoFreeExtension,
+   onStatus:status=>{
+    if(mainWindow&&!mainWindow.isDestroyed()&&!mainWindow.webContents.isDestroyed())
+     mainWindow.webContents.send("niconico:auto-extension-status",status);
+   }
+  });
+ }
+ return autoExtensionMonitor;
+}
+function autoExtensionSettingsPath(){return path.join(app.getPath("userData"),"auto-extension-settings.json");}
+async function saveAutoExtensionSettings(enabled){
+ await fs.mkdir(app.getPath("userData"),{recursive:true});
+ await fs.writeFile(autoExtensionSettingsPath(),JSON.stringify({enabled:enabled===true})+"\n","utf8");
+}
+async function restoreAutoExtensionSettings(){
+ try{
+  const loaded=JSON.parse(await fs.readFile(autoExtensionSettingsPath(),"utf8"));
+  if(loaded?.enabled===true)getAutoExtensionMonitor().configure({enabled:true});
+ }catch(error){if(error?.code!=="ENOENT")console.warn("Auto extension settings could not be loaded:",error?.code||error?.name);}
 }
 async function getRegisteredUserBroadcast(userId){
  const url=buildRegisteredUserHistoryUrl(userId);
@@ -1450,6 +1476,52 @@ async function getProgramExtensionOptions(input = {}) {
   return {ok:true,programId,methods:parsed.methods,updatedAt:new Date().toISOString()};
 }
 
+async function performAutoFreeExtension(input={}){
+ const request=buildFreeExtensionRequest(input.programId,input.minutes);
+ if(!request.ok)return request;
+ const expectedEndTime=Number(input.expectedEndTime);
+ if(!Number.isFinite(expectedEndTime)||expectedEndTime<=0)
+  return {ok:false,code:"UNVERIFIED_END_TIME",message:"延長前の放送終了時刻を確認できません。"};
+ const login=await requireNiconicoLogin();
+ if(!login.ok)return login;
+ const own=await getOwnBroadcast();
+ if(!own?.ok)return {ok:false,code:"OWN_BROADCAST_UNAVAILABLE",message:own?.message||"自分の放送を確認できません。"};
+ const owned=(own.programs||[]).some(x=>String(x.programId||"").toLowerCase()===String(input.programId).toLowerCase()
+  &&["ON_AIR","ONAIR"].includes(String(x.programStatus||"").toUpperCase()));
+ if(!owned)return {ok:false,code:"NOT_OWNER",message:"自分の放送中の番組だけを自動延長できます。"};
+ const checked=await checkNiconicoProgram(input.programId);
+ const due=shouldTryAutoExtend(checked);
+ if(!due.due||Math.abs(due.endTime-expectedEndTime)>2)
+  return {ok:false,code:"EXTENSION_PRECHECK_CHANGED",message:"放送状態または終了時刻が変更されました。延長を再送信しません。"};
+ const available=await getProgramExtensionOptions({programId:due.programId});
+ if(!available.ok)return available;
+ const free=selectFreeExtensionMethod(available.methods);
+ if(!free||free.minutes!==request.body.minutes)
+  return {ok:false,code:"FREE_EXTENSION_UNAVAILABLE",message:"無料延長の選択肢を確認できません。有料の延長は実行しません。"};
+ let response;
+ try{
+  response=await niconicoSession.fetch(request.url,{
+   method:request.method,credentials:"include",redirect:"error",
+   headers:{Accept:"application/json","Content-Type":"application/json",Origin:"https://live2.nicovideo.jp"},
+   body:JSON.stringify(request.body),signal:AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+  });
+ }catch(error){
+  return {ok:false,code:"EXTENSION_RESULT_UNKNOWN",message:"延長要求の通信結果が不明です。二重実行せず、公式番組画面で終了時刻を確認してください。"};
+ }
+ if(!isTrustedNiconicoUrl(response.url||request.url))
+  return {ok:false,code:"UNTRUSTED_REDIRECT",message:"公式以外の接続先を検出したため延長を確認できません。"};
+ if(![200,201,204].includes(response.status))
+  return {ok:false,code:"EXTENSION_HTTP_ERROR",message:"無料延長が受け付けられませんでした（HTTP "+response.status+"）。公式番組画面で確認してください。"};
+ const latest=await checkNiconicoProgram(due.programId);
+ const newEndTime=Number(latest?.endTime);
+ const verified=latest?.ok===true&&
+  ["ON_AIR","ONAIR"].includes(String(latest.programStatus||"").toUpperCase())&&
+  Number.isFinite(newEndTime)&&newEndTime>expectedEndTime;
+ return {ok:true,verified,programId:due.programId,endTime:verified?newEndTime:0,
+  message:verified?"無料延長 "+free.minutes+"分を確認しました。新しい終了時刻："+new Date(newEndTime*1000).toLocaleString("ja-JP"):
+  "無料延長の要求は受け付けられましたが、終了時刻をまだ確認できていません。公式画面を確認してください。"};
+}
+
 async function getProgramStatistics(input = {}) {
   let programId;
   try {
@@ -2344,6 +2416,17 @@ function registerIpcHandlers() {
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     return getProgramExtensionOptions(input||{});
   });
+  ipcMain.handle("niconico:auto-extension-status",event=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    return {ok:true,status:getAutoExtensionMonitor().status()};
+  });
+  ipcMain.handle("niconico:auto-extension-configure",async(event,input)=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    if(typeof input?.enabled!=="boolean")return {ok:false,code:"INVALID_INPUT",message:"自動延長の設定が不正です。"};
+    try{await saveAutoExtensionSettings(input.enabled);}
+    catch{return {ok:false,code:"PERSISTENCE_FAILED",message:"自動延長の設定を保存できませんでした。"};}
+    return getAutoExtensionMonitor().configure({enabled:input.enabled});
+  });
   ipcMain.handle("niconico:get-program-statistics",(event,input)=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     return getProgramStatistics(input||{});
@@ -2695,6 +2778,7 @@ app.whenReady().then(async()=>{
   // Always monitor the signed-in broadcaster, irrespective of saved UI monitoring switches.
   getOwnBroadcastMonitor().start();
   void getOwnBroadcastMonitor().check(true);
+  await restoreAutoExtensionSettings();
   try{
     const {autoUpdater}=require("electron-updater");
     autoUpdateService=createAutoUpdateService({
@@ -2714,7 +2798,7 @@ app.on("before-quit",event=>{
   closeNiconicoLiveVideoView();
   finalQuitInProgress=true;
   void settleBeforeQuit([
-    ()=>{nextFrameMonitor?.dispose();registeredUserMonitor?.dispose();ownBroadcastMonitor?.stop();},
+    ()=>{nextFrameMonitor?.dispose();registeredUserMonitor?.dispose();ownBroadcastMonitor?.stop();autoExtensionMonitor?.dispose();},
     ()=>stopCommentStream("アプリを終了しました。"),
     ()=>stopRemoteControlServer()
   ],7000).then(result=>{
