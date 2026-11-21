@@ -669,6 +669,58 @@ async function fetchReleaseHistory(reset=false){
  }finally{releaseHistoryState.loading=false;renderReleaseHistoryRows();}
 }
 
+function broadcastToolModel(now=Date.now()){
+ return {
+  pollEnabled:state.poll.autoOnQuote===true,pollStatus:pollRuntime.status,
+  pollActive:pollRuntime.active,pollStartPending,
+  waitingForRequests:!!autoPollWaitingForRequestKey,pollMessage:pollRuntime.message,
+  quote:{active:quotePlayback.active,verified:quotePlayback.verified,
+   videoId:quotePlayback.videoId,title:quotePlayback.item?.title||quotePlayback.videoId,
+   progress:currentQuoteProgress(now)},
+  requests:state.requests,stocks:state.stocks,library:videoLibraryData.items,libraryLoading,libraryError
+ };
+}
+function renderBroadcastToolsUi(){
+ const host=document.getElementById("broadcast-quick-tools");
+ if(!host)return;
+ if(!window.KananeoBroadcastQuickTools){host.textContent="動画管理の画面を読み込めませんでした。アプリを再起動してください。";return;}
+ host.innerHTML=window.KananeoBroadcastQuickTools.render(broadcastToolModel());
+}
+function updateBroadcastQuoteToolsTime(now=Date.now()){
+ const label=document.getElementById("broadcast-quote-time");
+ if(!label||!window.KananeoBroadcastQuickTools)return;
+ const clock=window.KananeoBroadcastQuickTools.quoteClock(broadcastToolModel(now).quote);
+ const remaining=document.getElementById("broadcast-quote-remaining");
+ const progress=document.getElementById("broadcast-quote-progress");
+ const stateLabel=document.getElementById("broadcast-quote-state");
+ const title=document.getElementById("broadcast-quote-title");
+ const hint=document.getElementById("broadcast-quote-hint");
+ label.textContent=clock.time;
+ if(remaining)remaining.textContent=clock.remaining;
+ if(progress)progress.value=clock.percent;
+ if(stateLabel)stateLabel.textContent=clock.state;
+ if(title)title.textContent=clock.title;
+ if(hint)hint.textContent=clock.hint;
+}
+function updateBroadcastPollToolsUi(){
+ const label=document.getElementById("broadcast-poll-state");
+ if(!label||!window.KananeoBroadcastQuickTools)return;
+ label.textContent=window.KananeoBroadcastQuickTools.pollLabel(broadcastToolModel());
+ const message=document.getElementById("broadcast-poll-message");
+ if(message)message.textContent=pollRuntime.message||"アンケートの開始に備えています。";
+ const start=document.querySelector("#broadcast-quick-tools [data-poll-start]");
+ const stop=document.querySelector("#broadcast-quick-tools [data-poll-stop]");
+ if(start)start.disabled=pollRuntime.active||pollStartPending;
+ if(stop)stop.disabled=!pollRuntime.active;
+}
+function renderBroadcastLibraryPreview(){
+ const host=document.getElementById("broadcast-library-preview");
+ if(!host||!window.KananeoBroadcastQuickTools)return;
+ host.innerHTML=window.KananeoBroadcastQuickTools.libraryPreview(videoLibraryData.items,videoLibraryLoading,videoLibraryError);
+ const count=document.getElementById("broadcast-library-count");
+ if(count)count.textContent=videoLibraryData.items.length.toLocaleString("ja-JP");
+}
+
 function render(){
 document.getElementById("crumb").textContent=names[page];
 document.querySelectorAll("[data-page]").forEach(b=>b.classList.toggle("active",b.dataset.page===page));
@@ -755,7 +807,8 @@ panel("受信コメント",'<span id="comment-count">'+receivedComments.length+'
 }else if(page==="broadcast"){
 const authTitle=nicoStatus.authenticated?"ログインCookieを確認しました":"ニコニコにログインしていません";
 const authText=nicoStatus.authenticated?"このアプリ専用のセッションにログインCookieがあります。Cookie値は表示しません。":"下のボタンからニコニコ公式ログインを開いてください。パスワードはアプリに入力しません。";
-html=hero("LIVE SESSION","放送・枠管理","放送映像を左側に表示し、NCV風のコメント一覧を右側に並べて確認できます。")+
+html=hero("LIVE SESSION","放送・枠管理","放送画面とコメントに加え、自動アンケート・引用再生時間・動画リクエストをこの画面で操作できます。")+
+'<div id="broadcast-quick-tools"></div>'+
 '<div class="grid2">'+
 panel("ニコニコアカウント接続","公式ログインを専用セッションで開く",'<div class="empty" id="auth-status"><b>'+authTitle+'</b><br>'+authText+'</div><div class="actions"><button class="btn primary" data-nico-login>公式ログインを開く</button><button class="btn" data-nico-refresh>状態を再確認</button><button class="btn" data-nico-logout>このアプリからログアウト</button></div>')+
 panel("番組ページを確認","放送IDまたはニコ生番組URLを入力",'<div class="field"><label>放送ID / URL</label><input class="input" id="live-id" value="'+esc(state.lastProgramId||"")+'" placeholder="lv123456789 または放送URL" maxlength="512"></div><div class="actions"><button class="btn primary" data-nico-check>番組ページを確認</button></div><div class="empty" id="program-result">確認結果はここに表示します。</div>')+
@@ -822,7 +875,7 @@ html=html.replace('<div class="section"><p id="library-count">','<div class="fie
 document.getElementById("content").innerHTML=html;
 renderInAppUpdateNotice();
 if(page==="dashboard")renderDashboardAlphaUpdateStatus();
-if(page==="broadcast"){renderBroadcastManageVerification();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();renderStreamMonitorUi();}
+if(page==="broadcast"){renderBroadcastToolsUi();renderBroadcastManageVerification();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();renderStreamMonitorUi();}
 updateLiveVideoBounds();
 if(page==="voice"){renderSpeechVoices();updateSpeechQueueUi();}
 if(page==="settings"){renderUpdateCheck();renderAutoUpdateStatus();}
@@ -841,7 +894,7 @@ const result=await window.kananeoApp.videoLibrary.get();
 if(!result?.ok)throw new Error(result?.message||"動画ライブラリを読み込めませんでした。");
 videoLibraryData=result.library||{version:1,items:[],history:[],updatedAt:""};
 }catch(error){videoLibraryError=error?.message||"動画ライブラリを読み込めませんでした。";if(!silent)toast(videoLibraryError);}
-finally{videoLibraryLoading=false;if(page==="library"){render();renderVideoLibraryRows();}}
+finally{videoLibraryLoading=false;if(page==="library"){render();renderVideoLibraryRows();}if(page==="broadcast")renderBroadcastLibraryPreview();}
 }
 function librarySourceLabel(source){
 return ({manual:"手動登録","watch-later":"あとで見る",mylist:"マイリスト",series:"シリーズ",text:"テキスト取り込み",json:"JSON取り込み"}[source]||source||"不明");
@@ -882,7 +935,7 @@ videoId:item.videoId,url:item.url,title:item.title,lengthMs:item.lengthMs||0,
 queueType:["request","stock","library"].includes(queueType)?queueType:"library",
 playbackType:playbackType==="quotation"?"quotation":"preview"
 });
-if(result?.ok){videoLibraryData=result.library;if(page==="library"){render();renderVideoLibraryRows();}}
+if(result?.ok){videoLibraryData=result.library;if(page==="library"){render();renderVideoLibraryRows();}if(page==="broadcast")renderBroadcastLibraryPreview();}
 }catch{}
 }
 function renderVideoLibraryRows(){
@@ -971,6 +1024,7 @@ function updateQuoteProgressUi(now=Date.now()){
   " まで再生した記録があります。引用再生APIに途中位置の指定が確認できないため、自動的にこの位置から再生することはできません。":
   "前枠から引き継ぐ再生位置の記録はありません。";
  if(clear)clear.disabled=!saved;
+ updateBroadcastQuoteToolsTime(now);
 }
 function currentQueueList(){return state.player.currentQueueType==="stock"?state.stocks:state.requests;}
 function currentQueueItem(){
@@ -1127,6 +1181,7 @@ if(!result?.ok){
 quotePlayback={...quotePlayback,message:result?.message||"引用再生状態を取得できませんでした。"};
 if(!silent)toast(quotePlayback.message);
 if(page==="player")render();
+if(page==="broadcast")renderBroadcastToolsUi();
 return result;
 }
 const previousItemId=quotePlayback.itemId;
@@ -1204,6 +1259,7 @@ if(!result.exists){
 }
 save();
 if(page==="player")render();
+if(page==="broadcast")renderBroadcastToolsUi();
 updateQuoteScheduleUi();
 return result;
 }
@@ -1299,6 +1355,7 @@ scheduleAutoPollOnQuote(programId,validation.videoId,startedAt);
 if(storedQuoteDurationMs(item)<=0)void ensureCurrentQuoteDuration();
 save();
 if(page==="requests"||page==="stocks"||page==="player")render();
+if(page==="broadcast")renderBroadcastToolsUi();
 toast(result.message||"引用再生の要求を送信しました。");
 return true;
 }catch{toast("引用再生APIに接続できませんでした。");return false;}
@@ -1316,7 +1373,7 @@ const stoppedItemId=quotePlayback.itemId;
 quotePlayback={active:false,verified:true,programId,videoId:"",queueType:"",itemId:"",message:"ニコ生側では引用再生が既に停止しています。"};
 state.player.quoteStartedAt=0;state.player.quoteDurationMs=0;state.player.quoteVideoId="";state.player.quoteProgramId="";state.player.quoteExpectedEndAt=0;
 for(const list of [state.requests,state.stocks])list.forEach(x=>{if(x.id===stoppedItemId&&x.status==="playing")x.status="queued";});
-if(state.player.currentId===stoppedItemId){state.player.currentId="";}save();if(page==="player")render();toast(quotePlayback.message);return;
+if(state.player.currentId===stoppedItemId){state.player.currentId="";}save();if(page==="player")render();if(page==="broadcast")renderBroadcastToolsUi();toast(quotePlayback.message);return;
 }
 const result=await window.kananeoApp.niconico.stopQuotedVideo({programId,confirmed:true});
 if(!result?.ok){toast(result?.message||"引用再生を停止できませんでした。");return;}
@@ -1325,7 +1382,7 @@ const stoppedItemId=quotePlayback.itemId;
 quotePlayback={active:false,verified:true,programId,videoId:"",queueType:"",itemId:"",message:result.message};
 state.player.quoteStartedAt=0;state.player.quoteDurationMs=0;state.player.quoteVideoId="";state.player.quoteExpectedEndAt=0;
 for(const list of [state.requests,state.stocks])list.forEach(x=>{if(x.id===stoppedItemId&&x.status==="playing")x.status="queued";});
-if(state.player.currentId===stoppedItemId){state.player.currentId="";}save();if(page==="player"||page==="requests"||page==="stocks")render();toast(result.message);
+if(state.player.currentId===stoppedItemId){state.player.currentId="";}save();if(page==="player"||page==="requests"||page==="stocks")render();if(page==="broadcast")renderBroadcastToolsUi();toast(result.message);
 }
 async function playNextQuoteItem(options={}){
 const endAt=Number(options.endTime??state.lastProgramEndAt);
@@ -1416,6 +1473,7 @@ const start=document.querySelector("[data-poll-start]");
 const stop=document.querySelector("[data-poll-stop]");
 if(start)start.disabled=pollRuntime.active;
 if(stop)stop.disabled=!pollRuntime.active;
+ updateBroadcastPollToolsUi();
 }
 function stopPollDeadlineGuard(){
  if(pollDeadlineTimer)clearTimeout(pollDeadlineTimer);
@@ -3050,6 +3108,27 @@ return;
 }
 
 if(b.hasAttribute("data-library-export")){exportVideoLibrary();return;}
+if(b.hasAttribute("data-broadcast-library-request")){
+ const videoId=String(b.dataset.broadcastLibraryRequest||"");
+ const item=videoLibraryData.items.find(x=>String(x.videoId||"").toLowerCase()===videoId.toLowerCase());
+ if(!item){toast("動画ライブラリに対象の動画が見つかりません。");return;}
+ b.disabled=true;
+ try{
+  const verification=await window.kananeoApp.niconico.validateVideo(item.videoId);
+  const requestId="req-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8);
+  const candidate=window.KananeoBroadcastQuickTools.prepareLibraryRequest(item,verification,state.requests,state.stocks,requestId);
+  if(!candidate.ok){toast(candidate.message);return;}
+  if(state.requests.length>=MAX_QUEUE_ITEMS){toast("再生キューは最大1,000件です。");return;}
+  state.requests.push(candidate.item);
+  state.logs.unshift("動画ライブラリからリクエストを追加："+candidate.item.title);
+  save();
+  resumeAutoPollAfterRequestAccepted();
+  render();
+  toast("動画ライブラリからリクエストへ追加しました。引用再生はまだ開始していません。");
+ }catch{toast("動画の検証に失敗しました。通信状態をご確認ください。");}
+ finally{b.disabled=false;}
+ return;
+}
 if(b.hasAttribute("data-library-play")){void playLibraryVideo(b.dataset.libraryPlay);return;}
 if(b.hasAttribute("data-library-edit")){libraryEditId=b.dataset.libraryEdit;renderVideoLibraryRows();return;}
 if(b.hasAttribute("data-library-edit-cancel")){libraryEditId="";renderVideoLibraryRows();return;}
@@ -3253,7 +3332,7 @@ document.addEventListener("change",e=>{
     scheduleAutoPollOnQuote(quotePlayback.programId,quotePlayback.videoId,state.player.quoteStartedAt);
    else markAutoPollWaitingForRequests(quotePlayback.programId,quotePlayback.videoId,state.player.quoteStartedAt);
   }
-  save();toast(state.poll.autoOnQuote?"引用再生連動アンケートをONにしました。":"引用再生連動アンケートをOFFにしました。");
+  save();updateBroadcastPollToolsUi();toast(state.poll.autoOnQuote?"引用再生連動アンケートをONにしました。":"引用再生連動アンケートをOFFにしました。");
   return;
  }
  if(e.target.id==="request-auto-on-live"){
