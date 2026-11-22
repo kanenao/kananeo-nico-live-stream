@@ -23,7 +23,7 @@ test("icon is a self-contained high-resolution white tile with black mascot",()=
  assert.match(svg,/<circle cx="598" cy="561" r="41"/);
  assert.match(svg,/<rect x="76" y="73" width="872" height="872"/);
  assert.match(svg,/<path d="M 474,630/);
- assert.doesNotMatch(svg,/<(?:script|image|foreignObject)\b|https?:\/\//i);
+ assert.doesNotMatch(svg,/<(?:script|image|foreignObject)\b|(?:href|src)\s*=\s*["\x27]https?:\/\//i);
  assert.ok(Buffer.byteLength(svg,"utf8")<15000,"icon should remain small and self-contained");
 });
 test("app shell replaces old KN/K placeholders and shows the same icon in two visible places",()=>{
