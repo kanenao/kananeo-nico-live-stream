@@ -41,7 +41,7 @@
    starting:"投票開始処理中"}[model.pollStatus]||"確認中");
  }
  function libraryPreview(items=[],loading=false,error=""){
-  const list=(Array.isArray(items)?items:[]).filter(x=>x&&/^(?:sm|nm|so)\d{1,12}$/i.test(String(x.videoId||""))).slice(0,5);
+  const list=(Array.isArray(items)?items:[]).filter(x=>x&&/^(?:sm|nm|so)\d{1,12}$/i.test(String(x.videoId||""))).slice(0,3);
   if(!list.length)return '<div class="broadcast-tool-empty">'+esc(loading?"ライブラリを読み込み中です…":
    error?"ライブラリを確認できませんでした。動画ライブラリで再読み込みしてください。":
    "まだ登録された動画はありません。動画ライブラリから追加できます。")+'</div>';
