@@ -851,7 +851,7 @@ const active=["connecting","connected","recovering"].includes(commentConnection.
 const statusLabel=({disconnected:"未接続",connecting:"接続中",connected:"接続中",recovering:"再接続中",error:"接続エラー"}[commentConnection.state]||"未接続");
 const programId=commentConnection.programId||liveVideoState.programId||state.lastProgramId||"";
 const channelTitle=state.lastProgramTitle||liveVideoState.title||programId||"放送画面";
-const isLive=liveVideoState.status==="ready"||commentConnection.state==="connected";
+const isLive=String(state.lastProgramStatus||"").toLowerCase()==="onair"||commentConnection.state==="connected";
 html=
 '<div class="broadcast-screen-layout" id="broadcast-screen-layout">'+
 '<section class="broadcast-video-column">'+
@@ -2366,7 +2366,7 @@ function updateBroadcastLivePanel(){
  const labels={closed:"未表示",loading:"読み込み中",ready:"表示中",error:"読み込みエラー"};
  const title=state.lastProgramTitle||liveVideoState.title||commentConnection.programId||liveVideoState.programId||"放送画面";
  if(status){
-  const isLive=liveVideoState.status==="ready"||commentConnection.state==="connected";
+  const isLive=String(state.lastProgramStatus||"").toLowerCase()==="onair"||commentConnection.state==="connected";
   status.textContent=isLive?"LIVE":labels[liveVideoState.status]||"待機中";
   status.classList.toggle("is-live",isLive);
  }
