@@ -42,7 +42,7 @@ test("all main broadcast actions remain available without opening an advanced dr
   'data-go="requests"','data-go="library"'])
   assert.ok(quick.includes(selector),selector);
  assert.match(quick,/pending\.slice\(0,3\)/);
- assert.match(quick,/list\.slice\(0,3\)/);
+ assert.match(quick,/const list=.*\.slice\(0,3\)/);
 });
 test("comment filtering, read markers, NG and display customization remain wired",()=>{
  assert.match(renderer,/broadcastCommentClearIndex/);
