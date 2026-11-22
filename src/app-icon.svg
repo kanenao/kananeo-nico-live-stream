@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="kananeo nico live stream マスコットアイコン">
+  <!-- Source art is a clean vector recreation of the mascot selected for the app. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.61" stop-color="#f9f9fa"/>
+      <stop offset="1" stop-color="#eff0f2"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="0.75" stop-color="#e4e6e9" stop-opacity="0.64"/>
+      <stop offset="1" stop-color="#c9ccd0" stop-opacity="0.9"/>
+    </linearGradient>
+    <filter id="softShadow" x="-25%" y="-25%" width="150%" height="160%">
+      <feGaussianBlur stdDeviation="19"/>
+    </filter>
+    <mask id="loopHole">
+      <rect width="1024" height="1024" fill="black"/>
+      <circle cx="503" cy="252" r="116" fill="white"/>
+      <circle cx="503" cy="252" r="45" fill="black"/>
+    </mask>
+  </defs>
+  <rect x="79" y="93" width="865" height="866" rx="220" fill="#484c54" opacity="0.19" filter="url(#softShadow)"/>
+  <rect x="76" y="73" width="872" height="872" rx="227" fill="url(#tile)" stroke="url(#rim)" stroke-width="6"/>
+  <rect x="87" y="85" width="850" height="849" rx="214" fill="none" stroke="#ffffff" stroke-width="3" opacity="0.73"/>
+  <g fill="#191919">
+    <circle cx="503" cy="252" r="116" mask="url(#loopHole)"/>
+    <rect x="465" y="350" width="76" height="75"/>
+    <path d="M 322,425 H 607 C 713,425 768,509 768,612 C 768,713 707,781 602,781 H 322"
+          fill="none" stroke="#191919" stroke-width="86" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="358" cy="586" r="42"/>
+    <circle cx="598" cy="561" r="41"/>
+    <path d="M 474,630 Q 483,622 492,633 L 530,676 Q 537,687 523,691 H 441 Q 429,691 435,681 Z"/>
+  </g>
+</svg>
