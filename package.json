@@ -56,7 +56,8 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "icon": "src/app-icon.svg"
     },
     "nsis": {
       "oneClick": false,
