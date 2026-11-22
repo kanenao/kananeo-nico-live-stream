@@ -2398,7 +2398,7 @@ function applyLiveVideoState(state){
   open:state.status!=="closed",
   status:state.status||"closed",
   programId:state.programId||"",
-  title:state.title||liveVideoState.title||"",
+  title:state.status==="closed"?"":(state.title||liveVideoState.title||""),
   message:state.message||""
  };
  if(page==="broadcast"){updateBroadcastLivePanel();updateLiveVideoBounds();}
@@ -3792,18 +3792,6 @@ document.addEventListener("change",e=>{
   save();toast(e.target.checked?"ストックの自動再生を有効にしました。":"ストックの自動再生を無効にしました。");
  }
 
- if(e.target.id==="broadcast-view-mode"){
-  const next=window.KananeoBroadcastView.normalizeBroadcastView({...state.broadcastView,mode:e.target.value});
-  const previous=state.broadcastView.mode;
-  state.broadcastView={...next,videoShare:next.mode==="wide"?74:next.mode==="split"?60:next.videoShare};
-  save();updateBroadcastViewUi();
-  if(previous==="dual"&&next.mode!=="dual"&&secondLiveVideoState.open){
-   void window.kananeoApp.niconico.closeSecondLiveVideo().catch(()=>{});
-   secondLiveVideoState={open:false,status:"closed",programId:"",message:"2画面モードを終了しました。"};
-   lastSecondLiveVideoBoundsKey="";updateBroadcastLivePanel();updateLiveVideoBounds();
-  }
-  return;
- }
  if(e.target.id==="broadcast-video-zoom"){
   const choice=e.target.value;
   state.liveVideoZoom.zoomMode=choice==="auto"?"auto":"manual";
