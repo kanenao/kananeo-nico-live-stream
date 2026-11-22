@@ -860,7 +860,7 @@ html=
 '<div class="broadcast-player-actions">'+
 '<span class="broadcast-live-badge '+(isLive?"is-live":"")+'" id="broadcast-live-status">'+(isLive?"LIVE":"待機中")+'</span>'+
 '<button type="button" class="broadcast-icon-button" data-live-video-mute title="'+(liveVideoMuted?"音声をON":"音声をミュート")+'" aria-label="'+(liveVideoMuted?"音声をON":"音声をミュート")+'">'+(liveVideoMuted?"🔇":"🔊")+'</button>'+
-(!active?'<button type="button" class="broadcast-icon-button" data-broadcast-comment-start title="コメント受信を開始" aria-label="コメント受信を開始">▤</button>':'<span class="broadcast-toolbar-connected" title="コメント受信中">●</span>')+
+'<button type="button" class="broadcast-icon-button" data-broadcast-comment-start title="コメント受信を開始" aria-label="コメント受信を開始">▤</button>'+
 '<button type="button" class="broadcast-icon-button" data-live-video-open '+(liveVideoState.open?"disabled":"")+' title="放送画面を表示" aria-label="放送画面を表示">▶</button>'+
 '<button type="button" class="broadcast-icon-button" data-live-video-reload '+(!liveVideoState.open?"disabled":"")+' title="放送画面を更新" aria-label="放送画面を更新">↻</button>'+
 '<button type="button" class="broadcast-icon-button close" data-live-video-close '+(!liveVideoState.open?"disabled":"")+' title="放送画面を閉じる" aria-label="放送画面を閉じる">×</button>'+
