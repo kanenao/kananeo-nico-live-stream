@@ -21,6 +21,22 @@ function appendHistory(input,event){
  },...normalized]);
  return next.slice(0,MAX_HISTORY);
 }
-if(typeof module!=="undefined"&&module.exports)module.exports={MAX_HISTORY,normalizeHistory,appendHistory};
-if(typeof window!=="undefined")window.KananeoStreamMonitorHistory={MAX_HISTORY,normalizeHistory,appendHistory};
+// A row's index can shift when a live monitor event arrives. The normalized
+// snapshot token prevents accidentally deleting a different event.
+function historyEntryToken(entry){
+ const item=normalizeHistory([entry])[0];
+ return item?encodeURIComponent(JSON.stringify(item)):"";
+}
+function removeHistoryEntry(input,index,expectedToken){
+ const history=normalizeHistory(input);
+ if(!Number.isInteger(index)||index<0||index>=history.length||
+   typeof expectedToken!=="string"||!expectedToken||
+   historyEntryToken(history[index])!==expectedToken)
+  return {removed:false,history};
+ return {removed:true,history:history.filter((_,i)=>i!==index)};
+}
+function clearHistory(){return [];}
+const api=Object.freeze({MAX_HISTORY,normalizeHistory,appendHistory,historyEntryToken,removeHistoryEntry,clearHistory});
+if(typeof module!=="undefined"&&module.exports)module.exports=api;
+if(typeof window!=="undefined")window.KananeoStreamMonitorHistory=api;
 })();
