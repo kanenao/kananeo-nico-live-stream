@@ -2632,6 +2632,7 @@ const normalizedId=id.trim().toLowerCase();
 if(commentConnection.programId.trim().toLowerCase()!==normalizedId||commentConnection.state==="disconnected"){
  hideBroadcastCommentContextMenu();
  receivedComments=[];
+ broadcastCommentClearIndex=0;
  broadcastReadThroughIndex=-1;
  broadcastCommentSearch="";
  broadcastCommentType="all";
