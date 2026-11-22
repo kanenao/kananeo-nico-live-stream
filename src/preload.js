@@ -4,7 +4,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
-  version:"0.3.4-alpha.93",
+  version:"0.4.0-alpha.94",
   platform:process.platform,
   stage:"https-lan-remote-control",
   remote:Object.freeze({
@@ -119,6 +119,10 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
     openLiveVideo:programId=>ipcRenderer.invoke("niconico:live-view-open",programId),
     setLiveVideoBounds:bounds=>ipcRenderer.send("niconico:live-view-bounds",bounds),
     closeLiveVideo:()=>ipcRenderer.invoke("niconico:live-view-close"),
+    openSecondLiveVideo:programId=>ipcRenderer.invoke("niconico:second-live-view-open",programId),
+    setSecondLiveVideoBounds:bounds=>ipcRenderer.send("niconico:second-live-view-bounds",bounds),
+    closeSecondLiveVideo:()=>ipcRenderer.invoke("niconico:second-live-view-close"),
+    setSecondLiveVideoAudio:enabled=>ipcRenderer.invoke("niconico:second-live-view-audio",enabled),
     validateVideo:input=>ipcRenderer.invoke("niconico:validate-video",input),
     startEnquete:input=>ipcRenderer.invoke("niconico:start-enquete",input),
     showEnqueteResult:input=>ipcRenderer.invoke("niconico:show-enquete-result",input),
