@@ -254,3 +254,9 @@ input[type="range"]{accent-color:#8c7cff;cursor:pointer}
 @media(max-width:1430px){.broadcast-tool-queue-grid{grid-template-columns:1fr}.broadcast-tool-video-list li{flex-wrap:wrap}.broadcast-tool-video-actions{width:100%}}
 @media(max-width:1230px){.broadcast-tools-top{grid-template-columns:1fr}.broadcast-tool-add-row{grid-template-columns:1fr 1fr}.broadcast-tools-heading{align-items:flex-start;flex-wrap:wrap}}
 @media(max-width:1080px){.broadcast-tool-card-head{flex-wrap:wrap}.broadcast-tool-state{max-width:100%}.broadcast-quick-tools{padding:14px}.broadcast-quote-clock strong{font-size:18px}}
+
+/* Alpha 93: shared mascot identity for sidebar and title bar. */
+.brand .mark{background:transparent;overflow:hidden;border-radius:11px;flex-shrink:0;box-shadow:0 3px 12px #0004}
+.brand .mark img{display:block;width:100%;height:100%;object-fit:contain}
+.topbar .avatar{border-radius:9px;background:transparent;overflow:hidden;box-shadow:0 2px 8px #0004}
+.topbar .avatar img{display:block;width:100%;height:100%;object-fit:contain}
