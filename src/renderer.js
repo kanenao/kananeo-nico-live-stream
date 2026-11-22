@@ -142,11 +142,25 @@ function parseStreamMonitorTargets(value){
  return ids.slice(0,50);
 }
 function addStreamMonitorHistory(type,programId,message){state.streamMonitor.history=window.KananeoStreamMonitorHistory.appendHistory(state.streamMonitor.history,{type,programId,message,at:new Date().toISOString()});save();}
+function removeOneStreamMonitorHistory(index,token){
+ const result=window.KananeoStreamMonitorHistory.removeHistoryEntry(state.streamMonitor.history,index,token);
+ if(!result.removed)return false;
+ state.streamMonitor.history=result.history;
+ save();renderStreamMonitorUi();
+ return true;
+}
+function removeAllStreamMonitorHistory(){
+ if(!state.streamMonitor.history.length)return false;
+ state.streamMonitor.history=window.KananeoStreamMonitorHistory.clearHistory();
+ save();renderStreamMonitorUi();
+ return true;
+}
+
 function renderStreamMonitorUi(){
  const host=document.getElementById("stream-monitor-status");if(!host)return;
  const config=state.streamMonitor,rows=config.targets||[];
  const active=rows.filter(x=>x.status==="onAir").length;
- host.innerHTML='<div class="grid2"><div class="row"><b>自分の放送</b><strong>'+(ownMonitorStatus.running?"常時監視中":"接続確認中")+'</strong></div><div class="row"><b>追加監視</b><strong>'+(config.enabled?"稼働中":"停止中")+'</strong></div><div class="row"><b>登録放送</b><strong>'+rows.length+'件</strong></div><div class="row"><b>放送中</b><strong>'+active+'件</strong></div><div class="row"><b>最終確認</b><strong>'+(streamMonitorRuntime.lastCheckAt?esc(new Date(streamMonitorRuntime.lastCheckAt).toLocaleTimeString("ja-JP")):"未確認")+'</strong></div><div class="row"><b>登録ユーザー</b><strong>'+((config.userIds||[]).length)+'人</strong></div><div class="row"><b>直近の確認成功</b><strong>'+Number(registeredMonitorStatus.checkedUsers||0)+'人</strong></div><div class="row"><b>取得失敗</b><strong>'+Number(registeredMonitorStatus.failedUsers||0)+'人</strong></div></div><div class="muted">自分の放送：'+esc(ownMonitorStatus.message||"接続確認中")+'</div><div class="muted">'+esc(streamMonitorRuntime.message)+'</div><div class="muted">ユーザー監視：'+esc(registeredMonitorStatus.message||"未確認")+'</div><div class="stream-monitor-list">'+(rows.map(x=>'<div class="row"><div><b>'+esc(x.programId)+'</b><small>'+esc(x.title||"番組名未取得")+' / '+esc(window.KananeoStreamMonitor.statusLabel(x.status))+(x.lastError?" / "+esc(x.lastError):"")+'</small></div><span>'+esc(x.lastCheckedAt?new Date(x.lastCheckedAt).toLocaleTimeString("ja-JP"):"—")+'</span></div>').join("")||'<div class="empty">監視する放送IDを登録してください。</div>')+'</div><h3>監視履歴（最新20件）</h3><div class="stream-monitor-list">'+(state.streamMonitor.history.slice(0,20).map(item=>'<div class="row"><div><b>'+esc(item.programId||"監視システム")+'</b><small>'+esc(item.message)+'</small></div><span>'+esc(new Date(item.at).toLocaleString("ja-JP"))+'</span></div>').join("")||'<div class="empty">履歴はまだありません。</div>')+'</div>';
+ host.innerHTML='<div class="grid2"><div class="row"><b>自分の放送</b><strong>'+(ownMonitorStatus.running?"常時監視中":"接続確認中")+'</strong></div><div class="row"><b>追加監視</b><strong>'+(config.enabled?"稼働中":"停止中")+'</strong></div><div class="row"><b>登録放送</b><strong>'+rows.length+'件</strong></div><div class="row"><b>放送中</b><strong>'+active+'件</strong></div><div class="row"><b>最終確認</b><strong>'+(streamMonitorRuntime.lastCheckAt?esc(new Date(streamMonitorRuntime.lastCheckAt).toLocaleTimeString("ja-JP")):"未確認")+'</strong></div><div class="row"><b>登録ユーザー</b><strong>'+((config.userIds||[]).length)+'人</strong></div><div class="row"><b>直近の確認成功</b><strong>'+Number(registeredMonitorStatus.checkedUsers||0)+'人</strong></div><div class="row"><b>取得失敗</b><strong>'+Number(registeredMonitorStatus.failedUsers||0)+'人</strong></div></div><div class="muted">自分の放送：'+esc(ownMonitorStatus.message||"接続確認中")+'</div><div class="muted">'+esc(streamMonitorRuntime.message)+'</div><div class="muted">ユーザー監視：'+esc(registeredMonitorStatus.message||"未確認")+'</div><div class="stream-monitor-list">'+(rows.map(x=>'<div class="row"><div><b>'+esc(x.programId)+'</b><small>'+esc(x.title||"番組名未取得")+' / '+esc(window.KananeoStreamMonitor.statusLabel(x.status))+(x.lastError?" / "+esc(x.lastError):"")+'</small></div><span>'+esc(x.lastCheckedAt?new Date(x.lastCheckedAt).toLocaleTimeString("ja-JP"):"—")+'</span></div>').join("")||'<div class="empty">監視する放送IDを登録してください。</div>')+'</div><div class="row"><div><h3>監視履歴</h3><small>保存 '+state.streamMonitor.history.length+' 件・最新20件を表示</small></div><button class="btn danger" type="button" data-stream-monitor-history-clear '+(!state.streamMonitor.history.length?"disabled":"")+'>履歴をすべて削除</button></div><div class="muted">監視履歴だけを削除します。監視対象・監視設定は保持し、削除後の新しい検知履歴は引き続き記録されます。</div><div class="stream-monitor-list">'+(state.streamMonitor.history.slice(0,20).map((item,index)=>'<div class="row"><div><b>'+esc(item.programId||"監視システム")+'</b><small>'+esc(item.message)+'</small></div><div class="actions"><span>'+esc(new Date(item.at).toLocaleString("ja-JP"))+'</span><button class="btn" type="button" data-stream-monitor-history-delete="'+index+'" data-stream-monitor-history-token="'+esc(window.KananeoStreamMonitorHistory.historyEntryToken(item))+'">削除</button></div></div>').join("")||'<div class="empty">監視履歴はありません。</div>')+'</div>';
  const start=document.querySelector("[data-stream-monitor-start]"),stop=document.querySelector("[data-stream-monitor-stop]"),check=document.querySelector("[data-stream-monitor-check]");
  if(start)start.disabled=config.enabled||(!rows.length&&!config.ownAccount&&!(config.userIds||[]).length);if(stop)stop.disabled=!config.enabled;if(check)check.disabled=streamMonitorRuntime.busy||(!rows.length&&!config.ownAccount&&!(config.userIds||[]).length);
 }
@@ -3152,6 +3166,20 @@ if(b.hasAttribute("data-broadcast-own-fetch")||b.hasAttribute("data-stream-monit
  if(b.hasAttribute("data-stream-monitor-save")){saveStreamMonitorSettings();return;}
 if(b.hasAttribute("data-stream-monitor-start")){startStreamMonitor();return;}
 if(b.hasAttribute("data-stream-monitor-stop")){stopStreamMonitor();return;}
+if(b.hasAttribute("data-stream-monitor-history-delete")){
+ const index=Number(b.dataset.streamMonitorHistoryDelete);
+ const token=b.dataset.streamMonitorHistoryToken||"";
+ if(!Number.isInteger(index)||!confirm("この監視履歴を1件削除しますか？\\n監視対象と監視設定は削除されません。"))return;
+ if(removeOneStreamMonitorHistory(index,token))toast("監視履歴を1件削除しました。");
+ else{renderStreamMonitorUi();toast("履歴が更新されました。内容を確認してもう一度操作してください。");}
+ return;
+}
+if(b.hasAttribute("data-stream-monitor-history-clear")){
+ const count=state.streamMonitor.history.length;
+ if(count===0||!confirm("保存された監視履歴 "+count+" 件をすべて削除しますか？\\nこの操作は取り消せません。監視対象・監視設定は残ります。"))return;
+ if(removeAllStreamMonitorHistory())toast("監視履歴 "+count+" 件をすべて削除しました。");
+ return;
+}
 if(b.hasAttribute("data-own-monitor-check")){const result=await window.kananeoApp.niconico.checkOwnMonitor?.();if(result?.phase)applyOwnMonitorStatus(result);return;}
 if(b.hasAttribute("data-stream-monitor-check")){void runStreamMonitorCheck(true);void window.kananeoApp.niconico.checkRegisteredUserMonitor?.();return;}
 if(b.hasAttribute("data-broadcast-comment-start")){
