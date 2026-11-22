@@ -3197,6 +3197,57 @@ if(b.hasAttribute("data-broadcast-create")){
  toast(result?.ok?"アプリ内に番組作成画面を開きました。内容を確認して作成してください。":(result?.message||"番組作成画面を開けませんでした。"));
  return;
 }
+
+if(b.hasAttribute("data-broadcast-theater-toggle")){
+ state.broadcastView.theater=!state.broadcastView.theater;
+ save();updateBroadcastViewUi();
+ toast(state.broadcastView.theater?"シアター表示へ切り替えました。":"通常表示へ戻しました。");
+ return;
+}
+if(b.hasAttribute("data-second-live-open")){
+ const input=document.getElementById("broadcast-secondary-id")?.value||"";
+ const id=window.KananeoBroadcastView.canLoadSecondView(input);
+ if(!id){toast("2画面目の放送IDか公式番組URLを入力してください。");return;}
+ if(state.broadcastView.mode!=="dual"){state.broadcastView.mode="dual";updateBroadcastViewUi();}
+ state.broadcastView.secondaryProgramId=id;
+ save();
+ const button=document.querySelector("[data-second-live-open]");
+ if(button)button.disabled=true;
+ secondLiveVideoState={open:true,status:"loading",programId:id,message:"2画面目を読み込んでいます。"};
+ updateBroadcastLivePanel();
+ try{
+  const result=await window.kananeoApp.niconico.openSecondLiveVideo(id);
+  if(!result?.ok)throw new Error(result?.message||"2画面目の読み込みに失敗しました。");
+  const audio=await window.kananeoApp.niconico.setSecondLiveVideoAudio(state.broadcastView.secondaryAudio);
+  if(!audio?.ok)throw new Error("2画面目の音声設定を確認できません。");
+  secondLiveVideoState={open:true,status:"loading",programId:id,message:"2画面目の映像を表示しています。"};
+  lastSecondLiveVideoBoundsKey="";
+  updateLiveVideoBounds();updateBroadcastLivePanel();
+ }catch(error){
+  secondLiveVideoState={open:false,status:"error",programId:id,message:String(error?.message||"2画面目を表示できませんでした。")};
+  updateBroadcastLivePanel();toast(secondLiveVideoState.message);
+ }finally{if(button&&button.isConnected)button.disabled=false;}
+ return;
+}
+if(b.hasAttribute("data-second-live-close")){
+ const result=await window.kananeoApp.niconico.closeSecondLiveVideo();
+ if(result?.ok){
+  secondLiveVideoState={open:false,status:"closed",programId:"",message:"2画面目を閉じました。"};
+  lastSecondLiveVideoBoundsKey="";
+  updateBroadcastLivePanel();updateLiveVideoBounds();
+ }else toast(result?.message||"2画面目を閉じられませんでした。");
+ return;
+}
+if(b.hasAttribute("data-second-live-audio")){
+ if(!secondLiveVideoState.open)return;
+ const enable=!state.broadcastView.secondaryAudio;
+ const result=await window.kananeoApp.niconico.setSecondLiveVideoAudio(enable);
+ if(!result?.ok){toast("2画面目の音声を変更できませんでした。");return;}
+ state.broadcastView.secondaryAudio=enable;
+ save();updateBroadcastLivePanel();
+ toast(enable?"2画面目の音声をONにしました。":"2画面目の音声をミュートしました。");
+ return;
+}
 if(b.hasAttribute("data-live-video-open")){
  const id=document.getElementById("broadcast-watch-id")?.value.trim()||state.lastProgramId||commentConnection.programId||"";
  if(!id){toast("放送IDまたは番組URLを入力してください。");return;}
@@ -3569,6 +3620,15 @@ if(b.hasAttribute("data-placeholder"))toast("現在の段階ではこの操作�
  document.addEventListener("dblclick",e=>{if(e.target.closest("[data-broadcast-read-through]")){broadcastReadThroughIndex=-1;renderBroadcastComments();}});
 document.addEventListener("input",e=>{if(e.target.id==="release-history-search"){releaseHistoryState.query=e.target.value.slice(0,150);renderReleaseHistoryRows();}if(["remote-audit-query","remote-audit-type","remote-audit-from","remote-audit-to"].includes(e.target.id)){remoteAuditFilters={query:document.getElementById("remote-audit-query")?.value||"",type:document.getElementById("remote-audit-type")?.value||"all",from:document.getElementById("remote-audit-from")?.value||"",to:document.getElementById("remote-audit-to")?.value||""};renderRemoteAuditRows();}if(e.target.id==="ncv-comment-font-size"){const output=document.getElementById("ncv-comment-font-size-value");if(output)output.textContent=e.target.value+"px";}if(e.target.id==="broadcast-comment-search"){broadcastCommentSearch=e.target.value;renderBroadcastComments();}if(e.target.id==="broadcast-manage-id"){broadcastManageVerification=null;renderBroadcastManageVerification();}if(e.target.id==="comments-search")renderComments();if(e.target.id==="user-profile-search"){userProfileSearch=e.target.value;renderUserProfileRows();}if(e.target.id==="library-search")renderVideoLibraryRows();if(e.target.id==="library-source-search"){librarySourceQuery=e.target.value;renderLibrarySourcePreview();}});
 document.addEventListener("input",e=>{
+
+ if(e.target.id==="broadcast-view-ratio"){
+  if(!["split","wide"].includes(state.broadcastView.mode))return;
+  const next=window.KananeoBroadcastView.normalizeBroadcastView({
+   ...state.broadcastView,videoShare:e.target.value
+  });
+  state.broadcastView.videoShare=next.videoShare;
+  save();updateBroadcastViewUi();
+ }
  if(e.target.id==="bgm-volume"){state.playback.bgmVolume=clampBgmVolume(e.target.value);if(bgmAudio)bgmAudio.volume=state.playback.bgmVolume;updateBgmPlaybackUi();}
  if(e.target.id==="bgm-progress"&&bgmAudio&&Number.isFinite(bgmAudio.duration)){bgmAudio.currentTime=bgmAudio.duration*(Math.max(0,Math.min(1000,Number(e.target.value)||0))/1000);updateBgmPlaybackUi();}
 });
@@ -3703,6 +3763,19 @@ document.addEventListener("change",e=>{
   state.playback.stockAutoPlay=e.target.checked;
   if(e.target.checked){state.playback.quoteAutoNext=true;if(state.playback.playStyle===0)state.playback.playStyle=1;}
   save();toast(e.target.checked?"ストックの自動再生を有効にしました。":"ストックの自動再生を無効にしました。");
+ }
+
+ if(e.target.id==="broadcast-view-mode"){
+  const next=window.KananeoBroadcastView.normalizeBroadcastView({...state.broadcastView,mode:e.target.value});
+  const previous=state.broadcastView.mode;
+  state.broadcastView={...next,videoShare:next.mode==="wide"?74:next.mode==="split"?60:next.videoShare};
+  save();updateBroadcastViewUi();
+  if(previous==="dual"&&next.mode!=="dual"&&secondLiveVideoState.open){
+   void window.kananeoApp.niconico.closeSecondLiveVideo().catch(()=>{});
+   secondLiveVideoState={open:false,status:"closed",programId:"",message:"2画面モードを終了しました。"};
+   lastSecondLiveVideoBoundsKey="";updateBroadcastLivePanel();updateLiveVideoBounds();
+  }
+  return;
  }
  if(e.target.id==="broadcast-video-zoom"){
   const choice=e.target.value;
