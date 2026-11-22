@@ -2303,10 +2303,31 @@ function renderBroadcastComments(){
  const result=await window.kananeoApp.niconico.copyText(text);
  toast(result?.ok?"コメントをコピーしました。":"コメントをコピーできませんでした。");
 }
+function updateBroadcastViewUi(){
+ const prefs=window.KananeoBroadcastView.normalizeBroadcastView(state.broadcastView);
+ const layout=document.getElementById("broadcast-live-layout");
+ if(!layout)return;
+ layout.className=window.KananeoBroadcastView.layoutClass(prefs);
+ layout.style.setProperty("--video-share",prefs.videoShare+"%");
+ document.getElementById("content")?.classList.toggle("broadcast-theater",prefs.theater);
+ const select=document.getElementById("broadcast-view-mode");
+ if(select)select.value=prefs.mode;
+ const slider=document.getElementById("broadcast-view-ratio");
+ if(slider){slider.value=String(prefs.videoShare);slider.disabled=!["split","wide"].includes(prefs.mode);}
+ const value=document.getElementById("broadcast-view-ratio-value");
+ if(value)value.textContent=prefs.videoShare+"%";
+ const theater=document.querySelector("[data-broadcast-theater-toggle]");
+ if(theater)theater.textContent=prefs.theater?"通常表示に戻す":"シアター表示";
+ updateLiveVideoBounds();
+}
 function updateBroadcastLivePanel(){
  const status=document.getElementById("broadcast-live-status");
  const message=document.getElementById("broadcast-live-message");
  const commentStatus=document.getElementById("broadcast-comment-status");
+ const secondStatus=document.getElementById("broadcast-second-live-status");
+ const secondMessage=document.getElementById("broadcast-second-live-message");
+ const secondClose=document.querySelector("[data-second-live-close]");
+ const secondAudio=document.querySelector("[data-second-live-audio]");
  const openButton=document.querySelector("[data-live-video-open]");
  const closeButton=document.querySelector("[data-live-video-close]");
  const commentStart=document.querySelector("[data-broadcast-comment-start]");
@@ -2314,6 +2335,13 @@ function updateBroadcastLivePanel(){
  const labels={closed:"未表示",loading:"読み込み中",ready:"表示中",error:"読み込みエラー"};
  if(status)status.textContent=labels[liveVideoState.status]||"未表示";
  if(message)message.textContent=liveVideoState.message||"";
+ if(secondStatus)secondStatus.textContent=labels[secondLiveVideoState.status]||"未表示";
+ if(secondMessage)secondMessage.textContent=secondLiveVideoState.message||"";
+ if(secondClose)secondClose.disabled=!secondLiveVideoState.open;
+ if(secondAudio){
+  secondAudio.disabled=!secondLiveVideoState.open;
+  secondAudio.textContent=state.broadcastView.secondaryAudio?"音声をミュート":"音声をON";
+ }
  if(commentStatus)commentStatus.textContent=({disconnected:"未接続",connecting:"接続中",connected:"接続済み",recovering:"再接続中",error:"接続エラー"}[commentConnection.state]||"未接続");
  const active=["connecting","connected","recovering"].includes(commentConnection.state);
  if(openButton)openButton.disabled=liveVideoState.status==="loading";
@@ -2323,6 +2351,14 @@ function updateBroadcastLivePanel(){
 }
 function applyLiveVideoState(state){
  if(!state||typeof state!=="object")return;
+ if(state.slot==="secondary"){
+  secondLiveVideoState={
+   open:state.status!=="closed",status:state.status||"closed",
+   programId:state.programId||"",message:state.message||""
+  };
+  if(page==="broadcast"){updateBroadcastLivePanel();updateLiveVideoBounds();}
+  return;
+ }
  liveVideoState={
   open:state.status!=="closed",
   status:state.status||"closed",
@@ -2332,18 +2368,34 @@ function applyLiveVideoState(state){
  if(page==="broadcast"){updateBroadcastLivePanel();updateLiveVideoBounds();}
 }
 function updateLiveVideoBounds(){
- const api=window.kananeoApp?.niconico?.setLiveVideoBounds;
- if(typeof api!=="function")return;
- const slot=document.getElementById("broadcast-video-slot");
+ const api=window.kananeoApp?.niconico;
+ if(!api)return;
+ const mainSlot=document.getElementById("broadcast-video-slot");
  let bounds={visible:false,x:0,y:0,width:0,height:0};
- if(page==="broadcast"&&slot&&liveVideoState.open){
-  const rect=slot.getBoundingClientRect();
-  bounds={visible:rect.width>0&&rect.height>0,x:rect.left,y:rect.top,width:rect.width,height:rect.height,zoomMode:state.liveVideoZoom.zoomMode,zoomPercent:state.liveVideoZoom.zoomPercent};
+ if(page==="broadcast"&&mainSlot&&liveVideoState.open){
+  const rect=mainSlot.getBoundingClientRect();
+  bounds={visible:rect.width>0&&rect.height>0,x:rect.left,y:rect.top,
+   width:rect.width,height:rect.height,
+   zoomMode:state.liveVideoZoom.zoomMode,zoomPercent:state.liveVideoZoom.zoomPercent};
  }
  const key=JSON.stringify(bounds);
- if(key===lastLiveVideoBoundsKey)return;
- lastLiveVideoBoundsKey=key;
- api(bounds);
+ if(key!==lastLiveVideoBoundsKey){
+  lastLiveVideoBoundsKey=key;
+  api.setLiveVideoBounds?.(bounds);
+ }
+ const secondSlot=document.getElementById("broadcast-second-video-slot");
+ let secondBounds={visible:false,x:0,y:0,width:0,height:0};
+ if(page==="broadcast"&&state.broadcastView.mode==="dual"&&secondSlot&&secondLiveVideoState.open){
+  const rect=secondSlot.getBoundingClientRect();
+  secondBounds={visible:rect.width>0&&rect.height>0,x:rect.left,y:rect.top,
+   width:rect.width,height:rect.height,
+   zoomMode:state.liveVideoZoom.zoomMode,zoomPercent:state.liveVideoZoom.zoomPercent};
+ }
+ const secondKey=JSON.stringify(secondBounds);
+ if(secondKey!==lastSecondLiveVideoBoundsKey){
+  lastSecondLiveVideoBoundsKey=secondKey;
+  api.setSecondLiveVideoBounds?.(secondBounds);
+ }
 }
 function hideBroadcastCommentContextMenu(){
  const menu=document.getElementById("broadcast-comment-context");
