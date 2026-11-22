@@ -46,7 +46,7 @@ let nicoStatus={authenticated:false,label:"状態を確認中"};
 let broadcastManageVerification=null;
 let liveVideoState={open:false,status:"closed",programId:"",title:"",message:"放送画面は未表示です。"};
 let liveVideoMuted=false;
-let broadcastCommentClearedAt=0;
+let broadcastCommentClearIndex=0;
 let broadcastNgFilterEnabled=true;
 let broadcastCommentSending=false;
 let ownMonitorStatus={running:false,phase:"starting",message:"起動時から自分の放送を監視しています。",activePrograms:[]};
@@ -2238,11 +2238,8 @@ list.scrollTop=list.scrollHeight;
 }
 function getBroadcastFilteredComments(){
  const query=broadcastCommentSearch.trim().toLocaleLowerCase("ja-JP");
- return receivedComments.map((comment,index)=>({comment,index})).filter(({comment})=>{
-  if(broadcastCommentClearedAt>0){
-   const timestamp=new Date(comment.timestamp).getTime();
-   if(Number.isFinite(timestamp)&&timestamp<=broadcastCommentClearedAt)return false;
-  }
+ return receivedComments.map((comment,index)=>({comment,index})).filter(({comment,index})=>{
+  if(index<broadcastCommentClearIndex)return false;
   if(broadcastCommentType!=="all"&&comment.type!==broadcastCommentType)return false;
   if(broadcastCommentUserId&&comment.userId!==broadcastCommentUserId)return false;
   if(broadcastNgFilterEnabled){
@@ -2603,7 +2600,7 @@ if(!comment||typeof comment!=="object")return;
 receivedComments.push(comment);
 queueCommentSpeech(comment);
 void maybeAddCommentRequest(comment);
-if(receivedComments.length>MAX_DISPLAY_COMMENTS){const overflow=receivedComments.length-MAX_DISPLAY_COMMENTS;receivedComments.splice(0,overflow);broadcastReadThroughIndex=Math.max(-1,broadcastReadThroughIndex-overflow);}
+if(receivedComments.length>MAX_DISPLAY_COMMENTS){const overflow=receivedComments.length-MAX_DISPLAY_COMMENTS;receivedComments.splice(0,overflow);broadcastReadThroughIndex=Math.max(-1,broadcastReadThroughIndex-overflow);broadcastCommentClearIndex=Math.max(0,broadcastCommentClearIndex-overflow);}
 renderComments();
 renderBroadcastComments();
 }
@@ -3253,7 +3250,7 @@ if(b.hasAttribute("data-broadcast-ng-toggle")){
  return;
 }
 if(b.hasAttribute("data-broadcast-comment-clear")){
- broadcastCommentClearedAt=Date.now();
+ broadcastCommentClearIndex=receivedComments.length;
  renderBroadcastComments();
  toast("コメント表示をクリアしました。新しいコメントは引き続き表示されます。");
  return;
