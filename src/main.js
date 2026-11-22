@@ -82,6 +82,8 @@ let registeredUserMonitor=null;
 let liveVideoView = null;
 let liveVideoProgramId = "";
 let liveVideoZoomSettings={zoomMode:"auto",zoomPercent:70};
+let secondLiveVideoView=null,secondLiveVideoProgramId="",secondLiveVideoAudioEnabled=false;
+let secondLiveVideoZoomSettings={zoomMode:"auto",zoomPercent:70};
 let niconicoSession = null;
 let commentProvider = null;
 let commentProgramId = "";
@@ -669,6 +671,110 @@ function openNiconicoLiveVideoView(input) {
     });
   }
   return {ok:true,programId,status:"loading",message:"放送画面を表示します。"};
+}
+
+
+function notifySecondLiveVideoState(value){
+ notifyLiveVideoState({slot:"secondary",...value});
+}
+function closeNiconicoSecondLiveVideoView(){
+ const view=secondLiveVideoView;
+ secondLiveVideoView=null;secondLiveVideoProgramId="";
+ if(!view)return {ok:true,closed:false};
+ try{if(mainWindow&&!mainWindow.isDestroyed())mainWindow.contentView.removeChildView(view);}catch{}
+ try{if(view.webContents&&!view.webContents.isDestroyed())view.webContents.close();}catch{}
+ notifySecondLiveVideoState({status:"closed",programId:"",message:"2画面目を閉じました。"});
+ return {ok:true,closed:true};
+}
+function setNiconicoSecondLiveVideoBounds(input){
+ if(!secondLiveVideoView||!mainWindow||mainWindow.isDestroyed())return {ok:false,code:"VIEW_NOT_OPEN"};
+ const bounds=normalizeLiveViewBounds(input,mainWindow.getContentBounds());
+ if(!bounds)return {ok:false,code:"INVALID_BOUNDS"};
+ const view=secondLiveVideoView;
+ if(!bounds.visible){
+  view.setVisible(false);
+  try{view.webContents.setAudioMuted(true);}catch{}
+  return {ok:true,visible:false};
+ }
+ secondLiveVideoZoomSettings=normalizeLiveZoomSettings(input);
+ view.setBounds({x:bounds.x,y:bounds.y,width:bounds.width,height:bounds.height});
+ try{
+  const factor=calculateLivePageZoomFactor(bounds.width,secondLiveVideoZoomSettings);
+  if(Math.abs(view.webContents.getZoomFactor()-factor)>0.005)view.webContents.setZoomFactor(factor);
+  view.webContents.setAudioMuted(!secondLiveVideoAudioEnabled);
+ }catch(error){console.warn("2画面目の拡大・音声設定に失敗しました。",error?.code||"UNKNOWN");}
+ view.setVisible(true);
+ return {ok:true,visible:true};
+}
+function setNiconicoSecondLiveVideoAudio(enabled){
+ if(typeof enabled!=="boolean")return {ok:false,code:"INVALID_AUDIO_SETTING"};
+ secondLiveVideoAudioEnabled=enabled;
+ if(secondLiveVideoView&&secondLiveVideoView.isVisible()){
+  try{secondLiveVideoView.webContents.setAudioMuted(!enabled);}catch{}
+ }
+ return {ok:true,enabled:secondLiveVideoAudioEnabled};
+}
+function openNiconicoSecondLiveVideoView(input){
+ let programId;
+ try{programId=normalizeProgramId(input);}
+ catch(error){return {ok:false,code:error?.code||"INVALID_PROGRAM_ID",message:error?.message||"放送IDを確認してください。"};}
+ if(!mainWindow||mainWindow.isDestroyed())return {ok:false,code:"WINDOW_CLOSED",message:"アプリのメイン画面がありません。"};
+ const targetUrl=NICONICO_WATCH_BASE+encodeURIComponent(programId);
+ if(!secondLiveVideoView){
+  try{
+   const view=new WebContentsView({webPreferences:{
+    session:niconicoSession,contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true
+   }});
+   secondLiveVideoView=view;
+   view.setBackgroundColor("#070b14");view.setBorderRadius(8);
+   mainWindow.contentView.addChildView(view);
+   view.setBounds({x:0,y:0,width:1,height:1});view.setVisible(false);
+   const contents=view.webContents;
+   contents.setAudioMuted(true);
+   contents.setWindowOpenHandler(({url})=>{
+    if(isTrustedNiconicoUrl(url))return {action:"allow"};
+    try{if(new URL(url).protocol==="https:")shell.openExternal(url);}catch{}
+    return {action:"deny"};
+   });
+   contents.on("will-navigate",(event,url)=>{
+    if(!isTrustedNiconicoUrl(url)){event.preventDefault();
+     try{if(new URL(url).protocol==="https:")shell.openExternal(url);}catch{}
+    }
+   });
+   contents.on("did-fail-load",(_event,code,description,_url,isMainFrame)=>{
+    if(isMainFrame&&code!==-3&&secondLiveVideoView===view)
+     notifySecondLiveVideoState({status:"error",programId:secondLiveVideoProgramId,
+      message:"2画面目を読み込めませんでした："+String(description||code).slice(0,140)});
+   });
+   contents.on("did-finish-load",()=>{
+    if(secondLiveVideoView!==view)return;
+    setNiconicoSecondLiveVideoBounds({visible:view.isVisible(),...view.getBounds(),...secondLiveVideoZoomSettings});
+    notifySecondLiveVideoState({status:"ready",programId:secondLiveVideoProgramId,
+     message:"2画面目を表示しています。"});
+   });
+   contents.on("render-process-gone",(_event,details)=>{
+    if(secondLiveVideoView===view)notifySecondLiveVideoState({status:"error",
+     programId:secondLiveVideoProgramId,
+     message:"2画面目の描画処理が停止しました："+String(details?.reason||"unknown").slice(0,100)});
+   });
+   contents.on("destroyed",()=>{
+    if(secondLiveVideoView===view){secondLiveVideoView=null;secondLiveVideoProgramId="";}
+   });
+  }catch{
+   closeNiconicoSecondLiveVideoView();
+   return {ok:false,code:"VIEW_CREATE_FAILED",message:"2画面目の表示領域を作成できませんでした。"};
+  }
+ }
+ if(secondLiveVideoProgramId!==programId||secondLiveVideoView.webContents.getURL()!==targetUrl){
+  secondLiveVideoProgramId=programId;
+  notifySecondLiveVideoState({status:"loading",programId,message:"2画面目を読み込んでいます。"});
+  secondLiveVideoView.webContents.loadURL(targetUrl).catch(error=>{
+   if(secondLiveVideoView&&secondLiveVideoProgramId===programId)
+    notifySecondLiveVideoState({status:"error",programId,
+     message:"2画面目を開けませんでした："+String(error?.message||"通信エラー").slice(0,140)});
+  });
+ }
+ return {ok:true,programId,status:"loading",message:"2画面目を表示します。"};
 }
 
 async function checkNiconicoProgram(input) {
@@ -2513,6 +2619,7 @@ function registerIpcHandlers() {
     try {
       if(broadcastWindow&&!broadcastWindow.isDestroyed())broadcastWindow.close();
       closeNiconicoLiveVideoView();
+      closeNiconicoSecondLiveVideoView();
       await niconicoSession.clearStorageData({storages:["cookies","localstorage","indexdb","serviceworkers","cachestorage"]});
       await notifySessionStatus();
       return {ok:true,message:"このアプリ専用のニコニコセッションを削除しました。"};
@@ -2530,6 +2637,23 @@ function registerIpcHandlers() {
   ipcMain.handle("niconico:live-view-close",event=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     return closeNiconicoLiveVideoView();
+  });
+  ipcMain.handle("niconico:second-live-view-open",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    if(typeof input!=="string"||input.length>512)return {ok:false,code:"INVALID_INPUT"};
+    return openNiconicoSecondLiveVideoView(input);
+  });
+  ipcMain.on("niconico:second-live-view-bounds",(event,input)=>{
+    if(event.sender!==mainWindow?.webContents)return;
+    setNiconicoSecondLiveVideoBounds(input);
+  });
+  ipcMain.handle("niconico:second-live-view-close",event=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    return closeNiconicoSecondLiveVideoView();
+  });
+  ipcMain.handle("niconico:second-live-view-audio",(event,enabled)=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN"};
+    return setNiconicoSecondLiveVideoAudio(enabled);
   });
   ipcMain.handle("niconico:auto-next-configure",(event,input)=>{
     if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
@@ -2770,7 +2894,7 @@ function createMainWindow() {
     return {action:"deny"};
   });
   mainWindow.webContents.on("will-navigate",(event,url)=>{if(!url.startsWith("file://"))event.preventDefault();});
-  mainWindow.on("closed",()=>{closeNiconicoLiveVideoView();mainWindow=null;});
+  mainWindow.on("closed",()=>{closeNiconicoLiveVideoView();closeNiconicoSecondLiveVideoView();mainWindow=null;});
 }
 
 app.whenReady().then(async()=>{
@@ -2809,6 +2933,7 @@ app.on("before-quit",event=>{
   if(finalQuitInProgress) return;
   event.preventDefault();
   closeNiconicoLiveVideoView();
+  closeNiconicoSecondLiveVideoView();
   finalQuitInProgress=true;
   void settleBeforeQuit([
     ()=>{nextFrameMonitor?.dispose();registeredUserMonitor?.dispose();ownBroadcastMonitor?.stop();autoExtensionMonitor?.dispose();},
