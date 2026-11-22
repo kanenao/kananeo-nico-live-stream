@@ -54,7 +54,7 @@
  function requestPreview(items=[]){
   const pending=pendingRequests(items);
   if(!pending.length)return '<div class="broadcast-tool-empty">未再生リクエストはありません。</div>';
-  return '<ul class="broadcast-tool-video-list">'+pending.slice(0,5).map(x=>'<li>'+
+  return '<ul class="broadcast-tool-video-list">'+pending.slice(0,3).map(x=>'<li>'+
    '<div class="broadcast-tool-video-copy"><b>'+esc(x.title||x.videoId||"無題の動画")+'</b><small>'+esc(x.videoId||"動画ID不明")+
    (Number(x.lengthMs)>0?" ・ "+esc(videoTime(x.lengthMs)):"")+'</small></div>'+
    '<div class="broadcast-tool-video-actions"><button type="button" class="btn" data-play="'+esc(x.id)+'">プレビュー</button>'+
