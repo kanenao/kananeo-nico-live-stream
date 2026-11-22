@@ -961,10 +961,10 @@ const options=sources.map(source=>'<option value="'+esc(source)+'" '+(librarySou
 html=html.replace('<div class="section"><p id="library-count">','<div class="field"><label>取り込み元で絞り込み</label><select class="input" id="library-source"><option value="">すべて</option>'+options+'</select></div><div class="section"><p id="library-count">');
 }
 document.getElementById("content").innerHTML=html;
-document.getElementById("content").classList.toggle("broadcast-theater",page==="broadcast"&&state.broadcastView.theater);
+document.getElementById("content").classList.toggle("broadcast-screen-content",page==="broadcast");
 renderInAppUpdateNotice();
 if(page==="dashboard")renderDashboardAlphaUpdateStatus();
-if(page==="broadcast"){renderBroadcastToolsUi();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();updateBroadcastViewUi();}
+if(page==="broadcast"){renderBroadcastToolsUi();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();}
 if(page==="programs")renderBroadcastManageVerification();
 if(page==="monitor")renderStreamMonitorUi();
 updateLiveVideoBounds();
@@ -2808,6 +2808,7 @@ updateSpeechQueueUi();
 }
 function applyNicoStatus(status){
 nicoStatus=status||{authenticated:false,label:"状態を確認できません"};
+if(page==="broadcast")updateBroadcastLivePanel();
 const node=document.getElementById("auth-status");
 if(node){node.replaceChildren();const strong=document.createElement("b");strong.textContent=nicoStatus.authenticated?"ログインCookieを確認しました":"ニコニコにログインしていません";const br=document.createElement("br");const detail=document.createElement("span");detail.textContent=nicoStatus.authenticated?"このアプリ専用のログインセッションが見つかりました。":"公式ログイン画面でログイン後、状態を再確認してください。";node.append(strong,br,detail);}
 const side=document.querySelector(".side-status span b");if(side)side.textContent=nicoStatus.authenticated?"ニコ生ログイン確認済み":"ニコ生 未接続";
@@ -3147,7 +3148,7 @@ function go(p){if(p!=="broadcast")hideBroadcastCommentContextMenu();page=p;rende
 document.getElementById("nav").addEventListener("click",e=>{const b=e.target.closest("[data-page]");if(!b)return;window.KananeoUiHealth?.trackAction("画面移動："+b.textContent);try{go(b.dataset.page);}catch(error){window.KananeoUiHealth?.report(error,"メニュー操作");}});
 window.addEventListener("resize",()=>{hideBroadcastCommentContextMenu();updateLiveVideoBounds();},{passive:true});
 document.addEventListener("scroll",()=>{hideBroadcastCommentContextMenu();updateLiveVideoBounds();},true);
-document.addEventListener("contextmenu",e=>{const row=e.target.closest("#broadcast-comments-list tr[data-broadcast-comment-index]");if(!row)return;e.preventDefault();const index=Number(row.dataset.broadcastCommentIndex);showBroadcastCommentContextMenu(receivedComments[index],e.clientX,e.clientY);});
+document.addEventListener("contextmenu",e=>{const row=e.target.closest("#broadcast-comments-list .broadcast-comment-item[data-broadcast-comment-index]");if(!row)return;e.preventDefault();const index=Number(row.dataset.broadcastCommentIndex);showBroadcastCommentContextMenu(receivedComments[index],e.clientX,e.clientY);});
 document.addEventListener("click",e=>{void handleUiClick(e).catch(error=>window.KananeoUiHealth?.report(error,"ボタン操作"));});
 async function handleUiClick(e){
 const goBtn=e.target.closest("[data-go]");if(goBtn){hideBroadcastCommentContextMenu();go(goBtn.dataset.go);return}
@@ -3221,66 +3222,59 @@ if(b.hasAttribute("data-broadcast-create")){
  return;
 }
 
-if(b.hasAttribute("data-broadcast-theater-toggle")){
- state.broadcastView.theater=!state.broadcastView.theater;
- save();updateBroadcastViewUi();
- toast(state.broadcastView.theater?"シアター表示へ切り替えました。":"通常表示へ戻しました。");
+if(b.hasAttribute("data-live-video-mute")){
+ const enabled=liveVideoMuted;
+ const result=await window.kananeoApp.niconico.setLiveVideoAudio(enabled);
+ if(!result?.ok){toast(result?.message||"音声を変更できませんでした。");return;}
+ liveVideoMuted=!enabled;updateBroadcastLivePanel();
+ toast(liveVideoMuted?"放送音声をミュートしました。":"放送音声をONにしました。");
  return;
 }
-if(b.hasAttribute("data-second-live-open")){
- const input=document.getElementById("broadcast-secondary-id")?.value||"";
- const id=window.KananeoBroadcastView.canLoadSecondView(input);
- if(!id){toast("2画面目の放送IDか公式番組URLを入力してください。");return;}
- if(state.broadcastView.mode!=="dual"){state.broadcastView.mode="dual";updateBroadcastViewUi();}
- state.broadcastView.secondaryProgramId=id;
- save();
- const button=document.querySelector("[data-second-live-open]");
- if(button)button.disabled=true;
- secondLiveVideoState={open:true,status:"loading",programId:id,message:"2画面目を読み込んでいます。"};
- updateBroadcastLivePanel();
- try{
-  const result=await window.kananeoApp.niconico.openSecondLiveVideo(id);
-  if(!result?.ok)throw new Error(result?.message||"2画面目の読み込みに失敗しました。");
-  const audio=await window.kananeoApp.niconico.setSecondLiveVideoAudio(state.broadcastView.secondaryAudio);
-  if(!audio?.ok)throw new Error("2画面目の音声設定を確認できません。");
-  secondLiveVideoState={open:true,status:"loading",programId:id,message:"2画面目の映像を表示しています。"};
-  lastSecondLiveVideoBoundsKey="";
-  updateLiveVideoBounds();updateBroadcastLivePanel();
- }catch(error){
-  secondLiveVideoState={open:false,status:"error",programId:id,message:String(error?.message||"2画面目を表示できませんでした。")};
-  updateBroadcastLivePanel();toast(secondLiveVideoState.message);
- }finally{if(button&&button.isConnected)button.disabled=false;}
+if(b.hasAttribute("data-live-video-reload")){
+ const result=await window.kananeoApp.niconico.reloadLiveVideo();
+ if(result?.ok)toast(result.message||"放送画面を更新しています。");
+ else toast(result?.message||"放送画面を更新できませんでした。");
  return;
 }
-if(b.hasAttribute("data-second-live-close")){
- const result=await window.kananeoApp.niconico.closeSecondLiveVideo();
- if(result?.ok){
-  secondLiveVideoState={open:false,status:"closed",programId:"",message:"2画面目を閉じました。"};
-  lastSecondLiveVideoBoundsKey="";
-  updateBroadcastLivePanel();updateLiveVideoBounds();
- }else toast(result?.message||"2画面目を閉じられませんでした。");
+if(b.hasAttribute("data-broadcast-font-decrease")||b.hasAttribute("data-broadcast-font-increase")){
+ const delta=b.hasAttribute("data-broadcast-font-decrease")?-1:1;
+ const next=window.KananeoCommentViewSettings.normalizeCommentViewSettings({
+  ...broadcastCommentViewSettings,fontSize:broadcastCommentViewSettings.fontSize+delta
+ });
+ if(persistBroadcastCommentViewSettings(next))toast("コメント文字サイズ："+next.fontSize+"px");
  return;
 }
-if(b.hasAttribute("data-second-live-audio")){
- if(!secondLiveVideoState.open)return;
- const enable=!state.broadcastView.secondaryAudio;
- const result=await window.kananeoApp.niconico.setSecondLiveVideoAudio(enable);
- if(!result?.ok){toast("2画面目の音声を変更できませんでした。");return;}
- state.broadcastView.secondaryAudio=enable;
- save();updateBroadcastLivePanel();
- toast(enable?"2画面目の音声をONにしました。":"2画面目の音声をミュートしました。");
+if(b.hasAttribute("data-broadcast-ng-toggle")){
+ broadcastNgFilterEnabled=!broadcastNgFilterEnabled;
+ renderBroadcastComments();updateBroadcastLivePanel();
+ toast(broadcastNgFilterEnabled?"NGユーザー・NGワードを非表示にします。":"NGフィルターを解除しました。");
+ return;
+}
+if(b.hasAttribute("data-broadcast-comment-clear")){
+ broadcastCommentClearedAt=Date.now();
+ renderBroadcastComments();
+ toast("コメント表示をクリアしました。新しいコメントは引き続き表示されます。");
+ return;
+}
+if(b.hasAttribute("data-broadcast-emoji")){
+ const input=document.getElementById("broadcast-comment-send-input");
+ if(input&&!input.disabled){
+  const start=input.selectionStart??input.value.length,end=input.selectionEnd??input.value.length;
+  input.value=input.value.slice(0,start)+"😊"+input.value.slice(end);
+  input.focus();input.setSelectionRange(start+2,start+2);
+ }
  return;
 }
 if(b.hasAttribute("data-live-video-open")){
- const id=document.getElementById("broadcast-watch-id")?.value.trim()||state.lastProgramId||commentConnection.programId||"";
+ const id=document.getElementById("broadcast-watch-id")?.value.trim()||commentConnection.programId||state.lastProgramId||"";
  if(!id){toast("放送IDまたは番組URLを入力してください。");return;}
  const button=document.querySelector("[data-live-video-open]");if(button)button.disabled=true;
- liveVideoState={open:true,status:"loading",programId:id,message:"ニコニコ生放送の映像ページを読み込んでいます。"};
+ liveVideoState={open:true,status:"loading",programId:id,title:state.lastProgramTitle||"",message:"ニコニコ生放送の映像ページを読み込んでいます。"};
  updateBroadcastLivePanel();
  try{
   const result=await window.kananeoApp.niconico.openLiveVideo(id);
   if(!result?.ok)throw new Error(result?.message||"放送画面を開けませんでした。");
-  liveVideoState={open:true,status:"loading",programId:result.programId||id,message:result.message||"放送画面を読み込んでいます。"};
+  liveVideoState={open:true,status:"loading",programId:result.programId||id,title:result.title||state.lastProgramTitle||"",message:result.message||"放送画面を読み込んでいます。"};
   updateLiveVideoBounds();updateBroadcastLivePanel();
  }catch(error){
   liveVideoState={open:false,status:"error",programId:id,message:error?.message||"放送画面を開けませんでした。"};
@@ -3290,7 +3284,7 @@ if(b.hasAttribute("data-live-video-open")){
 }
 if(b.hasAttribute("data-live-video-close")){
  const result=await window.kananeoApp.niconico.closeLiveVideo();
- if(result?.ok){liveVideoState={open:false,status:"closed",programId:"",message:"放送画面を閉じました。"};lastLiveVideoBoundsKey="";updateBroadcastLivePanel();updateLiveVideoBounds();}
+ if(result?.ok){liveVideoState={open:false,status:"closed",programId:"",title:"",message:"放送画面を閉じました。"};lastLiveVideoBoundsKey="";updateBroadcastLivePanel();updateLiveVideoBounds();}
  else toast(result?.message||"放送画面を閉じられませんでした。");
  return;
 }
@@ -3644,14 +3638,6 @@ if(b.hasAttribute("data-placeholder"))toast("現在の段階ではこの操作�
 document.addEventListener("input",e=>{if(e.target.id==="release-history-search"){releaseHistoryState.query=e.target.value.slice(0,150);renderReleaseHistoryRows();}if(["remote-audit-query","remote-audit-type","remote-audit-from","remote-audit-to"].includes(e.target.id)){remoteAuditFilters={query:document.getElementById("remote-audit-query")?.value||"",type:document.getElementById("remote-audit-type")?.value||"all",from:document.getElementById("remote-audit-from")?.value||"",to:document.getElementById("remote-audit-to")?.value||""};renderRemoteAuditRows();}if(e.target.id==="ncv-comment-font-size"){const output=document.getElementById("ncv-comment-font-size-value");if(output)output.textContent=e.target.value+"px";}if(e.target.id==="broadcast-comment-search"){broadcastCommentSearch=e.target.value;renderBroadcastComments();}if(e.target.id==="broadcast-manage-id"){broadcastManageVerification=null;renderBroadcastManageVerification();}if(e.target.id==="comments-search")renderComments();if(e.target.id==="user-profile-search"){userProfileSearch=e.target.value;renderUserProfileRows();}if(e.target.id==="library-search")renderVideoLibraryRows();if(e.target.id==="library-source-search"){librarySourceQuery=e.target.value;renderLibrarySourcePreview();}});
 document.addEventListener("input",e=>{
 
- if(e.target.id==="broadcast-view-ratio"){
-  if(!["split","wide"].includes(state.broadcastView.mode))return;
-  const next=window.KananeoBroadcastView.normalizeBroadcastView({
-   ...state.broadcastView,videoShare:e.target.value
-  });
-  state.broadcastView.videoShare=next.videoShare;
-  save();updateBroadcastViewUi();
- }
  if(e.target.id==="bgm-volume"){state.playback.bgmVolume=clampBgmVolume(e.target.value);if(bgmAudio)bgmAudio.volume=state.playback.bgmVolume;updateBgmPlaybackUi();}
  if(e.target.id==="bgm-progress"&&bgmAudio&&Number.isFinite(bgmAudio.duration)){bgmAudio.currentTime=bgmAudio.duration*(Math.max(0,Math.min(1000,Number(e.target.value)||0))/1000);updateBgmPlaybackUi();}
 });
@@ -3701,6 +3687,24 @@ document.addEventListener("submit",e=>{void handleUiSubmit(e).catch(error=>windo
 async function handleUiSubmit(e){
 e.preventDefault();
 window.KananeoUiHealth?.trackAction("フォーム送信："+e.target.id);
+if(e.target.id==="broadcast-comment-send-form"){
+ const input=document.getElementById("broadcast-comment-send-input");
+ const text=String(input?.value||"").trim();
+ const programId=commentConnection.programId||liveVideoState.programId||state.lastProgramId||document.getElementById("broadcast-watch-id")?.value.trim()||"";
+ if(!text){toast("送信する運営コメントを入力してください。");return;}
+ if(!nicoStatus.authenticated){toast("ニコニコ公式ログインが必要です。");return;}
+ if(!programId){toast("先に放送IDを設定してください。");return;}
+ if(Array.from(text).length>200){toast("コメントは200文字以内で入力してください。");return;}
+ if(broadcastCommentSending)return;
+ broadcastCommentSending=true;updateBroadcastLivePanel();
+ try{
+  const result=await window.kananeoApp.niconico.postBroadcasterComment({programId,text});
+  if(result?.ok){if(input)input.value="";toast("運営コメントを送信しました。");}
+  else toast(result?.message||"運営コメントを送信できませんでした。");
+ }catch(error){toast(String(error?.message||"運営コメントを送信できませんでした。"));}
+ finally{broadcastCommentSending=false;updateBroadcastLivePanel();}
+ return;
+}
 if(e.target.id==="request-form"){
 const title=document.getElementById("req-title").value.trim();
 const input=document.getElementById("req-url").value.trim();
