@@ -873,7 +873,7 @@ html=
 '<button type="button" class="broadcast-icon-button emoji" data-broadcast-emoji title="絵文字を入力">☺</button>'+
 '<button type="submit" class="btn broadcast-send-button" '+(!nicoStatus.authenticated||broadcastCommentSending?"disabled":"")+'>'+(broadcastCommentSending?"送信中…":"送信")+'</button>'+
 '</form>'+
-'<div class="broadcast-composer-note">送信できるのはログイン中の放送者コメントです。通常の視聴者コメント投稿には対応していません。</div>'+
+
 '</section>'+
 '<aside class="broadcast-comments-panel">'+
 '<div class="broadcast-comments-toolbar">'+
@@ -2312,6 +2312,7 @@ function renderBroadcastComments(){
  const userFilter=document.getElementById("broadcast-comment-user-filter");
  const clearUser=document.querySelector("[data-broadcast-comment-clear-user]");
  const visible=getBroadcastFilteredComments(),settings=broadcastCommentViewSettings;
+ list.style.setProperty("--broadcast-comment-font-size",settings.fontSize+"px");
  if(count)count.textContent=visible.length+"件";
  if(userFilter)userFilter.textContent=broadcastCommentUserId?"ユーザー："+broadcastCommentUserId:"全ユーザー";
  if(clearUser)clearUser.disabled=!broadcastCommentUserId;
@@ -2825,6 +2826,7 @@ try{
  const detail=document.createElement("div");detail.textContent=r.message||"";node.append(title,detail);
  if(r.ok){
   state.lastProgramId=r.programId;state.lastProgramTitle=r.title||r.programId;state.lastProgramStatus=r.programStatus||"";state.lastProgramEndAt=Number(r.endTime)||0;
+  if(page==="broadcast")updateBroadcastLivePanel();
   const manageInput=document.getElementById("broadcast-manage-id");if(manageInput)manageInput.value=r.programId;
   broadcastManageVerification=window.KananeoBroadcastManagement.createBroadcastVerification(r);
   save();state.logs.unshift("番組ページを確認："+r.programId);save();
@@ -3309,7 +3311,7 @@ if(b.hasAttribute("data-stream-monitor-history-clear")){
 if(b.hasAttribute("data-own-monitor-check")){const result=await window.kananeoApp.niconico.checkOwnMonitor?.();if(result?.phase)applyOwnMonitorStatus(result);return;}
 if(b.hasAttribute("data-stream-monitor-check")){void runStreamMonitorCheck(true);void window.kananeoApp.niconico.checkRegisteredUserMonitor?.();return;}
 if(b.hasAttribute("data-broadcast-comment-start")){
- const id=document.getElementById("broadcast-watch-id")?.value.trim()||state.lastProgramId||"";
+ const id=document.getElementById("broadcast-watch-id")?.value.trim()||liveVideoState.programId||commentConnection.programId||state.lastProgramId||"";
  if(!id){toast("コメント受信する放送IDを入力してください。");return;}
  void startComments(id);return;
 }
