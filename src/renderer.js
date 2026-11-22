@@ -44,9 +44,11 @@ const MAX_DISPLAY_COMMENTS=1000;
 const MAX_QUEUE_ITEMS=1000;
 let nicoStatus={authenticated:false,label:"状態を確認中"};
 let broadcastManageVerification=null;
-let liveVideoState={open:false,status:"closed",programId:"",message:"放送画面は未表示です。"};
-let secondLiveVideoState={open:false,status:"closed",programId:"",message:"2画面目は未表示です。"};
-let lastSecondLiveVideoBoundsKey="";
+let liveVideoState={open:false,status:"closed",programId:"",title:"",message:"放送画面は未表示です。"};
+let liveVideoMuted=false;
+let broadcastCommentClearedAt=0;
+let broadcastNgFilterEnabled=true;
+let broadcastCommentSending=false;
 let ownMonitorStatus={running:false,phase:"starting",message:"起動時から自分の放送を監視しています。",activePrograms:[]};
 let lastLiveVideoBoundsKey="";
 let broadcastCommentSearch="";
@@ -99,7 +101,7 @@ function setAutoLiveQuoteMessage(message){
  const node=document.getElementById("request-auto-status");
  if(node)node.textContent="自動再生の状態："+autoLiveQuoteMessage;
 }
-const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,stockAutoPlay:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,autoPlayOnOwnLive:false,lastAutoPlayProgramId:"",nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true,autoOnQuote:false,announceResults:true},automation:{autoNext:false,autoCreate:false,autoStartProgram:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,autoVideo:false,notifyOnLive:false,ownAccount:true,targets:[],history:[]},liveVideoZoom:{zoomMode:"auto",zoomPercent:70},broadcastView:{mode:"split",videoShare:60,theater:false,secondaryProgramId:"",secondaryAudio:false},logs:["β2 UIプロトタイプを起動しました"]};
+const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,stockAutoPlay:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,autoPlayOnOwnLive:false,lastAutoPlayProgramId:"",nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true,autoOnQuote:false,announceResults:true},automation:{autoNext:false,autoCreate:false,autoStartProgram:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,autoVideo:false,notifyOnLive:false,ownAccount:true,targets:[],history:[]},liveVideoZoom:{zoomMode:"auto",zoomPercent:70},logs:["β2 UIプロトタイプを起動しました"]};
 let remoteAuditEntries=[],remoteAuditFilters={query:"",type:"all",from:"",to:""},remoteAuditNotificationEnabled=true;
 let state=load(),page="dashboard";
 let streamMonitorRuntime={busy:false,nextCheckAt:0,lastCheckAt:"",message:"監視は停止中です。",checked:0,generation:0};
@@ -120,7 +122,6 @@ loaded.player.quoteExpectedEndAt=0;
 loaded.player.quotePollAutoSuspended=false;
 loaded.streamMonitor={...window.KananeoStreamMonitor.normalizeStreamMonitorSettings(stored.streamMonitor),ownAccount:true,history:window.KananeoStreamMonitorHistory.normalizeHistory(stored.streamMonitor?.history)};
 loaded.liveVideoZoom={zoomMode:stored?.liveVideoZoom?.zoomMode==="manual"?"manual":"auto",zoomPercent:Number.isFinite(Number(stored?.liveVideoZoom?.zoomPercent))?Math.max(35,Math.min(125,Math.round(Number(stored.liveVideoZoom.zoomPercent)))):70};
-loaded.broadcastView=window.KananeoBroadcastView.normalizeBroadcastView(stored?.broadcastView);
 loaded.playback={...initial.playback,...(stored.playback||{})};
 loaded.automation={...initial.automation,...(stored.automation||{})};
 loaded.poll={...initial.poll,...(stored.poll||{})};
@@ -846,28 +847,66 @@ panel("受信コメント",'<span id="comment-count">'+receivedComments.length+'
 }else if(page==="broadcast"){
 const authTitle=nicoStatus.authenticated?"ログインCookieを確認しました":"ニコニコにログインしていません";
 const authText=nicoStatus.authenticated?"このアプリ専用のセッションにログインCookieがあります。Cookie値は表示しません。":"下のボタンからニコニコ公式ログインを開いてください。パスワードはアプリに入力しません。";
-html=hero("LIVE SESSION","放送・枠管理","放送画面とコメントに加え、自動アンケート・引用再生時間・動画リクエストをこの画面で操作できます。")+
+const active=["connecting","connected","recovering"].includes(commentConnection.state);
+const statusLabel=({disconnected:"未接続",connecting:"接続中",connected:"接続中",recovering:"再接続中",error:"接続エラー"}[commentConnection.state]||"未接続");
+const programId=commentConnection.programId||liveVideoState.programId||state.lastProgramId||"";
+const channelTitle=state.lastProgramTitle||liveVideoState.title||programId||"放送画面";
+const isLive=liveVideoState.status==="ready"||commentConnection.state==="connected";
+html=
+'<div class="broadcast-screen-layout" id="broadcast-screen-layout">'+
+'<section class="broadcast-video-column">'+
+'<div class="broadcast-player-toolbar">'+
+'<div class="broadcast-channel-name" id="broadcast-channel-name" title="'+esc(channelTitle)+'">'+esc(channelTitle)+'</div>'+
+'<div class="broadcast-player-actions">'+
+'<span class="broadcast-live-badge '+(isLive?"is-live":"")+'" id="broadcast-live-status">'+(isLive?"LIVE":"待機中")+'</span>'+
+'<button type="button" class="broadcast-icon-button" data-live-video-mute title="'+(liveVideoMuted?"音声をON":"音声をミュート")+'" aria-label="'+(liveVideoMuted?"音声をON":"音声をミュート")+'">'+(liveVideoMuted?"🔇":"🔊")+'</button>'+
+(!active?'<button type="button" class="broadcast-icon-button" data-broadcast-comment-start title="コメント受信を開始" aria-label="コメント受信を開始">▤</button>':'<span class="broadcast-toolbar-connected" title="コメント受信中">●</span>')+
+'<button type="button" class="broadcast-icon-button" data-live-video-open '+(liveVideoState.open?"disabled":"")+' title="放送画面を表示" aria-label="放送画面を表示">▶</button>'+
+'<button type="button" class="broadcast-icon-button" data-live-video-reload '+(!liveVideoState.open?"disabled":"")+' title="放送画面を更新" aria-label="放送画面を更新">↻</button>'+
+'<button type="button" class="broadcast-icon-button close" data-live-video-close '+(!liveVideoState.open?"disabled":"")+' title="放送画面を閉じる" aria-label="放送画面を閉じる">×</button>'+
+'</div></div>'+
+'<div class="broadcast-player-body">'+
+'<div id="broadcast-video-slot" class="broadcast-video-slot"><div class="broadcast-video-placeholder"><b>'+(liveVideoState.status==="error"?"放送画面を表示できませんでした":"放送映像はまだ表示されていません")+'</b><span>'+esc(liveVideoState.message||"放送IDを設定し、上部の再生ボタンを押してください。")+'</span></div></div>'+
+'</div>'+
+'<form id="broadcast-comment-send-form" class="broadcast-comment-composer">'+
+'<input id="broadcast-comment-send-input" class="input" maxlength="200" autocomplete="off" placeholder="'+(nicoStatus.authenticated?"運営コメントを入力（放送者権限が必要です）":"ログインするとコメントできます")+'" '+(!nicoStatus.authenticated||broadcastCommentSending?"disabled":"")+'>'+
+'<button type="button" class="broadcast-icon-button emoji" data-broadcast-emoji title="絵文字を入力">☺</button>'+
+'<button type="submit" class="btn broadcast-send-button" '+(!nicoStatus.authenticated||broadcastCommentSending?"disabled":"")+'>'+(broadcastCommentSending?"送信中…":"送信")+'</button>'+
+'</form>'+
+'<div class="broadcast-composer-note">送信できるのはログイン中の放送者コメントです。通常の視聴者コメント投稿には対応していません。</div>'+
+'</section>'+
+'<aside class="broadcast-comments-panel">'+
+'<div class="broadcast-comments-toolbar">'+
+'<input class="input" id="broadcast-comment-search" value="'+esc(broadcastCommentSearch)+'" placeholder="コメントを検索" aria-label="コメントを検索">'+
+'<button type="button" class="broadcast-small-button" data-broadcast-font-decrease title="文字を小さく">A−</button>'+
+'<button type="button" class="broadcast-small-button" data-broadcast-font-increase title="文字を大きく">A＋</button>'+
+'<span class="broadcast-connection-status '+(active?"connected":"")+'" id="broadcast-comment-status"><i></i><span>'+statusLabel+'</span></span>'+
+'<button type="button" class="broadcast-small-button" data-broadcast-comment-stop '+(!active?"disabled":"")+' title="コメント受信を切断">切り離す</button>'+
+'<button type="button" class="broadcast-small-button broadcast-ng-toggle '+(broadcastNgFilterEnabled?"active":"")+'" data-broadcast-ng-toggle aria-pressed="'+(broadcastNgFilterEnabled?"true":"false")+'" title="登録済みNGユーザー・NGワードを非表示">'+(broadcastNgFilterEnabled?"NG":"NG OFF")+'</button>'+
+'</div>'+
+'<div class="broadcast-comment-clear-row"><button type="button" class="broadcast-small-button" data-broadcast-comment-clear>クリア</button><span id="broadcast-comment-count">0件</span></div>'+
+'<div class="broadcast-current-channel" id="broadcast-current-channel"><i></i><span>'+esc(channelTitle)+'</span></div>'+
+'<div id="broadcast-comments-list" class="ncv-comment-list"><div class="empty">コメント受信を開始すると、ここに一覧表示します。</div></div>'+
+'<details class="broadcast-comment-extra"><summary>コメントの絞り込み・表示設定</summary>'+
+'<div class="broadcast-comment-extra-controls">'+
+'<select class="input" id="broadcast-comment-type"><option value="all" '+(broadcastCommentType==="all"?"selected":"")+'>すべてのコメント</option><option value="comment" '+(broadcastCommentType==="comment"?"selected":"")+'>通常コメント</option><option value="operatorComment" '+(broadcastCommentType==="operatorComment"?"selected":"")+'>放送者コメント</option><option value="gift" '+(broadcastCommentType==="gift"?"selected":"")+'>ギフト</option><option value="emotion" '+(broadcastCommentType==="emotion"?"selected":"")+'>エモーション</option><option value="notification" '+(broadcastCommentType==="notification"?"selected":"")+'>通知</option></select>'+
+'<button type="button" class="btn" data-broadcast-comment-clear-user '+(!broadcastCommentUserId?"disabled":"")+'>'+(broadcastCommentUserId?"ユーザー絞り込み解除":"全ユーザー表示")+'</button>'+
+'<button type="button" class="btn" data-broadcast-comments-copy>表示分をコピー</button>'+
+'</div>'+
+'<details class="ncv-display-settings"><summary>文字サイズ・列・色を細かく設定</summary><div id="broadcast-comment-settings-controls"></div></details>'+
+'<div class="muted">コメント番号で既読位置を記録できます。投稿者名をクリックすると、そのユーザーだけに絞り込みます。右クリックでNG登録・コテハン編集ができます。</div>'+
+'</details>'+
+'<div id="broadcast-comment-context" class="ncv-context-menu" hidden></div>'+
+'</aside></div>'+
+'<details class="broadcast-management-drawer">'+
+'<summary>放送・枠管理の設定（自動アンケート・引用再生・動画リクエスト・ログイン）</summary>'+
+'<div class="broadcast-management-drawer-content">'+
 '<div id="broadcast-quick-tools" class="broadcast-extras"></div>'+
 '<div class="grid2 broadcast-setup-panels">'+
 panel("ニコニコアカウント接続","公式ログインを専用セッションで開く",'<div class="empty" id="auth-status"><b>'+authTitle+'</b><br>'+authText+'</div><div class="actions"><button class="btn primary" data-nico-login>公式ログインを開く</button><button class="btn" data-nico-refresh>状態を再確認</button><button class="btn" data-nico-logout>このアプリからログアウト</button></div>')+
-panel("番組ページを確認","放送IDまたはニコ生番組URLを入力",'<div class="field"><label>放送ID / URL</label><input class="input" id="live-id" value="'+esc(state.lastProgramId||"")+'" placeholder="lv123456789 または放送URL" maxlength="512"></div><div class="actions"><button class="btn primary" data-nico-check>番組ページを確認</button></div><div class="empty" id="program-result">確認結果はここに表示します。</div>')+
-
-'</div>'+
-'<div class="broadcast-view-toolbar"><div class="broadcast-view-toolbar-heading"><b>マルチビュー表示</b><small>映像とコメントの配置を切り替えます。設定は保存されます。</small></div><label>レイアウト <select id="broadcast-view-mode" class="input"><option value="split" '+(state.broadcastView.mode==="split"?"selected":"")+'>映像＋コメント</option><option value="wide" '+(state.broadcastView.mode==="wide"?"selected":"")+'>映像を大きく</option><option value="video" '+(state.broadcastView.mode==="video"?"selected":"")+'>映像のみ</option><option value="dual" '+(state.broadcastView.mode==="dual"?"selected":"")+'>2画面＋コメント</option></select></label><label class="broadcast-view-ratio-label">映像の幅 <span id="broadcast-view-ratio-value">'+state.broadcastView.videoShare+'%</span><input type="range" min="50" max="78" step="2" id="broadcast-view-ratio" value="'+state.broadcastView.videoShare+'"></label><button class="btn" data-broadcast-theater-toggle>'+(state.broadcastView.theater?"通常表示に戻す":"シアター表示")+'</button></div>'+
-'<div id="broadcast-live-layout" class="broadcast-live-layout" style="--video-share:'+state.broadcastView.videoShare+'%;">'+
-'<section class="panel broadcast-video-panel"><div class="broadcast-panel-heading"><div><h2>放送画面</h2><p>ニコ生公式の視聴ページをアプリ内に表示します。</p></div><span class="live-state-pill" id="broadcast-live-status">未表示</span></div>'+
-'<div class="field"><label>視聴する放送ID / URL</label><input class="input" id="broadcast-watch-id" value="'+esc(state.lastProgramId||commentConnection.programId||"")+'" placeholder="lv123456789" maxlength="512"></div>'+
-'<div class="field"><label>ニコ生ページの表示倍率</label><select class="input" id="broadcast-video-zoom"><option value="auto" '+(state.liveVideoZoom.zoomMode==="auto"?"selected":"")+'>自動調整（表示領域に収める）</option>'+[40,50,60,70,80,90,100,110,125].map(value=>'<option value="'+value+'" '+(state.liveVideoZoom.zoomMode==="manual"&&state.liveVideoZoom.zoomPercent===value?"selected":"")+'>'+value+'%</option>').join("")+'</select><small class="muted">倍率は保存され、次回起動時にも適用されます。自動調整ではウィンドウサイズに合わせて再計算します。</small></div>'+'<div class="broadcast-video-grid"><div class="broadcast-view-cell"><div class="broadcast-view-cell-title">メイン映像 <small>公式視聴ページ</small></div><div id="broadcast-video-slot" class="broadcast-video-slot"><div class="broadcast-video-placeholder"><b>放送映像はまだ表示されていません</b><span>放送IDを入力して「放送画面を表示」を押してください。</span></div></div></div>'+
-'<div class="broadcast-view-cell broadcast-second-cell"><div class="broadcast-view-cell-title">2画面目 <span class="live-state-pill" id="broadcast-second-live-status">未表示</span></div><div id="broadcast-second-video-slot" class="broadcast-video-slot"><div class="broadcast-video-placeholder"><b>2画面目は未表示です</b><span>別の放送IDを入力して表示できます。</span></div></div><div class="field"><label>2画面目の番組ID・URL</label><input id="broadcast-secondary-id" class="input" maxlength="512" value="'+esc(state.broadcastView.secondaryProgramId)+'" placeholder="lv123456789"></div><div class="actions"><button class="btn primary" data-second-live-open>2画面目を表示</button><button class="btn" data-second-live-close '+(!secondLiveVideoState.open?"disabled":"")+'>閉じる</button><button class="btn" data-second-live-audio '+(!secondLiveVideoState.open?"disabled":"")+'>'+(state.broadcastView.secondaryAudio?"音声をミュート":"音声をON")+'</button></div><div class="muted" id="broadcast-second-live-message">'+esc(secondLiveVideoState.message)+'</div></div></div>'+
-'<div class="actions"><button class="btn primary" data-live-video-open>▶ 放送画面を表示</button><button class="btn" data-live-video-close '+(!liveVideoState.open?"disabled":"")+'>画面を閉じる</button><button class="btn" data-broadcast-comment-start '+(["connecting","connected","recovering"].includes(commentConnection.state)?"disabled":"")+'>コメント受信を開始</button><button class="btn danger" data-broadcast-comment-stop '+(!["connecting","connected","recovering"].includes(commentConnection.state)?"disabled":"")+'>コメント切断</button></div>'+
-'<div class="muted" id="broadcast-live-message">'+esc(liveVideoState.message||"放送映像とコメント受信は個別に開始します。")+'</div></section>'+
-'<section class="panel broadcast-comments-panel"><div class="broadcast-panel-heading"><div><h2>コメント一覧</h2><p>NCV風の一覧表示・投稿者別絞り込み</p></div><span class="live-state-pill" id="broadcast-comment-status">'+esc(commentConnection.state==="connected"?"接続済み":commentConnection.state==="connecting"?"接続中":commentConnection.state==="recovering"?"再接続中":"未接続")+'</span></div>'+
-'<div class="broadcast-comment-toolbar"><input class="input" id="broadcast-comment-search" value="'+esc(broadcastCommentSearch)+'" placeholder="コメント・名前・ユーザーIDで検索"><select class="input" id="broadcast-comment-type"><option value="all" '+(broadcastCommentType==="all"?"selected":"")+'>すべて</option><option value="comment" '+(broadcastCommentType==="comment"?"selected":"")+'>通常コメント</option><option value="operatorComment" '+(broadcastCommentType==="operatorComment"?"selected":"")+'>放送者</option><option value="gift" '+(broadcastCommentType==="gift"?"selected":"")+'>ギフト</option><option value="emotion" '+(broadcastCommentType==="emotion"?"selected":"")+'>エモーション</option><option value="notification" '+(broadcastCommentType==="notification"?"selected":"")+'>通知</option></select></div>'+
-'<div class="broadcast-comment-actions"><span id="broadcast-comment-count">0件</span><span id="broadcast-comment-user-filter">'+(broadcastCommentUserId?"ユーザーで絞り込み中":"全ユーザー")+'</span><button class="btn" data-broadcast-comment-clear-user '+(!broadcastCommentUserId?"disabled":"")+'>絞り込み解除</button><button class="btn" data-broadcast-comments-copy>表示分をコピー</button></div>'+
-'<div id="broadcast-comments-list" class="ncv-comment-list"><div class="empty">コメント受信を開始すると、ここに一覧表示します。</div></div><div id="broadcast-comment-context" class="ncv-context-menu" hidden></div>'+
-'<details class="ncv-display-settings"><summary>コメント表示をカスタマイズ（文字サイズ・列・並び順・色）</summary><div id="broadcast-comment-settings-controls"></div></details><div class="muted">コメント番号をクリックすると既読位置を記録、ダブルクリックで解除できます。投稿者名をクリックすると、そのユーザーのコメントだけを表示します。</div></section>'+
-'</div>'+
-'<div class="banner"><i class="led"></i><div><b>表示について</b><small>放送映像はニコニコ公式視聴ページを専用セッションで表示します。コメント一覧はこのアプリが受信したNDGRコメントを表示します。配信ページの仕様や視聴権限により映像が表示できない場合があります。</small></div></div>';
+panel("放送画面の接続設定","放送IDと表示倍率を設定します。画面上部の再生ボタンで表示します。",'<div class="field"><label>視聴する放送ID / URL</label><input class="input" id="broadcast-watch-id" value="'+esc(programId)+'" placeholder="lv123456789 または番組URL" maxlength="512"></div><div class="field"><label>ニコ生ページの表示倍率</label><select class="input" id="broadcast-video-zoom"><option value="auto" '+(state.liveVideoZoom.zoomMode==="auto"?"selected":"")+'>自動調整（表示領域に合わせる）</option>'+[40,50,60,70,80,90,100,110,125].map(value=>'<option value="'+value+'" '+(state.liveVideoZoom.zoomMode==="manual"&&state.liveVideoZoom.zoomPercent===value?"selected":"")+'>'+value+'%</option>').join("")+'</select></div><div class="muted" id="broadcast-live-message">'+esc(liveVideoState.message||"放送画面は未表示です。")+'</div>')+
+panel("番組ページを確認","放送IDまたはニコ生番組URLを入力",'<div class="field"><label>放送ID / URL</label><input class="input" id="live-id" value="'+esc(programId)+'" placeholder="lv123456789 または放送URL" maxlength="512"></div><div class="actions"><button class="btn primary" data-nico-check>番組ページを確認</button></div><div class="empty" id="program-result">確認結果はここに表示します。</div>')+
+'</div></div></details>';
 }else if(page==="programs"){
 html=hero("PROGRAM CONTROL","番組枠の作成・終了","番組の新規作成、放送開始・終了と、自分の番組の確認をこのページで行います。")+
 '<div class="grid2">'+
