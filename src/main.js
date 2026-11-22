@@ -84,6 +84,7 @@ let liveVideoProgramId = "";
 let liveVideoZoomSettings={zoomMode:"auto",zoomPercent:70};
 let secondLiveVideoView=null,secondLiveVideoProgramId="",secondLiveVideoAudioEnabled=false;
 let secondLiveVideoZoomSettings={zoomMode:"auto",zoomPercent:70};
+let secondLiveVideoVisible=false;
 let niconicoSession = null;
 let commentProvider = null;
 let commentProgramId = "";
@@ -679,7 +680,7 @@ function notifySecondLiveVideoState(value){
 }
 function closeNiconicoSecondLiveVideoView(){
  const view=secondLiveVideoView;
- secondLiveVideoView=null;secondLiveVideoProgramId="";
+ secondLiveVideoView=null;secondLiveVideoProgramId="";secondLiveVideoVisible=false;
  if(!view)return {ok:true,closed:false};
  try{if(mainWindow&&!mainWindow.isDestroyed())mainWindow.contentView.removeChildView(view);}catch{}
  try{if(view.webContents&&!view.webContents.isDestroyed())view.webContents.close();}catch{}
@@ -692,6 +693,7 @@ function setNiconicoSecondLiveVideoBounds(input){
  if(!bounds)return {ok:false,code:"INVALID_BOUNDS"};
  const view=secondLiveVideoView;
  if(!bounds.visible){
+  secondLiveVideoVisible=false;
   view.setVisible(false);
   try{view.webContents.setAudioMuted(true);}catch{}
   return {ok:true,visible:false};
@@ -704,12 +706,13 @@ function setNiconicoSecondLiveVideoBounds(input){
   view.webContents.setAudioMuted(!secondLiveVideoAudioEnabled);
  }catch(error){console.warn("2画面目の拡大・音声設定に失敗しました。",error?.code||"UNKNOWN");}
  view.setVisible(true);
+ secondLiveVideoVisible=true;
  return {ok:true,visible:true};
 }
 function setNiconicoSecondLiveVideoAudio(enabled){
  if(typeof enabled!=="boolean")return {ok:false,code:"INVALID_AUDIO_SETTING"};
  secondLiveVideoAudioEnabled=enabled;
- if(secondLiveVideoView&&secondLiveVideoView.isVisible()){
+ if(secondLiveVideoView&&secondLiveVideoVisible){
   try{secondLiveVideoView.webContents.setAudioMuted(!enabled);}catch{}
  }
  return {ok:true,enabled:secondLiveVideoAudioEnabled};
@@ -748,7 +751,7 @@ function openNiconicoSecondLiveVideoView(input){
    });
    contents.on("did-finish-load",()=>{
     if(secondLiveVideoView!==view)return;
-    setNiconicoSecondLiveVideoBounds({visible:view.isVisible(),...view.getBounds(),...secondLiveVideoZoomSettings});
+    setNiconicoSecondLiveVideoBounds({...view.getBounds(),...secondLiveVideoZoomSettings,visible:secondLiveVideoVisible});
     notifySecondLiveVideoState({status:"ready",programId:secondLiveVideoProgramId,
      message:"2画面目を表示しています。"});
    });
