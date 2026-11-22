@@ -76,7 +76,7 @@ jobs:
       - name: Upload Windows builds
         uses: actions/upload-artifact@v4
         with:
-          name: kananeo-nico-live-stream-windows-${{ github.ref_name }}
+          name: kananeo-nico-live-stream-windows-${{ github.event.pull_request.number || github.ref_name }}
           path: |
             dist/*.exe
             dist/*.yml
