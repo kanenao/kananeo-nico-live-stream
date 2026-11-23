@@ -41,7 +41,7 @@
    starting:"投票開始処理中"}[model.pollStatus]||"確認中");
  }
  function libraryPreview(items=[],loading=false,error=""){
-  const list=(Array.isArray(items)?items:[]).filter(x=>x&&/^(?:sm|nm|so)\d{1,12}$/i.test(String(x.videoId||""))).slice(0,5);
+  const list=(Array.isArray(items)?items:[]).filter(x=>x&&/^(?:sm|nm|so)\d{1,12}$/i.test(String(x.videoId||""))).slice(0,3);
   if(!list.length)return '<div class="broadcast-tool-empty">'+esc(loading?"ライブラリを読み込み中です…":
    error?"ライブラリを確認できませんでした。動画ライブラリで再読み込みしてください。":
    "まだ登録された動画はありません。動画ライブラリから追加できます。")+'</div>';
@@ -54,7 +54,7 @@
  function requestPreview(items=[]){
   const pending=pendingRequests(items);
   if(!pending.length)return '<div class="broadcast-tool-empty">未再生リクエストはありません。</div>';
-  return '<ul class="broadcast-tool-video-list">'+pending.slice(0,5).map(x=>'<li>'+
+  return '<ul class="broadcast-tool-video-list">'+pending.slice(0,3).map(x=>'<li>'+
    '<div class="broadcast-tool-video-copy"><b>'+esc(x.title||x.videoId||"無題の動画")+'</b><small>'+esc(x.videoId||"動画ID不明")+
    (Number(x.lengthMs)>0?" ・ "+esc(videoTime(x.lengthMs)):"")+'</small></div>'+
    '<div class="broadcast-tool-video-actions"><button type="button" class="btn" data-play="'+esc(x.id)+'">プレビュー</button>'+

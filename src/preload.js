@@ -4,7 +4,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
-  version:"0.4.1-alpha.95",
+  version:"0.5.0-alpha.97",
   platform:process.platform,
   stage:"https-lan-remote-control",
   remote:Object.freeze({
@@ -73,6 +73,7 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
     checkAutoNext:()=>ipcRenderer.invoke("niconico:auto-next-check"),
     getAutoNextStatus:()=>ipcRenderer.invoke("niconico:auto-next-status"),
     getOwnBroadcast:()=>ipcRenderer.invoke("niconico:own-broadcast"),
+    checkOwnRanking:()=>ipcRenderer.invoke("niconico:ranking-monitor-check"),
     getOwnMonitorStatus:()=>ipcRenderer.invoke("niconico:own-monitor-status"),
     checkOwnMonitor:()=>ipcRenderer.invoke("niconico:own-monitor-check"),
     onOwnMonitorStatus:callback=>{

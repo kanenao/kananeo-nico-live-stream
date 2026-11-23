@@ -2,6 +2,16 @@ name: Windows Build
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "package.json"
+      - "CHANGELOG.md"
+      - "src/**"
+      - "test/**"
+      - "scripts/**"
+      - "config/**"
+      - ".github/workflows/windows-build.yml"
   push:
     branches: [main]
     tags: ["v*"]
@@ -66,7 +76,7 @@ jobs:
       - name: Upload Windows builds
         uses: actions/upload-artifact@v4
         with:
-          name: kananeo-nico-live-stream-windows-${{ github.ref_name }}
+          name: kananeo-nico-live-stream-windows-${{ github.event.pull_request.number || github.ref_name }}
           path: |
             dist/*.exe
             dist/*.yml

@@ -51,6 +51,7 @@ const {loggedInId,broadcastHistoryUrl,parseHistory,programFromCreateUrl}=require
 const {createNextFrameMonitor}=require("./next-frame-monitor");
 const {createOwnBroadcastMonitor}=require("./own-broadcast-monitor");
 const {buildRegisteredUserHistoryUrl,createRegisteredUserMonitor}=require("./registered-user-monitor");
+const {fetchOwnBroadcastRankings}=require("./ranking-monitor");
 const {validateProgramControl,canMutateProgram,buildProgramMutationRequest,summarizeProgramMutation}=require("./program-control");
 const {validateManualProgramInput}=require("./manual-program-create");
 const {fetchVideoMetadataWithFallback}=require("./video-metadata");
@@ -2593,6 +2594,12 @@ function registerIpcHandlers() {
   ipcMain.handle("niconico:own-broadcast",event=>{
     if(event.sender!==mainWindow?.webContents)return {ok:false,message:"この操作は許可されていません。"};
     return getOwnBroadcast();
+  });
+  ipcMain.handle("niconico:ranking-monitor-check",async event=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    const own=await getOwnBroadcast();
+    if(!own?.ok)return {ok:false,code:"LOGIN_REQUIRED",message:own?.message||"ニコニコへのログインを確認できません。"};
+    return fetchOwnBroadcastRankings({userId:own.userId,programs:own.programs});
   });
   ipcMain.handle("niconico:check-program",(event,input)=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};

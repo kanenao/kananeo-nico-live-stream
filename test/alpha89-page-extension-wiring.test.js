@@ -20,7 +20,7 @@ test("program controls and 24h monitor have their own navigation pages",()=>{
  assert.match(monitor,/id="stream-monitor-targets"/);
  assert.match(monitor,/id="stream-monitor-status"/);
  assert.match(renderer,/if\(page==="programs"\)renderBroadcastManageVerification\(\)/);
- assert.match(renderer,/if\(page==="monitor"\)renderStreamMonitorUi\(\)/);
+ assert.match(renderer,/if\(page==="monitor"\)\{renderStreamMonitorUi\(\);renderRankingMonitorUi\(\);\}/);
 });
 test("main process does not auto-extend by paid methods or for other accounts",()=>{
  assert.match(main,/getAutoExtensionMonitor\(\)/);
