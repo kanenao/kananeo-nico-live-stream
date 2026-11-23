@@ -191,9 +191,9 @@ function rankingMetricText(metrics){
  ].filter(Boolean).join(" / ");
 }
 function renderRankingMonitorUi(){
- const cards=document.getElementById("ranking-monitor-cards");if(!cards)return;
+ const cards=document.querySelectorAll("#ranking-monitor-cards, #broadcast-ranking-monitor-cards");if(!cards.length)return;
  const config=state.rankingMonitor,sources=window.KananeoRankingMonitor.SOURCES;
- cards.innerHTML=sources.map(source=>{
+ const rankingMarkup=sources.map(source=>{
   const snapshot=config.snapshots?.[source.id]||null;
   const status=rankingStatusLabel(snapshot);
   const rank=snapshot?.status==="ranked"&&snapshot.rank?'<strong class="ranking-rank-number">'+Number(snapshot.rank).toLocaleString("ja-JP")+'<small>位</small></strong>':
@@ -215,8 +215,9 @@ function renderRankingMonitorUi(){
    (metrics?'<div class="ranking-source-metrics">'+esc(metrics)+'</div>':'')+
    '</article>';
  }).join("");
- const statusNode=document.getElementById("ranking-monitor-status");
- if(statusNode){
+ for(const host of cards)host.innerHTML=rankingMarkup;
+ const statusNodes=document.querySelectorAll("#ranking-monitor-status, #broadcast-ranking-monitor-status");
+ for(const statusNode of statusNodes){
   const next=rankingMonitorRuntime.nextCheckAt?new Date(rankingMonitorRuntime.nextCheckAt).toLocaleTimeString("ja-JP"):"—";
   const last=config.lastCheckedAt?new Date(config.lastCheckedAt).toLocaleTimeString("ja-JP"):"未確認";
   statusNode.textContent=rankingMonitorRuntime.message+"　最終確認："+last+(config.enabled?"　次回："+next:"　監視停止中");
@@ -229,8 +230,7 @@ function renderRankingMonitorUi(){
    return '<div class="ranking-history-row"><span>'+esc(source?.name||item.sourceId)+'</span><b>'+Number(item.previousRank).toLocaleString("ja-JP")+'位 → '+Number(item.rank).toLocaleString("ja-JP")+'位</b><small>'+esc(item.title||item.programId)+'</small><time>'+esc(new Date(item.at).toLocaleString("ja-JP"))+'</time></div>';
   }).join(""):'<div class="empty">順位の変動履歴はまだありません。</div>';
  }
- const refresh=document.querySelector("[data-ranking-monitor-check]");
- if(refresh)refresh.disabled=rankingMonitorRuntime.busy;
+ for(const refresh of document.querySelectorAll("[data-ranking-monitor-check]"))refresh.disabled=rankingMonitorRuntime.busy;
  const clear=document.querySelector("[data-ranking-monitor-history-clear]");
  if(clear)clear.disabled=!config.history?.length;
 }
@@ -266,7 +266,7 @@ async function runRankingMonitorCheck(force=false){
  }finally{
   rankingMonitorRuntime.busy=false;
   rankingMonitorRuntime.nextCheckAt=Date.now()+(state.rankingMonitor.intervalSeconds||60)*1000;
-  if(page==="monitor")renderRankingMonitorUi();
+  if(page==="monitor"||page==="broadcast")renderRankingMonitorUi();
  }
 }
 function clearRankingMonitorHistory(){state.rankingMonitor.history=[];save();renderRankingMonitorUi();}
@@ -1058,7 +1058,7 @@ document.getElementById("content").innerHTML=html;
 document.getElementById("content").classList.toggle("broadcast-screen-content",page==="broadcast");
 renderInAppUpdateNotice();
 if(page==="dashboard")renderDashboardAlphaUpdateStatus();
-if(page==="broadcast"){renderBroadcastToolsUi();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();}
+if(page==="broadcast"){renderBroadcastToolsUi();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();renderRankingMonitorUi();updateBroadcastOverview();}
 if(page==="programs")renderBroadcastManageVerification();
 if(page==="monitor"){renderStreamMonitorUi();renderRankingMonitorUi();}
 updateLiveVideoBounds();
