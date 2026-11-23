@@ -68,6 +68,8 @@ let bgmCurrentId="";
 let bgmAudio=null;
 let remoteControlUi={loading:false,lastRefreshAt:0,status:{running:false,mode:"localhost",protocol:"http",host:"127.0.0.1",port:0,url:"",devices:[],storageHealthy:true,storageMessage:""},lanOptions:{addresses:[],certificateName:"",privateKeyName:""},pairingCode:"",pairingExpiresAt:null,error:""};
 let quotePlayback={active:false,verified:false,programId:"",videoId:"",queueType:"",itemId:"",item:null,message:"ニコ生への引用再生は停止中です。"};
+let quoteFrameRuntime={busy:false,lastCheckedAt:0,frozenAt:0};
+let pollRepeatUntil=0;
 let quoteAutoTimer=null;
 let quoteAutoToken=0;
 let quoteAutoSchedule=null;
@@ -1320,13 +1322,73 @@ const seconds=Math.max(0,Math.floor(Number(value)||0));
 const h=Math.floor(seconds/3600),m=Math.floor((seconds%3600)/60),sec=seconds%60;
 return h?String(h)+":"+String(m).padStart(2,"0")+":"+String(sec).padStart(2,"0"):String(m)+":"+String(sec).padStart(2,"0");
 }
+
+function quoteFrameTime(now=Date.now()){
+ return window.KananeoFrameLifecycle.frameClockTime({
+   programId:quotePlayback.programId,lastProgramId:state.lastProgramId,
+   frameEndsAt:state.lastProgramEndAt,status:state.lastProgramStatus,
+   frozenAt:quoteFrameRuntime.frozenAt
+ },now);
+}
+function finalizeEndedQuotedFrame(programId,now=Date.now(),reason="前の放送枠が終了しました。"){
+ const currentId=String(quotePlayback.programId||"").toLowerCase();
+ if(!quotePlayback.active||currentId!==String(programId||"").toLowerCase())return false;
+ const cap=quoteFrameTime(now);
+ const progress=currentQuoteProgress(cap);
+ if(progress.ok&&state.automation.keepPosition===true){
+  const saved=window.KananeoQuoteResume.checkpointFromProgress(progress,{
+   verified:quotePlayback.verified===true,now:cap,title:quotePlayback.item?.title||progress.videoId
+  });
+  if(saved)state.playback.quoteResumeCheckpoint=saved;
+ }
+ const playing=[...state.requests,...state.stocks].find(item=>item.id===quotePlayback.itemId);
+ if(playing?.status==="playing")playing.status="queued";
+ clearQuoteAutoTimer("前枠が終了したため、自動次動画の予約を停止しました。");
+ stopPollDeadlineGuard();
+ pollRunToken++;pollRuntime.active=false;cancelPollWait();
+ pollCurrentProgramId="";pollVideoId="";pollRepeatUntil=0;
+ quoteFrameRuntime.frozenAt=cap;
+ quotePlayback={active:false,verified:false,programId:currentId,videoId:"",queueType:"",itemId:"",item:null,
+  message:reason+" 再生位置を保存しました。次枠への引き継ぎはプレイヤー欄で確認してください。"};
+ state.player.quoteStartedAt=0;state.player.quoteDurationMs=0;
+ state.player.quoteVideoId="";state.player.quoteProgramId="";state.player.quoteExpectedEndAt=0;
+ state.player.quotePollAutoSuspended=false;
+ state.lastProgramStatus="ENDED";
+ save();updateQuoteProgressUi();
+ if(page==="broadcast"){renderBroadcastToolsUi();updateBroadcastOverview();updateBroadcastLivePanel();}
+ if(page==="player")render();
+ return true;
+}
+async function verifyQuotedFrameAfterDeadline(now=Date.now()){
+ if(!quotePlayback.active||!quotePlayback.verified)return;
+ const programId=String(quotePlayback.programId||"").toLowerCase();
+ if(!window.KananeoFrameLifecycle.shouldVerifyFrame({
+  programId,lastProgramId:state.lastProgramId,
+  frameEndsAt:state.lastProgramEndAt,status:state.lastProgramStatus
+ },now))return;
+ if(["ENDED","END","CLOSED"].includes(String(state.lastProgramStatus||"").toUpperCase())){
+  finalizeEndedQuotedFrame(programId,now);return;
+ }
+ if(quoteFrameRuntime.busy||now-quoteFrameRuntime.lastCheckedAt<5000)return;
+ quoteFrameRuntime.busy=true;quoteFrameRuntime.lastCheckedAt=now;
+ try{
+  const result=await window.kananeoApp.niconico.checkProgram(programId);
+  if(!quotePlayback.active||String(quotePlayback.programId||"").toLowerCase()!==programId)return;
+  const status=window.KananeoFrameLifecycle.evaluateFrameStatus(result,programId);
+  if(status.kind==="ended")finalizeEndedQuotedFrame(programId,now);
+  else if(status.kind==="live"&&status.frameEndsAt>0&&status.frameEndsAt!==state.lastProgramEndAt){
+   state.lastProgramEndAt=status.frameEndsAt;state.lastProgramStatus="ON_AIR";save();
+  }
+ }catch{}finally{quoteFrameRuntime.busy=false;}
+}
+
 function currentQuoteProgress(now=Date.now()){
  if(!quotePlayback.active||quotePlayback.verified!==true)return {ok:false};
  return window.KananeoQuoteResume.quoteProgress({
   programId:quotePlayback.programId,videoId:quotePlayback.videoId,
   storedProgramId:state.player.quoteProgramId,storedVideoId:state.player.quoteVideoId,
   startedAt:state.player.quoteStartedAt,durationMs:state.player.quoteDurationMs
- },now);
+ },quoteFrameTime(now));
 }
 function updateQuoteProgressUi(now=Date.now()){
  const p=currentQuoteProgress(now);
@@ -1344,7 +1406,7 @@ function updateQuoteProgressUi(now=Date.now()){
   "動画の開始時刻と長さを確認できた場合だけ経過時間を表示します。";
  if(p.ok&&state.automation.keepPosition===true){
   const c=window.KananeoQuoteResume.checkpointFromProgress(p,{
-   verified:quotePlayback.verified===true,now,title:quotePlayback.item?.title||p.videoId
+   verified:quotePlayback.verified===true,now:quoteFrameTime(now),title:quotePlayback.item?.title||p.videoId
   });
   const previous=state.playback.quoteResumeCheckpoint;
   if(c&&(!previous||previous.programId!==c.programId||
