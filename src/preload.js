@@ -4,7 +4,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
-  version:"0.5.0-alpha.97",
+  version:"0.5.1-alpha.98",
   platform:process.platform,
   stage:"https-lan-remote-control",
   remote:Object.freeze({
