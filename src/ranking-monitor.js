@@ -306,9 +306,10 @@ function applyRankingSnapshot(stateInput,result,checkedAt=new Date().toISOString
  return state;
 }
 
-module.exports={
+const api={
  SOURCES,MAX_PAGE_CHARS,REQUEST_TIMEOUT_MS,normalizeUserId,normalizeProgramId,
  extractRankingEntries,parseRankingPage,fetchRankingSource,fetchOwnBroadcastRankings,
  normalizeRankingMonitorState,applyRankingSnapshot,matchOwnBroadcast,isAllowedRedirect
 };
-if(typeof window!=="undefined")window.KananeoRankingMonitor=module.exports;
+if(typeof module!=="undefined"&&module.exports)module.exports=api;
+if(typeof window!=="undefined")window.KananeoRankingMonitor=api;
