@@ -1113,13 +1113,15 @@ panel("受信コメント",'<span id="comment-count">'+receivedComments.length+'
  '<div class="broadcast-program-result" id="program-result">確認結果はここに表示します。</div></article>'+
  '</section>'+
  '<div class="broadcast-screen-layout" id="broadcast-screen-layout">'+
- '<section class="broadcast-video-column" aria-label="放送映像">'+
+ '<section class="broadcast-video-column" id="broadcast-stage" aria-label="放送映像">'+
  '<div class="broadcast-player-toolbar"><div class="broadcast-player-title-block"><span class="broadcast-stage-identity" aria-hidden="true">◈</span><div class="broadcast-stage-heading"><span class="broadcast-panel-kicker">STAGE / 01</span><div class="broadcast-channel-name" id="broadcast-channel-name" title="'+esc(channelTitle)+'">'+esc(channelTitle)+'</div></div></div>'+
  '<div class="broadcast-player-actions"><span class="broadcast-live-badge '+(isLive?"is-live":"")+'" id="broadcast-live-status">'+(isLive?"LIVE":"待機中")+'</span>'+
  '<button type="button" class="broadcast-icon-button" data-live-video-mute title="'+(liveVideoMuted?"音声をON":"音声をミュート")+'" aria-label="'+(liveVideoMuted?"音声をON":"音声をミュート")+'">'+(liveVideoMuted?"🔇":"🔊")+'</button>'+
  '<button type="button" class="broadcast-icon-button" data-broadcast-comment-start title="コメント受信を開始" aria-label="コメント受信を開始">▤</button>'+
+ '<button type="button" class="broadcast-icon-button" data-stage-fullscreen title="STAGEを全画面で表示・解除" aria-label="STAGEを全画面で表示・解除">⛶</button>'+
  '<button type="button" class="broadcast-icon-button play" data-live-video-open '+(liveVideoState.open?"disabled":"")+' title="放送画面を表示" aria-label="放送画面を表示">▶</button>'+
  '<button type="button" class="broadcast-icon-button" data-live-video-reload '+(!liveVideoState.open?"disabled":"")+' title="放送画面を更新" aria-label="放送画面を更新">↻</button>'+
+ '<button type="button" class="broadcast-stage-end" data-broadcast-program-end '+(!nicoStatus.authenticated||!/^lv\d{1,20}$/i.test(programId)?"disabled":"")+' title="自分の放送を終了" aria-label="自分の放送を終了">■ 放送終了</button>'+
  '<button type="button" class="broadcast-icon-button close" data-live-video-close '+(!liveVideoState.open?"disabled":"")+' title="放送画面を閉じる" aria-label="放送画面を閉じる">×</button>'+
  '</div></div>'+
  '<div class="broadcast-player-body"><div id="broadcast-video-slot" class="broadcast-video-slot"><div class="broadcast-video-placeholder"><div class="broadcast-stage-visual" aria-hidden="true"><span class="broadcast-stage-orbit"></span><span class="broadcast-stage-screen">▶</span></div><b>'+(liveVideoState.status==="error"?"放送画面を表示できませんでした":"映像の接続を待っています")+'</b><span>'+esc(liveVideoState.message||"視聴先を設定して、映像表示ボタンを押してください。")+'</span><span class="broadcast-stage-standby">PREVIEW STANDBY</span></div></div></div>'+
@@ -2712,6 +2714,18 @@ function updateBroadcastLivePanel(){
  if(ng){ng.classList.toggle("active",broadcastNgFilterEnabled);ng.setAttribute("aria-pressed",broadcastNgFilterEnabled?"true":"false");ng.textContent=broadcastNgFilterEnabled?"NG":"NG OFF";}
  updateBroadcastOverview();
 }
+function toggleStageFullscreen(automatic=false){
+ const stage=document.getElementById("broadcast-stage");
+ if(!stage||typeof stage.requestFullscreen!=="function")return;
+ try{
+  if(document.fullscreenElement===stage){
+   if(!automatic&&document.exitFullscreen)void document.exitFullscreen().catch(()=>{});
+   return;
+  }
+  const task=stage.requestFullscreen();
+  if(task?.catch)void task.catch(()=>{if(!automatic)toast("STAGEを全画面にできませんでした。");});
+ }catch{if(!automatic)toast("STAGEを全画面にできませんでした。");}
+}
 function applyLiveVideoState(state){
  if(!state||typeof state!=="object")return;
  liveVideoState={
@@ -3506,6 +3520,24 @@ if(b.hasAttribute("data-remote-copy-url")){const url=remoteControlUi.status.url;
 if(b.hasAttribute("data-broadcast-context-action")){void handleBroadcastCommentContextAction(b.dataset.broadcastContextAction);return;}
 if(b.hasAttribute("data-nico-login")){window.kananeoApp.niconico.openLogin().then(()=>toast("ニコニコ公式ログイン画面を開きました"));return;}
 if(b.hasAttribute("data-auto-next-check")){void checkAutoNextFrame(true);return;}
+if(b.hasAttribute("data-broadcast-program-end")){
+ const id=String(state.lastProgramId||commentConnection.programId||liveVideoState.programId||"").toLowerCase();
+ if(!/^lv\d{1,20}$/.test(id)){toast("終了する番組IDを確認してください。");return;}
+ if(!nicoStatus.authenticated){toast("ニコニコへの配信主ログインが必要です。");return;}
+ if(!confirm("自分の放送 "+id+" をニコニコ側で実際に終了します。\nこの操作は取り消せません。本当に終了しますか？"))return;
+ b.disabled=true;
+ try{
+  const response=await window.kananeoApp.niconico.controlProgram(id,"end");
+  toast(response?.message||"放送終了の結果を確認できませんでした。");
+  if(response?.ok&&response.verified){
+   if(quotePlayback.active&&quotePlayback.programId===id)finalizeEndedQuotedFrame(id);
+   else{state.lastProgramStatus="ENDED";save();}
+   updateBroadcastOverview();updateBroadcastLivePanel();render();
+  }else if(response?.ok)await adoptCreatedBroadcast(id);
+ }catch(error){toast(String(error?.message||"放送終了操作に失敗しました。").slice(0,180));}
+ finally{if(b.isConnected)b.disabled=false;}
+ return;
+}
 if(b.hasAttribute("data-program-start")||b.hasAttribute("data-program-end")){
  const action=b.hasAttribute("data-program-start")?"start":"end";
  const id=document.getElementById("broadcast-manage-id")?.value?.trim()||state.lastProgramId||"";
@@ -3578,9 +3610,11 @@ if(b.hasAttribute("data-broadcast-comment-clear")){
  toast("コメント表示をクリアしました。新しいコメントは引き続き表示されます。");
  return;
 }
+if(b.hasAttribute("data-stage-fullscreen")){toggleStageFullscreen();return;}
 if(b.hasAttribute("data-live-video-open")){
  const id=document.getElementById("broadcast-watch-id")?.value.trim()||commentConnection.programId||state.lastProgramId||"";
  if(!id){toast("放送IDまたは番組URLを入力してください。");return;}
+ toggleStageFullscreen(true);
  const button=document.querySelector("[data-live-video-open]");if(button)button.disabled=true;
  liveVideoState={open:true,status:"loading",programId:id,title:state.lastProgramTitle||"",message:"ニコニコ生放送の映像ページを読み込んでいます。"};
  updateBroadcastLivePanel();
@@ -3596,6 +3630,7 @@ if(b.hasAttribute("data-live-video-open")){
  return;
 }
 if(b.hasAttribute("data-live-video-close")){
+ if(document.fullscreenElement?.id==="broadcast-stage"&&document.exitFullscreen)void document.exitFullscreen().catch(()=>{});
  const result=await window.kananeoApp.niconico.closeLiveVideo();
  if(result?.ok){liveVideoState={open:false,status:"closed",programId:"",title:"",message:"放送画面を閉じました。"};lastLiveVideoBoundsKey="";updateBroadcastLivePanel();updateLiveVideoBounds();}
  else toast(result?.message||"放送画面を閉じられませんでした。");
@@ -3999,6 +4034,8 @@ document.addEventListener("change",e=>{
 document.addEventListener("change",e=>{if(e.target.id==="earthquake-notice-enabled"){state.earthquakeNotice.enabled=e.target.checked;earthquakeNoticeRuntime.generation++;earthquakeNoticeRuntime.initialized=false;earthquakeNoticeRuntime.nextCheckAt=0;earthquakeNoticeRuntime.message=e.target.checked?"地震情報を初期同期しています。":"地震情報の自動通知はOFFです。";save();renderEarthquakeNoticeUi();if(e.target.checked)void runEarthquakeNoticeCheck(true,false);}if(e.target.id==="earthquake-notice-scale"){state.earthquakeNotice.minScale=window.KananeoEarthquakeNotice.normalizeScale(e.target.value)||30;save();renderEarthquakeNoticeUi();}if(e.target.id==="earthquake-notice-interval"){state.earthquakeNotice.intervalSeconds=[30,60,120,300].includes(Number(e.target.value))?Number(e.target.value):60;save();earthquakeNoticeRuntime.nextCheckAt=Date.now()+state.earthquakeNotice.intervalSeconds*1000;renderEarthquakeNoticeUi();}});
 document.addEventListener("change",e=>{if(e.target.id==="ranking-monitor-enabled"){state.rankingMonitor.enabled=e.target.checked;save();rankingMonitorRuntime.nextCheckAt=0;rankingMonitorRuntime.message=e.target.checked?"ランキング監視を開始しました。":"ランキング監視を停止しました。";renderRankingMonitorUi();if(e.target.checked)void runRankingMonitorCheck(true);}if(e.target.id==="ranking-monitor-interval"){state.rankingMonitor.intervalSeconds=[60,90,120,300].includes(Number(e.target.value))?Number(e.target.value):60;save();rankingMonitorRuntime.nextCheckAt=0;renderRankingMonitorUi();if(state.rankingMonitor.enabled)void runRankingMonitorCheck(true);}});
 document.addEventListener("change",e=>{if(e.target.id==="release-history-type"){releaseHistoryState.type=e.target.value;renderReleaseHistoryRows();}if(e.target.id==="stream-monitor-interval"||e.target.id==="stream-monitor-auto-comments"){if(e.target.id==="stream-monitor-interval")state.streamMonitor.intervalSeconds=Number(e.target.value)||60;else state.streamMonitor.autoComments=e.target.checked;save();}if(e.target.id==="remote-audit-notification-enabled"){const enabled=e.target.checked;void window.kananeoApp.remote.setNotificationSettings({enabled}).then(result=>{if(result?.ok){remoteAuditNotificationEnabled=enabled;toast(enabled?"異常アクセス通知をONにしました。":"異常アクセス通知をOFFにしました。");}else{e.target.checked=remoteAuditNotificationEnabled;toast(result?.message||"通知設定を保存できませんでした。");}}).catch(()=>{e.target.checked=remoteAuditNotificationEnabled;toast("通知設定を保存できませんでした。");});}});
+document.addEventListener("fullscreenchange",()=>{lastLiveVideoBoundsKey="";requestAnimationFrame(updateLiveVideoBounds);});
+window.addEventListener("resize",()=>{lastLiveVideoBoundsKey="";updateLiveVideoBounds();});
 document.addEventListener("change",e=>{if(e.target.id==="broadcast-comment-type"){broadcastCommentType=e.target.value;renderBroadcastComments();}if(e.target.id==="library-sort"){librarySort=e.target.value;renderVideoLibraryRows();}if(e.target.id==="library-source"){librarySource=e.target.value;renderVideoLibraryRows();}});
 document.addEventListener("change",e=>{if(e.target.matches("[data-library-source-check]")){const id=e.target.dataset.librarySourceCheck;if(e.target.checked)librarySourceSelected.add(id);else librarySourceSelected.delete(id);const count=document.getElementById("library-source-selection-count");if(count)count.textContent=librarySourceSelected.size+" 件を選択中";const button=document.querySelector("[data-library-source-import]");if(button){button.disabled=librarySourceSelected.size===0;button.textContent="選択した "+librarySourceSelected.size+" 件を取り込む";}}});
 document.addEventListener("change",e=>{if(e.target.id==="bgm-volume"){state.playback.bgmVolume=clampBgmVolume(e.target.value);save();}if(e.target.id==="bgm-repeat"){state.playback.bgmRepeat=e.target.checked;save();toast(e.target.checked?"BGMを最後の曲から先頭へ繰り返します。":"BGMの繰り返しをOFFにしました。");}if(e.target.matches('[data-toggle="quote-auto-next"]')){if(state.playback.playStyle===0&&e.target.checked){e.target.checked=false;state.playback.quoteAutoNext=false;save();toast("手動モードでは自動次動画を使えません。自動順次または自動ランダムに変更してください。");return;}state.playback.quoteAutoNext=e.target.checked;save();if(e.target.checked&&quotePlayback.active){const active=currentQueueItem();const started=Number(state.player.quoteStartedAt);if(started>0)scheduleQuoteAutoNext(active||{videoId:quotePlayback.videoId,lengthMs:state.player.quoteDurationMs},started);else{quoteAutoMessage="引用再生の開始時刻が不明です。次の動画から自動予約します。";updateQuoteScheduleUi();}}else clearQuoteAutoTimer("引用再生の自動次動画はOFFです。");toast(e.target.checked?"引用再生の自動次動画をONにしました。":"引用再生の自動次動画をOFFにしました。");}if(e.target.id==="comments-filter")renderComments();if(e.target.id==="player-auto-next"){state.player.autoNext=e.target.checked;save();toast(e.target.checked?"自動で次の動画へ切り替えます。":"自動次動画切替をOFFにしました。");}if(e.target.id==="request-from-comments"){state.requestSettings.acceptComments=e.target.checked;save();toast(e.target.checked?"コメントからのリクエスト受付をONにしました。":"コメントからのリクエスト受付をOFFにしました。");}if(e.target.id==="request-max-per-user"){state.requestSettings.maxPerUser=Math.min(50,Math.max(1,Number(e.target.value)||5));save();toast("ユーザー別リクエスト上限を保存しました。");}if(e.target.id==="request-reply-enabled"){state.requestSettings.replyEnabled=e.target.checked;save();toast(e.target.checked?"受付結果の自動返信をONにしました。":"受付結果の自動返信をOFFにしました。");}if(e.target.id==="request-reply-accepted"){state.requestSettings.replyAccepted=Array.from(String(e.target.value||"")).slice(0,80).join("");save();}if(e.target.id==="request-reply-rejected"){state.requestSettings.replyRejected=Array.from(String(e.target.value||"")).slice(0,80).join("");save();}});
