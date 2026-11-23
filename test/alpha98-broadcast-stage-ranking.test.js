@@ -64,7 +64,7 @@ test("redesigned screen has responsive readable CSS",()=>{
  assert.match(css,/@media\(max-width:780px\)/);
  assert.match(css,/\.broadcast-comment-compose-row\{display:grid;grid-template-columns:minmax\(0,1fr\) auto/);
 });
-test("alpha98 patch version follows previous alpha97",()=>{
- assert.equal(pkg.version,"0.5.1-alpha.98");
- assert.match(preload,/version:"0\.5\.1-alpha\.98"/);
+test("the alpha98 stage redesign remains available in the newer alpha release",()=>{
+ assert.equal(pkg.version,"0.6.0-alpha.99");
+ assert.match(preload,/version:"0\.6\.0-alpha\.99"/);
 });
