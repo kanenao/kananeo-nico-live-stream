@@ -1045,7 +1045,7 @@ const pollResults=(pollRuntime.result||[]).map(item=>esc(item.name)+"："+Number
 html=hero("AUTOMATIC POLL","自動アンケート","投票を作成し、設定時間後に結果を取得。継続票が最多なら再投票、次動画票が最多ならリクエスト優先でニコ生へ引用再生します。短い動画は投票を省略して、再生予定時間に到達すると完走を運営コメントで通知し次の動画へ進みます。")+
 '<div class="grid2">'+panel("アンケート内容","選択肢は2つです。表示名は投票結果と完全一致させます。",field("質問","poll-question",state.poll.question)+field("継続の選択肢","poll-continue",state.poll.continue)+field("次動画の選択肢","poll-next",state.poll.next))+
 panel("投票時間・判定ルール","投票時間は3〜300秒、結果表示は0〜120秒",field("投票待ち時間（秒）","poll-wait",state.poll.wait)+field("結果表示時間（秒）","poll-result",state.poll.result)+'<div class="muted">再投票の待機時間は結果から自動計算：継続票最多10〜60秒／同票10秒／無投票5秒。次回開始までの秒数を運営コメントでお知らせします。未再生リクエスト0件ならアンケートを省略します。</div>'+'<button class="btn" data-save-poll>設定を保存</button>')+'</div>'+
-panel("自動アンケート実行","放送主権限のあるログインで、配信中の放送IDを指定してください。",'<label class="switchrow"><span><b>引用再生開始時に自動アンケートを実行</b><small>初期OFF。次のリクエストが0件なら投票を休止し、新しいリクエストを受け付けると同じ動画で自動再開します。次動画でもON設定を維持します。</small></span><input type="checkbox" id="poll-auto-on-quote" '+(state.poll.autoOnQuote?"checked":"")+'></label><label class="switchrow"><span><b>アンケート結果・再投票予告・リクエストなしを運営コメントで通知</b><small>投票結果と次の投票までの秒数を通知し、未再生リクエストが0件なら投票せず運営コメントでお知らせします。初期ON。放送主権限が必要です。</small></span><input type="checkbox" id="poll-announce-results" '+(state.poll.announceResults!==false?"checked":"")+'></label><div class="banner"><i class="led"></i><div><b id="poll-status-label">'+esc(pollRuntime.status==="idle"?"停止中":pollRuntime.status==="voting"?"投票中":pollRuntime.status==="results"?"結果表示中":pollRuntime.status==="repeating"?"再投票準備中":pollRuntime.status==="skipped"?(autoPollWaitingForRequestKey?"リクエスト待機中":"アンケート省略中"):pollRuntime.status==="next"?"次動画へ進みました":pollRuntime.status==="error"?"エラー":"処理中")+'</b><small id="poll-status-message">'+esc(pollRuntime.message)+'</small></div></div><div id="poll-results" class="empty">'+(pollResults||"投票結果はまだありません。")+'</div><div id="poll-timing-summary" class="muted">'+esc(pollTimingSummary||"短い動画では自動アンケートを省略し、引用再生が予定の終了時刻に達すると完走通知と次動画切替を試みます。")+'</div><div class="field"><label>動画の長さ（秒）を手動で補完（自動取得できない場合）</label><input class="input" id="poll-manual-duration" type="number" min="1" max="86400" placeholder="例：240"></div><div class="actions"><button class="btn" data-poll-duration-fetch>動画時間を自動取得</button><button class="btn" data-poll-duration-set>動画時間を登録</button></div><div class="muted">アプリ外から再生された動画は開始時刻を確認できない場合があります。そのときはアプリから引用再生を開始し直してください。</div><div class="actions"><button class="btn primary" data-poll-start '+(pollActive?"disabled":"")+'>自動アンケート開始</button><button class="btn" data-poll-stop '+(!pollActive?"disabled":"")+'>この回の投票を停止</button></div><div class="muted">リクエスト待機中は、新しいリクエストの受付後に現在の動画で自動投票を再開します（動画の残り時間が十分な場合）。完全に止めるには上の自動アンケート設定をOFFにしてください。</div><div class="muted">結果がAPIから取得できない場合は自動スキップしません。動画の尺が短ければ投票を省略し、再投票は最大100回で停止します。</div>');
+panel("自動アンケート実行","放送主権限のあるログインで、配信中の放送IDを指定してください。",'<label class="switchrow"><span><b>引用再生開始時に自動アンケートを実行</b><small>初期OFF。次のリクエストが0件なら投票を休止し、新しいリクエストを受け付けると同じ動画で自動再開します。次動画でもON設定を維持します。</small></span><input type="checkbox" id="poll-auto-on-quote" '+(state.poll.autoOnQuote?"checked":"")+'></label><label class="switchrow"><span><b>アンケート結果・再投票予告・リクエストなしを運営コメントで通知</b><small>投票結果と次の投票までの秒数を通知し、未再生リクエストが0件なら投票せず運営コメントでお知らせします。初期ON。放送主権限が必要です。</small></span><input type="checkbox" id="poll-announce-results" '+(state.poll.announceResults!==false?"checked":"")+'></label><div class="banner"><i class="led"></i><div><b id="poll-status-label">'+esc(pollRuntime.status==="idle"?"停止中":pollRuntime.status==="voting"?"投票中":pollRuntime.status==="results"?"結果表示中":pollRuntime.status==="repeating"?"再投票準備中":pollRuntime.status==="skipped"?(autoPollWaitingForRequestKey?"リクエスト待機中":"アンケート省略中"):pollRuntime.status==="next"?"次動画へ進みました":pollRuntime.status==="error"?"エラー":"処理中")+'</b><small id="poll-status-message">'+esc(pollRuntime.message)+'</small></div></div><div id="poll-results" class="empty">'+(pollResults||"投票結果はまだありません。")+'</div><div id="poll-timing-summary" class="muted">'+esc(pollTimingSummary||"短い動画では自動アンケートを省略し、引用再生が予定の終了時刻に達すると完走通知と次動画切替を試みます。")+'</div><div id="poll-repeat-countdown" class="poll-repeat-countdown" role="timer">'+esc(pollCountdownText())+'</div><div class="field"><label>動画の長さ（秒）を手動で補完（自動取得できない場合）</label><input class="input" id="poll-manual-duration" type="number" min="1" max="86400" placeholder="例：240"></div><div class="actions"><button class="btn" data-poll-duration-fetch>動画時間を自動取得</button><button class="btn" data-poll-duration-set>動画時間を登録</button></div><div class="muted">アプリ外から再生された動画は開始時刻を確認できない場合があります。そのときはアプリから引用再生を開始し直してください。</div><div class="actions"><button class="btn primary" data-poll-start '+(pollActive?"disabled":"")+'>自動アンケート開始</button><button class="btn" data-poll-stop '+(!pollActive?"disabled":"")+'>この回の投票を停止</button></div><div class="muted">リクエスト待機中は、新しいリクエストの受付後に現在の動画で自動投票を再開します（動画の残り時間が十分な場合）。完全に止めるには上の自動アンケート設定をOFFにしてください。</div><div class="muted">結果がAPIから取得できない場合は自動スキップしません。動画の尺が短ければ投票を省略し、再投票は最大100回で停止します。</div>');
 }else if(page==="automation"){
 html=hero("AUTOMATION","自動枠取り・延長","次枠取得・無料延長と、動画の再生時間に合わせた配信運用を管理します。")+
 '<div class="grid2">'+panel("次枠管理","番組情報と再生状態を引き継ぐ",toggle("auto-next","放送終了時に次枠取得を実行","アプリ本体で終了を監視し次枠取得を開始します。",state.automation.autoNext)+toggle("auto-create-next","前枠を引き継いで次枠を自動作成","タイトル・説明・タグ・公開設定を再利用して番組を自動作成（初期OFF）。作成された放送の本番開始は別操作です。",state.automation.autoCreate)+'<div class="muted" id="auto-next-status">'+esc(state.automation.autoNext?autoNextRuntime.message:"自動次枠監視はOFFです。")+'</div><button class="btn" data-auto-next-check '+(!state.automation.autoNext?"disabled":"")+'>今すぐ終了状態を確認</button>'+toggle("keep-position","再生位置を引き継ぐ","次枠でも現在位置を維持",state.automation.keepPosition))+
@@ -1214,6 +1214,7 @@ if(page==="broadcast"){renderBroadcastToolsUi();renderBroadcastCommentSettingsCo
 if(page==="programs")renderBroadcastManageVerification();
 if(page==="monitor"){renderStreamMonitorUi();renderRankingMonitorUi();}
 if(page==="monitor"||page==="broadcast")renderEarthquakeNoticeUi();
+updatePollRepeatCountdownUi();
 updateLiveVideoBounds();
 if(page==="voice"){renderSpeechVoices();updateSpeechQueueUi();}
 if(page==="settings"){renderUpdateCheck();renderAutoUpdateStatus();}
@@ -1974,6 +1975,17 @@ const nextLabel=document.getElementById("poll-next")?.value.trim()||state.poll.n
 state.poll={...state.poll,question,wait,result,continue:continueLabel,next:nextLabel,tie:true,zero:true};
 save();
 }
+function pollCountdownText(now=Date.now()){
+ if(!pollRuntime.active||pollRuntime.status!=="repeating"||pollRepeatUntil<=now)return "再投票の待機はありません。";
+ return "次回アンケート開始まで "+Math.max(1,Math.ceil((pollRepeatUntil-now)/1000))+"秒";
+}
+function updatePollRepeatCountdownUi(now=Date.now()){
+ const text=pollCountdownText(now);
+ for(const id of ["poll-repeat-countdown","broadcast-poll-countdown"]){
+  const node=document.getElementById(id);
+  if(node){node.textContent=text;node.classList.toggle("is-counting",pollRepeatUntil>now&&pollRuntime.status==="repeating");}
+ }
+}
 function setPollRuntime(status,message,result){
 pollRuntime={...pollRuntime,status,message,result:result||pollRuntime.result,active:pollRuntime.active};
 const label=document.getElementById("poll-status-label");
@@ -1988,7 +2000,7 @@ const start=document.querySelector("[data-poll-start]");
 const stop=document.querySelector("[data-poll-stop]");
 if(start)start.disabled=pollRuntime.active;
 if(stop)stop.disabled=!pollRuntime.active;
- updateBroadcastPollToolsUi();
+ updateBroadcastPollToolsUi();updatePollRepeatCountdownUi();
 }
 function stopPollDeadlineGuard(){
  if(pollDeadlineTimer)clearTimeout(pollDeadlineTimer);
@@ -2198,19 +2210,21 @@ function setPollDeadlineGuard(token,mediaEndsAt){
     });
  },Math.max(0,mediaEndsAt-Date.now()-marginMs));
 }
-function waitForPoll(ms,token){
+function waitForPoll(ms,token,phase=""){
 if(token!==pollRunToken)return Promise.resolve(false);
+pollRepeatUntil=phase==="repeat"?Date.now()+ms:0;
+updatePollRepeatCountdownUi();
 return new Promise(resolve=>{
 pollWaitResolve=resolve;
 pollWaitTimer=setTimeout(()=>{
-pollWaitTimer=null;pollWaitResolve=null;
+pollWaitTimer=null;pollWaitResolve=null;pollRepeatUntil=0;updatePollRepeatCountdownUi();
 resolve(token===pollRunToken);
 },ms);
 });
 }
 function cancelPollWait(){
 if(pollWaitTimer)clearTimeout(pollWaitTimer);
-pollWaitTimer=null;
+pollWaitTimer=null;pollRepeatUntil=0;updatePollRepeatCountdownUi();
 const resolve=pollWaitResolve;
 pollWaitResolve=null;
 if(resolve)resolve(false);
@@ -2474,7 +2488,7 @@ async function startAutomaticPoll(){
     }
    }
    if(token!==pollRunToken||!pollRuntime.active||!safePollVideoMatches())return;
-   const retryWait=await waitForPoll(plan.delaySeconds*1000,token);
+   const retryWait=await waitForPoll(plan.delaySeconds*1000,token,"repeat");
    if(!retryWait)return;
   }
   if(token===pollRunToken&&pollRuntime.active){
@@ -4142,5 +4156,5 @@ void checkForApplicationUpdates(true);
 if(window.kananeoApp?.updates?.onAutoStatus){window.kananeoApp.updates.onAutoStatus(applyAutoUpdateStatus);void window.kananeoApp.updates.getAutoStatus().then(applyAutoUpdateStatus).catch(()=>{});}
 if(window.kananeoApp?.remote){window.kananeoApp.remote.onRequest(request=>{void handleRemoteControlRequest(request);});}
 if(state.lastProgramId){void refreshDashboardStatistics(true);void refreshQuotePlayback({silent:true});}
-setInterval(()=>{if(state.earthquakeNotice.enabled&&!earthquakeNoticeRuntime.busy&&Date.now()>=earthquakeNoticeRuntime.nextCheckAt)void runEarthquakeNoticeCheck();if(state.rankingMonitor.enabled&&!rankingMonitorRuntime.busy&&Date.now()>=rankingMonitorRuntime.nextCheckAt)void runRankingMonitorCheck();if(state.streamMonitor.enabled&&!streamMonitorRuntime.busy&&Date.now()>=streamMonitorRuntime.nextCheckAt)void runStreamMonitorCheck();updateQuoteScheduleUi();updateQuoteProgressUi();if(page==="remote"&&!remoteControlUi.loading&&Date.now()-remoteControlUi.lastRefreshAt>5000)void refreshRemoteControlUi(true);if(page==="broadcast"){renderBroadcastManageVerification();updateLiveVideoBounds();}if(page==="dashboard"){updateDashboardStatsUi();if(!dashboardStats.loading&&state.lastProgramId&&Date.now()-(Date.parse(dashboardStats.updatedAt)||0)>30000)void refreshDashboardStatistics(true);}},1000);
+setInterval(()=>{updatePollRepeatCountdownUi();void verifyQuotedFrameAfterDeadline();if(state.earthquakeNotice.enabled&&!earthquakeNoticeRuntime.busy&&Date.now()>=earthquakeNoticeRuntime.nextCheckAt)void runEarthquakeNoticeCheck();if(state.rankingMonitor.enabled&&!rankingMonitorRuntime.busy&&Date.now()>=rankingMonitorRuntime.nextCheckAt)void runRankingMonitorCheck();if(state.streamMonitor.enabled&&!streamMonitorRuntime.busy&&Date.now()>=streamMonitorRuntime.nextCheckAt)void runStreamMonitorCheck();updateQuoteScheduleUi();updateQuoteProgressUi();if(page==="remote"&&!remoteControlUi.loading&&Date.now()-remoteControlUi.lastRefreshAt>5000)void refreshRemoteControlUi(true);if(page==="broadcast"){renderBroadcastManageVerification();updateLiveVideoBounds();}if(page==="dashboard"){updateDashboardStatsUi();if(!dashboardStats.loading&&state.lastProgramId&&Date.now()-(Date.parse(dashboardStats.updatedAt)||0)>30000)void refreshDashboardStatistics(true);}},1000);
 })();
