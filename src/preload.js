@@ -74,6 +74,8 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
     getAutoNextStatus:()=>ipcRenderer.invoke("niconico:auto-next-status"),
     getOwnBroadcast:()=>ipcRenderer.invoke("niconico:own-broadcast"),
     checkOwnRanking:()=>ipcRenderer.invoke("niconico:ranking-monitor-check"),
+    getEarthquakeReports:()=>ipcRenderer.invoke("niconico:earthquake-reports"),
+    postEarthquakeNotice:input=>ipcRenderer.invoke("niconico:post-earthquake-notice",input),
     getOwnMonitorStatus:()=>ipcRenderer.invoke("niconico:own-monitor-status"),
     checkOwnMonitor:()=>ipcRenderer.invoke("niconico:own-monitor-check"),
     onOwnMonitorStatus:callback=>{
