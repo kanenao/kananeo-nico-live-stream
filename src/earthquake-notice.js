@@ -9,7 +9,7 @@ const MAX_REPORT_AGE_MS=10*60*1000;
 const MIN_POST_INTERVAL_MS=3*60*1000;
 const SCALE_CODES=Object.freeze([10,20,30,40,45,50,55,60,70]);
 const SCALE_LABELS=Object.freeze({10:"1",20:"2",30:"3",40:"4",45:"5弱",46:"5弱以上",50:"5強",55:"6弱",60:"6強",70:"7"});
-const DEFAULT_SETTINGS=Object.freeze({enabled:false,minScale:30,intervalSeconds:60,seenIds:[],postedKeys:[],lastPostedAt:"",history:[]});
+const DEFAULT_SETTINGS=Object.freeze({enabled:false,minScale:30,intervalSeconds:30,seenIds:[],postedKeys:[],lastPostedAt:"",history:[]});
 
 function normalizeId(value){const id=String(value||"").trim();return /^[\w-]{6,100}$/.test(id)?id:"";}
 function normalizeScale(value){
@@ -34,12 +34,13 @@ function normalizeReport(raw){
  if(!raw||typeof raw!=="object"||Number(raw.code)!==551)return null;
  const id=normalizeId(raw.id);
  const e=raw.earthquake;
- if(!id||!e||typeof e!=="object")return null;
+ if(!id||!e||typeof e!=="object"||/cancel/i.test(String(raw.issue?.correct||"")))return null;
  const scale=normalizeScale(e.maxScale);
  const reportedAt=parseJapanDate(raw.time)||parseJapanDate(raw.issue?.time);
  if(!reportedAt||!scale)return null;
  const originTime=parseJapanDate(e.time);
- const hypocenter=trimText(e.hypocenter?.name||"",30)||"震源地不明";
+ const hypocenter=trimText(e.hypocenter?.name||"",30);
+ if(!originTime||!hypocenter)return null;
  const mag=Number(e.hypocenter?.magnitude);
  const magnitude=Number.isFinite(mag)&&mag>=0&&mag<=10?Math.round(mag*10)/10:null;
  const label=SCALE_LABELS[Number(e.maxScale)]||SCALE_LABELS[scale]||"不明";
@@ -51,7 +52,7 @@ function normalizeNoticeSettings(value){
  const v=value&&typeof value==="object"?value:{};
  const unique=(items,limit,valid)=>[...new Set((Array.isArray(items)?items:[]).filter(valid))].slice(-limit);
  const minScale=SCALE_CODES.includes(Number(v.minScale))?Number(v.minScale):30;
- const intervalSeconds=[30,60,120,300].includes(Number(v.intervalSeconds))?Number(v.intervalSeconds):60;
+ const intervalSeconds=[30,60,120,300].includes(Number(v.intervalSeconds))?Number(v.intervalSeconds):30;
  const seenIds=unique(v.seenIds,120,x=>typeof x==="string"&&/^[\w-]{6,100}$/.test(x));
  const postedKeys=unique(v.postedKeys,120,x=>typeof x==="string"&&/^[\w-]{6,100}$/.test(x));
  const history=(Array.isArray(v.history)?v.history:[]).slice(0,40).map(item=>({
