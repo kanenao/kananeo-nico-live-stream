@@ -40,6 +40,7 @@ jobs:
           node --check src/program-control.js
           node --check src/registered-user-monitor.js
           node --check src/own-broadcast-monitor.js
+          node --check src/ranking-monitor.js
           node --check src/live-page-zoom.js
           node --check src/update-channel.js
           node --check src/release-history.js
