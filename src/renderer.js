@@ -495,6 +495,7 @@ function applyOwnMonitorStatus(status){
 async function handleOwnBroadcastLive(info){
  const programId=String(info?.programId||"").toLowerCase();
  if(!/^lv\d{1,20}$/.test(programId))return;
+ if(quotePlayback.active&&quotePlayback.programId!==programId)finalizeEndedQuotedFrame(quotePlayback.programId);
  let target=state.streamMonitor.targets.find(item=>item.programId===programId);
  if(!target&&state.streamMonitor.targets.length<50){
   target={programId,title:String(info.title||programId).slice(0,200),status:"onAir",lastCheckedAt:new Date().toISOString(),lastError:""};
@@ -954,7 +955,7 @@ function broadcastToolModel(now=Date.now()){
  return {
   pollEnabled:state.poll.autoOnQuote===true,pollStatus:pollRuntime.status,
   pollActive:pollRuntime.active,pollStartPending,
-  waitingForRequests:!!autoPollWaitingForRequestKey,pollMessage:pollRuntime.message,
+  waitingForRequests:!!autoPollWaitingForRequestKey,pollMessage:pollRuntime.message,pollCountdown:pollCountdownText(),
   quote:{active:quotePlayback.active,verified:quotePlayback.verified,
    videoId:quotePlayback.videoId,title:quotePlayback.item?.title||quotePlayback.videoId,
    progress:currentQuoteProgress(now)},
@@ -983,6 +984,7 @@ function updateBroadcastQuoteToolsTime(now=Date.now()){
  if(stateLabel)stateLabel.textContent=clock.state;
  if(title)title.textContent=clock.title;
  if(hint)hint.textContent=clock.hint;
+ updatePollRepeatCountdownUi();
 }
 function updateBroadcastPollToolsUi(){
  const label=document.getElementById("broadcast-poll-state");
@@ -1420,6 +1422,8 @@ function updateQuoteProgressUi(now=Date.now()){
  }
  const saved=state.playback.quoteResumeCheckpoint;
  const next=window.KananeoQuoteResume.continueInfo(saved,state.lastProgramId);
+ const broadcastCheckpoint=document.getElementById("broadcast-resume-checkpoint");
+ if(broadcastCheckpoint)broadcastCheckpoint.textContent=next.ok?"次枠引き継ぎ記録：前枠 "+next.programId+"／"+next.videoId+"／推定 "+formatVideoTime(next.offsetMs/1000)+" まで（引用再生APIの途中シークは未確認）":"次枠へ引き継ぐ再生位置はまだありません。";
  if(checkpoint)checkpoint.textContent=next.ok?
   "前枠 "+next.programId+" の "+next.videoId+"："+formatVideoTime(next.offsetMs/1000)+
   " まで再生した記録があります。引用再生APIに途中位置の指定が確認できないため、自動的にこの位置から再生することはできません。":
