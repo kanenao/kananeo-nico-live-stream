@@ -529,3 +529,68 @@ input[type="range"]{accent-color:#8c7cff;cursor:pointer}
  .broadcast-comment-composer{height:35px;min-height:35px}
  .broadcast-comments-toolbar{min-height:34px}
 }
+
+
+/* Own live ranking monitor */
+.ranking-monitor-controls{
+ display:grid;grid-template-columns:minmax(260px,1fr) 145px auto;align-items:center;gap:10px;
+ padding:10px 12px;border:1px solid var(--line,#30465e);border-radius:10px;
+ background:linear-gradient(135deg,#172b40,#111f32);margin-bottom:10px
+}
+.ranking-monitor-controls .switchrow{margin:0;min-width:0;padding:0;border:0;background:transparent}
+.ranking-monitor-controls .field{margin:0;min-width:0}
+.ranking-monitor-controls .field label{font-size:9px}
+.ranking-monitor-controls .input{height:32px;font-size:10px}
+.ranking-monitor-controls .btn{height:32px;padding:0 12px;font-size:9px;white-space:nowrap}
+.ranking-monitor-status{margin:0 0 9px;padding:7px 10px;border-left:3px solid #61b8c3;border-radius:5px;background:#14263a;color:#b8ccdc;font-size:9px;line-height:1.5}
+.ranking-source-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.ranking-source-card{
+ min-width:0;padding:11px 12px;border:1px solid #354b64;border-radius:10px;
+ background:linear-gradient(155deg,#172a40,#111e30);box-shadow:0 5px 14px #0002
+}
+.ranking-source-head{display:flex;align-items:flex-start;justify-content:space-between;gap:7px}
+.ranking-source-head>div{min-width:0}
+.ranking-source-head b{display:block;color:#edf5ff;font-size:11px;line-height:1.4}
+.ranking-source-head small{display:block;margin-top:2px;color:#91a8bd;font-size:8px;line-height:1.4}
+.ranking-source-head a{flex-shrink:0;color:#85d3d6;font-size:8px;text-decoration:none}
+.ranking-source-head a:hover{text-decoration:underline}
+.ranking-source-rank{min-height:57px;display:flex;align-items:center;gap:10px;padding:8px 0 5px}
+.ranking-rank-number{display:flex;align-items:baseline;gap:3px;color:#f4f8ff;font-size:34px;line-height:1;font-weight:900;letter-spacing:-1px;font-variant-numeric:tabular-nums}
+.ranking-rank-number small{color:#a9c0d4;font-size:11px;letter-spacing:0}
+.ranking-rank-placeholder{color:#c1d1df;font-size:17px;font-weight:800}
+.ranking-trend{display:inline-flex;align-items:center;padding:4px 7px;border-radius:6px;font-size:9px;font-weight:850}
+.ranking-trend.up{background:#173e34;color:#a8ebc6}
+.ranking-trend.down{background:#472b35;color:#ffc0c8}
+.ranking-trend.same{background:#25384b;color:#b4c7d9}
+.ranking-source-meta{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 0;border-top:1px solid #30455d;color:#9fb4c8;font-size:8px}
+.ranking-source-title{min-height:28px;color:#e0eaf5;font-size:9px;line-height:1.45;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
+.ranking-source-metrics{margin-top:6px;color:#8fc7d0;font-size:8px;line-height:1.45;overflow-wrap:anywhere}
+.ranking-status-unavailable,.ranking-status-parse-error{border-color:#75535a}
+.ranking-status-not-listed .ranking-rank-placeholder{color:#c0cbd7}
+.ranking-history-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:13px 0 7px}
+.ranking-history-heading b{display:block;color:#e8f0f8;font-size:10px}
+.ranking-history-heading small{display:block;color:#91a7bc;font-size:8px;margin-top:2px}
+.ranking-history-heading .btn{padding:6px 9px;font-size:8px}
+.ranking-monitor-history{display:grid;gap:5px;max-height:190px;overflow:auto}
+.ranking-history-row{
+ display:grid;grid-template-columns:110px 125px minmax(0,1fr) auto;align-items:center;gap:8px;
+ padding:7px 9px;border:1px solid #30455c;border-radius:7px;background:#13243a
+}
+.ranking-history-row>span{color:#83cbd1;font-size:8px;font-weight:800}
+.ranking-history-row>b{color:#e7f0fa;font-size:9px;font-variant-numeric:tabular-nums}
+.ranking-history-row>small{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#9bb0c4;font-size:8px}
+.ranking-history-row>time{color:#8196aa;font-size:8px;white-space:nowrap}
+@media(max-width:1000px){
+ .ranking-source-grid{grid-template-columns:1fr}
+ .ranking-monitor-controls{grid-template-columns:minmax(0,1fr) 120px}
+ .ranking-monitor-controls .btn{grid-column:1/-1}
+ .ranking-history-row{grid-template-columns:90px 110px minmax(0,1fr)}
+ .ranking-history-row>time{grid-column:2/-1}
+}
+@media(max-width:620px){
+ .ranking-monitor-controls{grid-template-columns:1fr}
+ .ranking-monitor-controls .btn{grid-column:auto}
+ .ranking-history-row{grid-template-columns:1fr auto}
+ .ranking-history-row>small{grid-column:1/-1}
+ .ranking-history-row>time{grid-column:1/-1}
+}
