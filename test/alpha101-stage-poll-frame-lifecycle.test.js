@@ -44,6 +44,8 @@ test("renderer persists the last verified position and stops timers when frame e
  ])assert.ok(renderer.includes(value),value);
  assert.match(renderer,/currentQuoteProgress\(cap\)/);
  assert.match(renderer,/quoteFrameTime\(now\)/);
+ assert.match(renderer,/now-quoteFrameRuntime\.lastCheckedAt<15000/);
+ assert.match(renderer,/state\.lastProgramId\|\|""\)\.toLowerCase\(\)!==String\(quotePlayback\.programId\|\|""\)/);
  assert.match(index,/<script src="quote-frame-lifecycle.js"><\/script>/);
 });
 test("a next-frame transition checkpoints the previous program before replacing IDs",()=>{
