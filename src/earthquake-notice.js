@@ -42,7 +42,8 @@ function normalizeReport(raw){
  const originTime=parseJapanDate(e.time);
  const hypocenter=trimText(e.hypocenter?.name||"",30);
  if(!originTime||!hypocenter)return null;
- const mag=Number(e.hypocenter?.magnitude);
+ const rawMag=e.hypocenter?.magnitude;
+ const mag=rawMag===null||rawMag===undefined||String(rawMag).trim()===""?NaN:Number(rawMag);
  const magnitude=Number.isFinite(mag)&&mag>=0&&mag<=10?Math.round(mag*10)/10:null;
  const label=SCALE_LABELS[Number(e.maxScale)]||SCALE_LABELS[scale]||"不明";
  const key=originTime?String(originTime):id;
