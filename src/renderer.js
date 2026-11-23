@@ -192,6 +192,124 @@ function rankingMetricText(metrics){
   metrics.comments!=null?"コメント "+Number(metrics.comments).toLocaleString("ja-JP"): ""
  ].filter(Boolean).join(" / ");
 }
+
+function earthquakeNoticeMarkup(){
+ const config=state.earthquakeNotice;
+ const options=window.KananeoEarthquakeNotice.SCALE_CODES.map(scale=>
+  '<option value="'+scale+'" '+(config.minScale===scale?"selected":"")+'>震度'+window.KananeoEarthquakeNotice.SCALE_LABELS[scale]+'以上</option>').join("");
+ const interval=[30,60,120,300].map(seconds=>
+  '<option value="'+seconds+'" '+(config.intervalSeconds===seconds?"selected":"")+'>'
+   +(seconds===30?"30秒":seconds===60?"1分":seconds===120?"2分":"5分")+'</option>').join("");
+ return '<div class="earthquake-notice-shell">'+
+  '<div class="earthquake-notice-intro"><span class="earthquake-notice-icon" aria-hidden="true">◉</span><div><span class="broadcast-panel-kicker">EARTHQUAKE / JMA</span><h2>地震情報・運営コメント自動通知</h2><p>気象庁の地震情報（P2P地震情報経由）を確認し、自分の放送中だけ運営コメントに投稿します。</p></div></div>'+
+  '<label class="switchrow"><span><b>地震情報を運営コメントへ自動投稿</b><small>初期OFF。許可した場合のみ、放送中の自分の番組へ投稿します。アプリ終了・スリープ中は監視できません。</small></span><input type="checkbox" id="earthquake-notice-enabled" '+(config.enabled?"checked":"")+'></label>'+
+  '<div class="earthquake-notice-controls"><div class="field"><label for="earthquake-notice-scale">通知する最低震度</label><select class="input" id="earthquake-notice-scale">'+options+'</select></div>'+
+  '<div class="field"><label for="earthquake-notice-interval">取得間隔</label><select class="input" id="earthquake-notice-interval">'+interval+'</select></div>'+
+  '<button class="btn" type="button" data-earthquake-check>最新情報を確認</button></div>'+
+  '<div id="earthquake-notice-status" class="earthquake-notice-status" role="status"></div>'+
+  '<div id="earthquake-notice-latest" class="earthquake-notice-latest"></div>'+
+  '<div class="earthquake-notice-history-heading"><b>運営コメント通知履歴</b><button class="btn" type="button" data-earthquake-history-clear '+(!config.history.length?"disabled":"")+'>履歴を削除</button></div>'+
+  '<div id="earthquake-notice-history" class="earthquake-notice-history"></div>'+
+  '<div class="earthquake-notice-caution">※これは地震発生後に配信される「地震情報」で、緊急地震速報（警報）ではありません。通知の遅延・欠落があります。避難判断はこのコメントに依存せず、最新の気象庁情報を確認してください。<a href="https://www.jma.go.jp/bosai/map.html#contents=earthquake" target="_blank" rel="noopener noreferrer">気象庁の地震情報</a></div>'+
+  '</div>';
+}
+function renderEarthquakeNoticeUi(){
+ const status=document.getElementById("earthquake-notice-status");
+ if(!status)return;
+ const config=state.earthquakeNotice,runtime=earthquakeNoticeRuntime;
+ const next=config.enabled&&runtime.nextCheckAt?new Date(runtime.nextCheckAt).toLocaleTimeString("ja-JP"):"—";
+ const checked=runtime.lastCheckAt?new Date(runtime.lastCheckAt).toLocaleTimeString("ja-JP"):"未確認";
+ status.textContent=runtime.message+"　最終確認："+checked+"／次回："+next;
+ const last=document.getElementById("earthquake-notice-latest");
+ if(last){
+  const report=runtime.latestReport;
+  const preview=report?window.KananeoEarthquakeNotice.makeOperatorComment(report):"取得済みの地震情報はありません。";
+  last.textContent="最新の取得情報："+preview;
+ }
+ const history=document.getElementById("earthquake-notice-history");
+ if(history){
+  history.innerHTML=config.history.length?config.history.slice(0,8).map(item=>
+   '<div class="earthquake-notice-history-row"><span>'+(item.status==="sent"?"送信済み":item.status==="failed"?"送信失敗":"未送信")+'</span>'+
+   '<b>最大震度'+esc(item.scaleLabel)+'</b><small>'+esc(item.programId||"—")+' / '+esc(item.message)+'</small>'+
+   '<time>'+esc(new Date(item.at).toLocaleString("ja-JP"))+'</time></div>').join("")
+   :'<div class="empty">自動通知の履歴はありません。</div>';
+ }
+ const refresh=document.querySelector("[data-earthquake-check]");
+ if(refresh)refresh.disabled=runtime.busy;
+ const clear=document.querySelector("[data-earthquake-history-clear]");
+ if(clear)clear.disabled=!config.history.length;
+}
+async function runEarthquakeNoticeCheck(force=false,allowPost=true){
+ const runtime=earthquakeNoticeRuntime;
+ if(runtime.busy||(!state.earthquakeNotice.enabled&&!force))return;
+ if(!force&&Date.now()<runtime.nextCheckAt)return;
+ const generation=runtime.generation;
+ runtime.busy=true;
+ runtime.nextCheckAt=Date.now()+state.earthquakeNotice.intervalSeconds*1000;
+ runtime.message="地震情報を取得しています…";
+ renderEarthquakeNoticeUi();
+ try{
+  const result=await window.kananeoApp.niconico.getEarthquakeReports();
+  if(runtime.generation!==generation)return;
+  runtime.lastCheckAt=new Date().toISOString();
+  if(!result?.ok){runtime.message=result?.message||"地震情報を取得できませんでした。";return;}
+  const reports=Array.isArray(result.reports)?result.reports:[];
+  runtime.latestReport=reports.slice().sort((a,b)=>b.reportedAt-a.reportedAt)[0]||null;
+  const first=!runtime.initialized;
+  const plan=window.KananeoEarthquakeNotice.planNotices(reports,state.earthquakeNotice,{
+   seed:first||!allowPost,now:Date.now()
+  });
+  state.earthquakeNotice=plan.settings;
+  runtime.initialized=true;
+  save();
+  if(first){runtime.message="最新の地震情報を初期同期しました。過去分は投稿しません。";return;}
+  if(!state.earthquakeNotice.enabled||!allowPost){
+   runtime.message="最新情報を確認しました（手動確認では投稿しません）。";return;
+  }
+  const latest=plan.candidates.at(-1);
+  if(!latest){runtime.message="新しい対象地震はありません。";return;}
+  const lastAttempt=Date.parse(state.earthquakeNotice.lastPostedAt||"");
+  if(Number.isFinite(lastAttempt)&&Date.now()-lastAttempt<window.KananeoEarthquakeNotice.MIN_POST_INTERVAL_MS){
+   runtime.message="対象地震を取得しましたが、連投防止のため通知を省略しました。";return;
+  }
+  const own=await window.kananeoApp.niconico.getOwnBroadcast();
+  if(runtime.generation!==generation||!state.earthquakeNotice.enabled)return;
+  const live=Array.isArray(own?.programs)?own.programs.filter(item=>
+   ["ON_AIR","ONAIR"].includes(String(item?.programStatus||"").toUpperCase())&&/^lv\d{1,12}$/i.test(String(item?.programId||""))):[];
+  const selected=live.find(item=>item.programId.toLowerCase()===String(state.lastProgramId||"").toLowerCase())||live[0];
+  if(!selected){
+   runtime.message="対象地震はありますが、自分の配信中の番組を確認できないため投稿しません。";
+   return;
+  }
+  const programId=selected.programId.toLowerCase();
+  const text=window.KananeoEarthquakeNotice.makeOperatorComment(latest);
+  if(!text){runtime.message="安全に整形できない情報のため投稿を中止しました。";return;}
+  // 投稿の最終段階でmainプロセスが情報IDの実在・時刻・配信主所有権を再確認する。
+  const response=await postAutomatedBroadcasterComment(programId,text,
+   ()=>runtime.generation===generation&&state.earthquakeNotice.enabled===true,
+   ()=>window.kananeoApp.niconico.postEarthquakeNotice({programId,reportId:latest.id}));
+  if(runtime.generation!==generation)return;
+  if(response?.code==="COMMENT_CANCELLED"){runtime.message="設定が変更されたため投稿を中止しました。";return;}
+  state.earthquakeNotice.lastPostedAt=new Date().toISOString();
+  if(response?.ok){
+   state.earthquakeNotice.postedKeys=[...new Set([...state.earthquakeNotice.postedKeys,latest.key])].slice(-120);
+  }
+  state.earthquakeNotice=window.KananeoEarthquakeNotice.appendHistory(state.earthquakeNotice,{
+   reportId:latest.id,scaleLabel:latest.scaleLabel,programId,status:response?.ok?"sent":"failed",
+   message:response?.ok?"運営コメントを投稿しました。":(response?.message||response?.code||"投稿エラー")
+  });
+  runtime.message=response?.ok?"地震情報を自分の放送へ運営コメントで通知しました。":
+   "運営コメントの送信に失敗しました："+String(response?.message||response?.code||"不明").slice(0,110);
+  save();
+ }catch(error){
+  runtime.message="地震情報の確認エラー："+String(error?.message||"通信失敗").slice(0,110);
+ }finally{
+  runtime.busy=false;
+  runtime.nextCheckAt=Date.now()+state.earthquakeNotice.intervalSeconds*1000;
+  if(page==="broadcast"||page==="monitor")renderEarthquakeNoticeUi();
+ }
+}
+
 function updateBroadcastOverview(){
  const title=document.getElementById("broadcast-overview-title");
  const status=document.getElementById("broadcast-overview-status");
