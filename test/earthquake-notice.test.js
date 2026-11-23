@@ -17,6 +17,8 @@ test("only normalizes JMA earthquake information, not EEW or crowdsourced report
  assert.equal(e.normalizeReport({...quake(),id:""}),null);
  assert.equal(e.normalizeReport({...quake(),earthquake:{maxScale:40}}),null);
  assert.equal(e.normalizeReport({...quake(),issue:{correct:"Cancel"}}),null);
+ const missingMagnitude=quake();missingMagnitude.earthquake.hypocenter.magnitude=null;
+ assert.equal(e.normalizeReport(missingMagnitude).magnitude,null);
 });
 test("maps shindo to correct labels and handles the estimated 5-lower scale safely",()=>{
  assert.deepEqual([10,20,30,40,45,50,55,60,70].map(n=>e.normalizeReport(quake("report-"+n,n)).scaleLabel),
