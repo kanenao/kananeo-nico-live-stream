@@ -863,3 +863,7 @@ input[type="range"]{accent-color:#8c7cff;cursor:pointer}
   .broadcast-player-body{height:clamp(220px,32vh,350px)}
   .broadcast-comments-panel .ncv-comment-list{min-height:220px}
 }
+
+/* Keep the native video viewport aligned with the taller comment feed. */
+.broadcast-video-column>.broadcast-player-body{flex:1 1 auto;min-height:292px}
+@media(max-height:660px){.broadcast-video-column>.broadcast-player-body{min-height:220px}}
