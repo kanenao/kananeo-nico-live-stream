@@ -101,10 +101,11 @@ function setAutoLiveQuoteMessage(message){
  const node=document.getElementById("request-auto-status");
  if(node)node.textContent="自動再生の状態："+autoLiveQuoteMessage;
 }
-const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,stockAutoPlay:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,autoPlayOnOwnLive:false,lastAutoPlayProgramId:"",nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true,autoOnQuote:false,announceResults:true},automation:{autoNext:false,autoCreate:false,autoStartProgram:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,autoVideo:false,notifyOnLive:false,ownAccount:true,targets:[],history:[]},liveVideoZoom:{zoomMode:"auto",zoomPercent:70},logs:["β2 UIプロトタイプを起動しました"]};
+const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,stockAutoPlay:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,autoPlayOnOwnLive:false,lastAutoPlayProgramId:"",nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true,autoOnQuote:false,announceResults:true},automation:{autoNext:false,autoCreate:false,autoStartProgram:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,autoVideo:false,notifyOnLive:false,ownAccount:true,targets:[],history:[]},rankingMonitor:{enabled:true,intervalSeconds:60,snapshots:{},history:[],lastCheckedAt:"",userId:"",programs:[]},liveVideoZoom:{zoomMode:"auto",zoomPercent:70},logs:["β2 UIプロトタイプを起動しました"]};
 let remoteAuditEntries=[],remoteAuditFilters={query:"",type:"all",from:"",to:""},remoteAuditNotificationEnabled=true;
 let state=load(),page="dashboard";
 let streamMonitorRuntime={busy:false,nextCheckAt:0,lastCheckAt:"",message:"監視は停止中です。",checked:0,generation:0};
+let rankingMonitorRuntime={busy:false,nextCheckAt:0,lastCheckAt:"",message:"配信開始を待っています。"};
 let registeredMonitorStatus={enabled:false,message:"登録ユーザーの監視は停止中です。",lastCheckAt:""};
 let autoNextRuntime={enabled:false,busy:false,armedProgramId:"",phase:"disabled",message:"自動次枠監視は停止中です。"};
 function load(){
@@ -121,6 +122,7 @@ loaded.player.quoteProgramId="";
 loaded.player.quoteExpectedEndAt=0;
 loaded.player.quotePollAutoSuspended=false;
 loaded.streamMonitor={...window.KananeoStreamMonitor.normalizeStreamMonitorSettings(stored.streamMonitor),ownAccount:true,history:window.KananeoStreamMonitorHistory.normalizeHistory(stored.streamMonitor?.history)};
+ loaded.rankingMonitor=window.KananeoRankingMonitor.normalizeRankingMonitorState(stored.rankingMonitor);
 loaded.liveVideoZoom={zoomMode:stored?.liveVideoZoom?.zoomMode==="manual"?"manual":"auto",zoomPercent:Number.isFinite(Number(stored?.liveVideoZoom?.zoomPercent))?Math.max(35,Math.min(125,Math.round(Number(stored.liveVideoZoom.zoomPercent)))):70};
 loaded.playback={...initial.playback,...(stored.playback||{})};
 loaded.automation={...initial.automation,...(stored.automation||{})};
@@ -168,6 +170,106 @@ function renderStreamMonitorUi(){
  const start=document.querySelector("[data-stream-monitor-start]"),stop=document.querySelector("[data-stream-monitor-stop]"),check=document.querySelector("[data-stream-monitor-check]");
  if(start)start.disabled=config.enabled||(!rows.length&&!config.ownAccount&&!(config.userIds||[]).length);if(stop)stop.disabled=!config.enabled;if(check)check.disabled=streamMonitorRuntime.busy||(!rows.length&&!config.ownAccount&&!(config.userIds||[]).length);
 }
+
+
+function rankingStatusLabel(snapshot){
+ if(!snapshot)return "未確認";
+ if(snapshot.status==="ranked")return "掲載中";
+ if(snapshot.status==="not-listed")return "掲載なし";
+ if(snapshot.status==="not-live")return "配信待ち";
+ if(snapshot.status==="parse-error")return "解析エラー";
+ if(snapshot.status==="unavailable")return "取得エラー";
+ return "未確認";
+}
+function rankingMetricText(metrics){
+ if(!metrics)return "";
+ return [
+  metrics.points!=null?"ポイント "+Number(metrics.points).toLocaleString("ja-JP"): "",
+  metrics.score!=null?"スコア "+Number(metrics.score).toLocaleString("ja-JP"): "",
+  metrics.viewers!=null?"来場者 "+Number(metrics.viewers).toLocaleString("ja-JP"): "",
+  metrics.comments!=null?"コメント "+Number(metrics.comments).toLocaleString("ja-JP"): ""
+ ].filter(Boolean).join(" / ");
+}
+function renderRankingMonitorUi(){
+ const cards=document.getElementById("ranking-monitor-cards");if(!cards)return;
+ const config=state.rankingMonitor,sources=window.KananeoRankingMonitor.SOURCES;
+ cards.innerHTML=sources.map(source=>{
+  const snapshot=config.snapshots?.[source.id]||null;
+  const status=rankingStatusLabel(snapshot);
+  const rank=snapshot?.status==="ranked"&&snapshot.rank?'<strong class="ranking-rank-number">'+Number(snapshot.rank).toLocaleString("ja-JP")+'<small>位</small></strong>':
+   '<strong class="ranking-rank-placeholder">'+esc(status)+'</strong>';
+  const trend=snapshot?.status==="ranked"&&snapshot.previousRank&&snapshot.rank?
+   (snapshot.previousRank>snapshot.rank?'<span class="ranking-trend up">↑ '+(snapshot.previousRank-snapshot.rank)+'位</span>':
+    snapshot.previousRank<snapshot.rank?'<span class="ranking-trend down">↓ '+(snapshot.rank-snapshot.previousRank)+'位</span>':'<span class="ranking-trend same">→ 変動なし</span>'):'';
+  const best=snapshot?.bestRank?'<span>最高 '+Number(snapshot.bestRank).toLocaleString("ja-JP")+'位</span>':'<span>最高順位 —</span>';
+  const metrics=rankingMetricText(snapshot?.metrics);
+  const checked=snapshot?.checkedAt?new Date(snapshot.checkedAt).toLocaleTimeString("ja-JP"):"未確認";
+  const detail=snapshot?.status==="ranked"?(snapshot.title||snapshot.programId||"配信情報"):
+   snapshot?.status==="not-listed"?"取得した "+Number(snapshot.entriesCount||0).toLocaleString("ja-JP")+" 件の範囲に掲載なし":
+   snapshot?.message||"初回確認を待っています。";
+  return '<article class="ranking-source-card ranking-status-'+esc(snapshot?.status||"pending")+'">'+
+   '<div class="ranking-source-head"><div><b>'+esc(source.name)+'</b><small>'+esc(source.description)+'</small></div><a href="'+esc(source.url)+'" target="_blank" rel="noopener noreferrer">サイト ↗</a></div>'+
+   '<div class="ranking-source-rank">'+rank+trend+'</div>'+
+   '<div class="ranking-source-meta">'+best+'<span>更新 '+esc(checked)+'</span></div>'+
+   '<div class="ranking-source-title" title="'+esc(detail)+'">'+esc(detail)+'</div>'+
+   (metrics?'<div class="ranking-source-metrics">'+esc(metrics)+'</div>':'')+
+   '</article>';
+ }).join("");
+ const statusNode=document.getElementById("ranking-monitor-status");
+ if(statusNode){
+  const next=rankingMonitorRuntime.nextCheckAt?new Date(rankingMonitorRuntime.nextCheckAt).toLocaleTimeString("ja-JP"):"—";
+  const last=config.lastCheckedAt?new Date(config.lastCheckedAt).toLocaleTimeString("ja-JP"):"未確認";
+  statusNode.textContent=rankingMonitorRuntime.message+"　最終確認："+last+(config.enabled?"　次回："+next:"　監視停止中");
+ }
+ const history=document.getElementById("ranking-monitor-history");
+ if(history){
+  const rows=(config.history||[]).slice(0,12);
+  history.innerHTML=rows.length?rows.map(item=>{
+   const source=sources.find(x=>x.id===item.sourceId);
+   return '<div class="ranking-history-row"><span>'+esc(source?.name||item.sourceId)+'</span><b>'+Number(item.previousRank).toLocaleString("ja-JP")+'位 → '+Number(item.rank).toLocaleString("ja-JP")+'位</b><small>'+esc(item.title||item.programId)+'</small><time>'+esc(new Date(item.at).toLocaleString("ja-JP"))+'</time></div>';
+  }).join(""):'<div class="empty">順位の変動履歴はまだありません。</div>';
+ }
+ const refresh=document.querySelector("[data-ranking-monitor-check]");
+ if(refresh)refresh.disabled=rankingMonitorRuntime.busy;
+ const clear=document.querySelector("[data-ranking-monitor-history-clear]");
+ if(clear)clear.disabled=!config.history?.length;
+}
+async function runRankingMonitorCheck(force=false){
+ const config=state.rankingMonitor;
+ if(!config.enabled&&!force)return;
+ if(rankingMonitorRuntime.busy)return;
+ if(!force&&Date.now()<rankingMonitorRuntime.nextCheckAt)return;
+ rankingMonitorRuntime.busy=true;
+ rankingMonitorRuntime.nextCheckAt=Date.now()+(config.intervalSeconds||60)*1000;
+ rankingMonitorRuntime.message="3つのランキングサイトを確認しています…";
+ renderRankingMonitorUi();
+ try{
+  const result=await window.kananeoApp.niconico.checkOwnRanking();
+  if(!result?.ok){
+   rankingMonitorRuntime.message=result?.message||"ログイン状態を確認できません。";
+   rankingMonitorRuntime.lastCheckAt=new Date().toISOString();
+   return;
+  }
+  const checkedAt=result.checkedAt||new Date().toISOString();
+  state.rankingMonitor.userId=String(result.userId||"");
+  state.rankingMonitor.programs=Array.isArray(result.programs)?result.programs:[];
+  for(const item of result.results||[])state.rankingMonitor=window.KananeoRankingMonitor.applyRankingSnapshot(state.rankingMonitor,item,checkedAt);
+  state.rankingMonitor.lastCheckedAt=checkedAt;
+  const ranked=(result.results||[]).filter(item=>item.status==="ranked").length;
+  const unavailable=(result.results||[]).filter(item=>["unavailable","parse-error"].includes(item.status)).length;
+  rankingMonitorRuntime.lastCheckAt=checkedAt;
+  if(result.status==="not-live")rankingMonitorRuntime.message="自分の配信は現在検出されていません。配信開始後に自動で順位を確認します。";
+  else rankingMonitorRuntime.message="ランキング確認完了：掲載 "+ranked+"/3 サイト"+(unavailable?"・取得できないサイト "+unavailable+" 件":"");
+  save();
+ }catch(error){
+  rankingMonitorRuntime.message="ランキング確認エラー："+String(error?.message||"通信エラー").slice(0,120);
+ }finally{
+  rankingMonitorRuntime.busy=false;
+  rankingMonitorRuntime.nextCheckAt=Date.now()+(state.rankingMonitor.intervalSeconds||60)*1000;
+  if(page==="monitor")renderRankingMonitorUi();
+ }
+}
+function clearRankingMonitorHistory(){state.rankingMonitor.history=[];save();renderRankingMonitorUi();}
 
 async function maybeAutoPlayOnOwnLive(info){
  const id=String(info?.programId||"").toLowerCase();
@@ -254,7 +356,7 @@ function applyOwnMonitorStatus(status){
  if(!status||typeof status!=="object")return;
  ownMonitorStatus=status;
  for(const item of status.activePrograms||[])void maybeAutoPlayOnOwnLive(item);
- if(page==="monitor")renderStreamMonitorUi();
+ if(page==="monitor"){renderStreamMonitorUi();renderRankingMonitorUi();}
 }
 async function handleOwnBroadcastLive(info){
  const programId=String(info?.programId||"").toLowerCase();
@@ -265,7 +367,7 @@ async function handleOwnBroadcastLive(info){
   state.streamMonitor.targets.unshift(target);
  }
  if(target){target.status="onAir";target.title=String(info.title||programId).slice(0,200);}
- if(state.streamMonitor.lastOwnNotifiedProgramId===programId){save();if(page==="monitor")renderStreamMonitorUi();return;}
+ if(state.streamMonitor.lastOwnNotifiedProgramId===programId){save();if(page==="monitor"){renderStreamMonitorUi();renderRankingMonitorUi();}return;}
  state.streamMonitor.lastOwnNotifiedProgramId=programId;
  addStreamMonitorHistory("live",programId,"自分の放送開始を自動検知しました。");
  save();void adoptCreatedBroadcast(programId);
@@ -279,7 +381,7 @@ async function handleOwnBroadcastLive(info){
   const result=await window.kananeoApp.niconico.openLiveVideo(programId);
   if(result?.ok){liveVideoState={open:true,status:"loading",programId,message:"自分の放送画面を表示しています。"};page="broadcast";render();}
  }
- if(page==="monitor")renderStreamMonitorUi();
+ if(page==="monitor"){renderStreamMonitorUi();renderRankingMonitorUi();}
 }
 function saveStreamMonitorSettings(){
  const textarea=document.getElementById("stream-monitor-targets");
@@ -421,7 +523,7 @@ async function checkAutoNextFrame(){
 function applyRegisteredMonitorStatus(status){
  if(!status||typeof status!=="object")return;
  registeredMonitorStatus=status;
- if(page==="monitor")renderStreamMonitorUi();
+ if(page==="monitor"){renderStreamMonitorUi();renderRankingMonitorUi();}
 }
 async function syncRegisteredUserMonitor(){
  if(!window.kananeoApp?.niconico?.configureRegisteredUserMonitor)return;
@@ -456,7 +558,7 @@ async function onRegisteredUserLive(info){
   if(!active)void startComments(id);
   else if(commentConnection.programId.toLowerCase()!==id)addStreamMonitorHistory("info",id,"別番組のコメント受信中につき自動切替を保留しました。");
  }
- if(page==="monitor")renderStreamMonitorUi();
+ if(page==="monitor"){renderStreamMonitorUi();renderRankingMonitorUi();}
 }
 function startStreamMonitor(){
  if(!state.streamMonitor.targets?.length&&!state.streamMonitor.userIds?.length){toast("自分の放送監視は常時稼働中です。追加のユーザーや番組を登録してください。");return;}
@@ -906,6 +1008,7 @@ panel("番組枠の作成・終了","作成後の自動番組開始と、開始�
 }else if(page==="monitor"){
 html=hero("LIVE MONITOR","24時間放送監視","自分の放送と登録配信者をアプリ起動中に監視します。アプリ終了時・PCスリープ中は監視できません。")+
 panel("24時間放送監視","登録した番組ページをアプリ起動中に定期確認します。放送開始時は通知し、任意でコメント取得を自動開始します。",'<div class="row"><div><b>ログイン中の自分の放送を自動監視：常時ON</b><small>起動後すぐに監視開始。セッション切れでも再ログイン後に自動復帰します（約15秒間隔）。</small></div><button class="btn" type="button" data-own-monitor-check>今すぐ確認</button></div><div class="field"><label>登録する配信者のユーザーID・プロフィールURL（1行に1件、最大30人）</label><textarea class="input" id="stream-monitor-users" rows="3" placeholder="12345678\nhttps://www.nicovideo.jp/user/12345678">'+esc((state.streamMonitor.userIds||[]).join("\n"))+'</textarea></div><div class="field"><label>追加で監視する放送ID・公式番組URL（1行に1件、最大50件）</label><textarea class="input" id="stream-monitor-targets" rows="4" placeholder="lv123456789\nlv987654321">'+esc((state.streamMonitor.targets||[]).map(x=>x.programId).join("\n"))+'</textarea></div><div class="grid2"><div class="field"><label>確認間隔</label><select class="input" id="stream-monitor-interval"><option value="30" '+(state.streamMonitor.intervalSeconds===30?"selected":"")+'>30秒</option><option value="60" '+(state.streamMonitor.intervalSeconds===60?"selected":"")+'>1分</option><option value="120" '+(state.streamMonitor.intervalSeconds===120?"selected":"")+'>2分</option><option value="300" '+(state.streamMonitor.intervalSeconds===300?"selected":"")+'>5分</option></select></div><label class="switchrow"><span><b>放送開始時にコメント取得</b><small>受信コメントをPC内へ保存します。別番組を受信中は切り替えません。</small></span><input type="checkbox" id="stream-monitor-auto-comments" '+(state.streamMonitor.autoComments?"checked":"")+'></label></div><label class="switchrow"><span><b>新規放送を検知したら放送画面も自動表示</b><small>既に別の放送画面を表示している場合は自動切替しません。初期OFF。</small></span><input type="checkbox" id="stream-monitor-auto-video" '+(state.streamMonitor.autoVideo?"checked":"")+'></label><label class="switchrow"><span><b>登録配信者が放送開始したらWindows通知</b><small>アプリを最小化していても、新しい放送を初めて検知したとき通知します。初期OFF。アプリ起動中のみ。</small></span><input type="checkbox" id="stream-monitor-notify-live" '+(state.streamMonitor.notifyOnLive?"checked":"")+'></label><div class="actions"><button class="btn" type="button" data-stream-monitor-own-fetch>自分の番組を取得</button><button class="btn" type="button" data-stream-monitor-save>監視対象を保存</button><button class="btn primary" type="button" data-stream-monitor-start '+(state.streamMonitor.enabled?"disabled":"")+'>監視開始</button><button class="btn danger" type="button" data-stream-monitor-stop '+(!state.streamMonitor.enabled?"disabled":"")+'>監視停止</button><button class="btn" type="button" data-stream-monitor-check>今すぐ確認</button></div><div id="stream-monitor-status" class="section"></div><div class="muted">アカウント放送履歴は非公開APIに依存します。監視停止・対象変更時は処理中の古い確認結果を破棄します。監視はアプリが起動している間に動作します。PCのスリープ中・アプリ終了中は確認できません。登録ユーザーの監視はElectron本体で動作します。自動連携は放送IDの追加、任意のコメント受信・映像表示です。映像ファイルの自動録画は未実装です。</div>')+
+panel("配信ランキング監視","自分の配信が3サイトのランキングで何位かを自動確認します。順位の変動と最高順位を保存します。",'<div class="ranking-monitor-controls"><label class="switchrow"><span><b>配信ランキングを自動監視</b><small>ログイン中のアカウントと放送中の番組を自動判定します。</small></span><input type="checkbox" id="ranking-monitor-enabled" '+(state.rankingMonitor.enabled?"checked":"")+'></label><div class="field"><label>確認間隔</label><select class="input" id="ranking-monitor-interval"><option value="60" '+(state.rankingMonitor.intervalSeconds===60?"selected":"")+'>1分</option><option value="90" '+(state.rankingMonitor.intervalSeconds===90?"selected":"")+'>90秒</option><option value="120" '+(state.rankingMonitor.intervalSeconds===120?"selected":"")+'>2分</option><option value="300" '+(state.rankingMonitor.intervalSeconds===300?"selected":"")+'>5分</option></select></div><button class="btn primary" type="button" data-ranking-monitor-check '+(rankingMonitorRuntime.busy?"disabled":"")+'>3サイトを今すぐ確認</button></div><div id="ranking-monitor-status" class="ranking-monitor-status">初回確認を待っています。</div><div id="ranking-monitor-cards" class="ranking-source-grid"></div><div class="ranking-history-heading"><div><b>順位変動履歴</b><small>順位が変わったときだけ記録します。</small></div><button class="btn" type="button" data-ranking-monitor-history-clear '+(!state.rankingMonitor.history.length?"disabled":"")+'>履歴を削除</button></div><div id="ranking-monitor-history" class="ranking-monitor-history"></div><div class="muted">各サイトの集計方法・掲載対象・更新タイミングは異なります。「掲載なし」は取得できたランキング範囲内に見つからなかった状態です。通信失敗やページ構造変更は「取得エラー」として区別します。ログインCookieは外部ランキングサイトへ送信しません。</div>')+
 '<div class="banner"><i class="led"></i><div><b>監視を継続するには</b><small>アプリを起動したままにしてください。自分の放送は起動中に自動監視されます。追加対象は「監視開始」を有効にしてください。</small></div></div>';
 }else if(page==="voice"){
 const speechAvailable=!!(window.speechSynthesis&&typeof window.SpeechSynthesisUtterance==="function");
@@ -957,7 +1060,7 @@ renderInAppUpdateNotice();
 if(page==="dashboard")renderDashboardAlphaUpdateStatus();
 if(page==="broadcast"){renderBroadcastToolsUi();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();}
 if(page==="programs")renderBroadcastManageVerification();
-if(page==="monitor")renderStreamMonitorUi();
+if(page==="monitor"){renderStreamMonitorUi();renderRankingMonitorUi();}
 updateLiveVideoBounds();
 if(page==="voice"){renderSpeechVoices();updateSpeechQueueUi();}
 if(page==="settings"){renderUpdateCheck();renderAutoUpdateStatus();}
@@ -3298,6 +3401,8 @@ if(b.hasAttribute("data-stream-monitor-history-clear")){
  return;
 }
 if(b.hasAttribute("data-own-monitor-check")){const result=await window.kananeoApp.niconico.checkOwnMonitor?.();if(result?.phase)applyOwnMonitorStatus(result);return;}
+ if(b.hasAttribute("data-ranking-monitor-check")){void runRankingMonitorCheck(true);return;}
+ if(b.hasAttribute("data-ranking-monitor-history-clear")){clearRankingMonitorHistory();toast("順位変動履歴を削除しました。");return;}
 if(b.hasAttribute("data-stream-monitor-check")){void runStreamMonitorCheck(true);void window.kananeoApp.niconico.checkRegisteredUserMonitor?.();return;}
 if(b.hasAttribute("data-broadcast-comment-start")){
  const id=document.getElementById("broadcast-watch-id")?.value.trim()||liveVideoState.programId||commentConnection.programId||state.lastProgramId||"";
@@ -3670,6 +3775,7 @@ document.addEventListener("change",e=>{
   if(enabled){for(const item of ownMonitorStatus.activePrograms||[])void maybeAutoPlayOnOwnLive(item);}
  }
 });
+document.addEventListener("change",e=>{if(e.target.id==="ranking-monitor-enabled"){state.rankingMonitor.enabled=e.target.checked;save();rankingMonitorRuntime.nextCheckAt=0;rankingMonitorRuntime.message=e.target.checked?"ランキング監視を開始しました。":"ランキング監視を停止しました。";renderRankingMonitorUi();if(e.target.checked)void runRankingMonitorCheck(true);}if(e.target.id==="ranking-monitor-interval"){state.rankingMonitor.intervalSeconds=[60,90,120,300].includes(Number(e.target.value))?Number(e.target.value):60;save();rankingMonitorRuntime.nextCheckAt=0;renderRankingMonitorUi();if(state.rankingMonitor.enabled)void runRankingMonitorCheck(true);}});
 document.addEventListener("change",e=>{if(e.target.id==="release-history-type"){releaseHistoryState.type=e.target.value;renderReleaseHistoryRows();}if(e.target.id==="stream-monitor-interval"||e.target.id==="stream-monitor-auto-comments"){if(e.target.id==="stream-monitor-interval")state.streamMonitor.intervalSeconds=Number(e.target.value)||60;else state.streamMonitor.autoComments=e.target.checked;save();}if(e.target.id==="remote-audit-notification-enabled"){const enabled=e.target.checked;void window.kananeoApp.remote.setNotificationSettings({enabled}).then(result=>{if(result?.ok){remoteAuditNotificationEnabled=enabled;toast(enabled?"異常アクセス通知をONにしました。":"異常アクセス通知をOFFにしました。");}else{e.target.checked=remoteAuditNotificationEnabled;toast(result?.message||"通知設定を保存できませんでした。");}}).catch(()=>{e.target.checked=remoteAuditNotificationEnabled;toast("通知設定を保存できませんでした。");});}});
 document.addEventListener("change",e=>{if(e.target.id==="broadcast-comment-type"){broadcastCommentType=e.target.value;renderBroadcastComments();}if(e.target.id==="library-sort"){librarySort=e.target.value;renderVideoLibraryRows();}if(e.target.id==="library-source"){librarySource=e.target.value;renderVideoLibraryRows();}});
 document.addEventListener("change",e=>{if(e.target.matches("[data-library-source-check]")){const id=e.target.dataset.librarySourceCheck;if(e.target.checked)librarySourceSelected.add(id);else librarySourceSelected.delete(id);const count=document.getElementById("library-source-selection-count");if(count)count.textContent=librarySourceSelected.size+" 件を選択中";const button=document.querySelector("[data-library-source-import]");if(button){button.disabled=librarySourceSelected.size===0;button.textContent="選択した "+librarySourceSelected.size+" 件を取り込む";}}});
@@ -3827,5 +3933,5 @@ void checkForApplicationUpdates(true);
 if(window.kananeoApp?.updates?.onAutoStatus){window.kananeoApp.updates.onAutoStatus(applyAutoUpdateStatus);void window.kananeoApp.updates.getAutoStatus().then(applyAutoUpdateStatus).catch(()=>{});}
 if(window.kananeoApp?.remote){window.kananeoApp.remote.onRequest(request=>{void handleRemoteControlRequest(request);});}
 if(state.lastProgramId){void refreshDashboardStatistics(true);void refreshQuotePlayback({silent:true});}
-setInterval(()=>{if(state.streamMonitor.enabled&&!streamMonitorRuntime.busy&&Date.now()>=streamMonitorRuntime.nextCheckAt)void runStreamMonitorCheck();updateQuoteScheduleUi();updateQuoteProgressUi();if(page==="remote"&&!remoteControlUi.loading&&Date.now()-remoteControlUi.lastRefreshAt>5000)void refreshRemoteControlUi(true);if(page==="broadcast"){renderBroadcastManageVerification();updateLiveVideoBounds();}if(page==="dashboard"){updateDashboardStatsUi();if(!dashboardStats.loading&&state.lastProgramId&&Date.now()-(Date.parse(dashboardStats.updatedAt)||0)>30000)void refreshDashboardStatistics(true);}},1000);
+setInterval(()=>{if(state.rankingMonitor.enabled&&!rankingMonitorRuntime.busy&&Date.now()>=rankingMonitorRuntime.nextCheckAt)void runRankingMonitorCheck();if(state.streamMonitor.enabled&&!streamMonitorRuntime.busy&&Date.now()>=streamMonitorRuntime.nextCheckAt)void runStreamMonitorCheck();updateQuoteScheduleUi();updateQuoteProgressUi();if(page==="remote"&&!remoteControlUi.loading&&Date.now()-remoteControlUi.lastRefreshAt>5000)void refreshRemoteControlUi(true);if(page==="broadcast"){renderBroadcastManageVerification();updateLiveVideoBounds();}if(page==="dashboard"){updateDashboardStatsUi();if(!dashboardStats.loading&&state.lastProgramId&&Date.now()-(Date.parse(dashboardStats.updatedAt)||0)>30000)void refreshDashboardStatistics(true);}},1000);
 })();
