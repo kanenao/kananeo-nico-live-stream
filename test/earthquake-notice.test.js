@@ -16,6 +16,7 @@ test("only normalizes JMA earthquake information, not EEW or crowdsourced report
  assert.equal(e.normalizeReport({...quake(),code:561}),null);
  assert.equal(e.normalizeReport({...quake(),id:""}),null);
  assert.equal(e.normalizeReport({...quake(),earthquake:{maxScale:40}}),null);
+ assert.equal(e.normalizeReport({...quake(),issue:{correct:"Cancel"}}),null);
 });
 test("maps shindo to correct labels and handles the estimated 5-lower scale safely",()=>{
  assert.deepEqual([10,20,30,40,45,50,55,60,70].map(n=>e.normalizeReport(quake("report-"+n,n)).scaleLabel),
@@ -32,7 +33,7 @@ test("default is off; settings sanitize thresholds and intervals",()=>{
  const v=e.normalizeNoticeSettings({});
  assert.equal(v.enabled,false);
  assert.equal(v.minScale,30);
- assert.equal(v.intervalSeconds,60);
+ assert.equal(v.intervalSeconds,30);
  assert.deepEqual(v.history,[]);
  assert.equal(e.normalizeNoticeSettings({enabled:"yes",minScale:15,intervalSeconds:1}).enabled,false);
  assert.equal(e.normalizeNoticeSettings({enabled:true,minScale:45,intervalSeconds:30}).minScale,45);
