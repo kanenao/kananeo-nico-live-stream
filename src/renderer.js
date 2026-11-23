@@ -651,9 +651,15 @@ if(count)count.textContent=rows.length+" / "+state.userProfiles.length+" 人";
 body.innerHTML=rows.length?rows.map(({profile,index})=>'<tr><td><b>'+esc(profile.nickname||"（表示名なし）")+'</b><div class="muted">'+esc(profile.userId)+'</div></td><td>'+esc(profile.memo||"—")+'</td><td>'+new Date(profile.updatedAt).toLocaleDateString("ja-JP")+'</td><td><button class="btn" data-user-profile-edit="'+index+'">編集</button> <button class="btn" data-user-profile-remove="'+index+'">削除</button></td></tr>').join(""):'<tr><td colspan="4"><div class="empty">'+(state.userProfiles.length?"検索条件に一致するユーザーはいません。":"コテハン登録はまだありません。")+'</div></td></tr>';
 }
 function toast(s){const t=document.getElementById("toast");t.textContent=s;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200)}
-function hero(k,t,d,b=""){return `<div class="hero"><div><div class="eyebrow">${k}</div><h1>${t}</h1><p class="desc">${d}</p></div>${b}</div>`}
-function panel(t,d,body){return `<article class="panel"><h2>${t}</h2><p>${d}</p>${body}</article>`}
-function field(label,id,value="",placeholder=""){return `<div class="field"><label>${label}</label><input class="input" id="${id}" value="${esc(value)}" placeholder="${placeholder}"></div>`}
+let workspaceCardSequence=0;
+function hero(k,t,d,b=""){
+ return `<div class="hero workspace-hero"><div class="workspace-hero-copy"><div class="eyebrow">${k}</div><h1>${t}</h1><p class="desc">${d}</p></div>${b}</div>`;
+}
+function panel(t,d,body){
+ const number=String(++workspaceCardSequence).padStart(2,"0");
+ return `<article class="panel workspace-card"><header class="workspace-card-heading"><span class="workspace-card-mark" aria-hidden="true">◈</span><div class="workspace-card-heading-copy"><span class="workspace-card-eyebrow">MODULE / ${number}</span><h2>${t}</h2><p>${d}</p></div></header><div class="workspace-card-body">${body}</div></article>`;
+}
+function field(label,id,value="",placeholder=""){return `<div class="field"><label for="${id}">${label}</label><input class="input" id="${id}" value="${esc(value)}" placeholder="${placeholder}"></div>`}
 function toggle(id,title,desc,on){return `<div class="switchrow"><div><b>${title}</b><small>${desc}</small></div><input type="checkbox" data-toggle="${id}" ${on?"checked":""}></div>`}
 function remotePermissionLabel(permission){
  return ({"status:read":"状態閲覧","comments:read":"コメント閲覧","player:control":"プレビュー操作","bgm:control":"BGM操作"}[permission]||permission);
@@ -876,8 +882,9 @@ function renderBroadcastLibraryPreview(){
 }
 
 function render(){
+workspaceCardSequence=0;
 document.getElementById("crumb").textContent=names[page];
-document.querySelectorAll("[data-page]").forEach(b=>b.classList.toggle("active",b.dataset.page===page));
+document.querySelectorAll("[data-page]").forEach(b=>{const active=b.dataset.page===page;b.classList.toggle("active",active);if(active)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current");});
 let html="";
 if(page==="dashboard"){
 html=hero("STREAM CONTROL CENTER","配信コントロールセンター","配信に必要な操作を、ひとつの画面からまとめて管理します。",'<button class="btn primary" data-go="broadcast">放送管理を開く</button>')+
@@ -1072,8 +1079,11 @@ const sources=[...new Set(["manual",...videoLibraryData.items.map(item=>item.sou
 const options=sources.map(source=>'<option value="'+esc(source)+'" '+(librarySource===source?"selected":"")+'>'+esc(librarySourceLabel(source))+'</option>').join("");
 html=html.replace('<div class="section"><p id="library-count">','<div class="field"><label>取り込み元で絞り込み</label><select class="input" id="library-source"><option value="">すべて</option>'+options+'</select></div><div class="section"><p id="library-count">');
 }
-document.getElementById("content").innerHTML=html;
-document.getElementById("content").classList.toggle("broadcast-screen-content",page==="broadcast");
+const contentNode=document.getElementById("content");
+contentNode.innerHTML=html;
+contentNode.classList.toggle("broadcast-screen-content",page==="broadcast");
+contentNode.classList.toggle("workspace-page-content",page!=="broadcast");
+contentNode.dataset.workspacePage=page;
 renderInAppUpdateNotice();
 if(page==="dashboard")renderDashboardAlphaUpdateStatus();
 if(page==="broadcast"){renderBroadcastToolsUi();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();renderRankingMonitorUi();updateBroadcastOverview();}
