@@ -956,8 +956,8 @@ panel("受信コメント",'<span id="comment-count">'+receivedComments.length+'
  const isLive=String(state.lastProgramStatus||"").toLowerCase()==="onair"||commentConnection.state==="connected";
  html=
  '<div class="broadcast-console-head">'+
- '<div class="broadcast-console-title"><span class="broadcast-console-kicker">KANANEO / STREAM DESK</span><h1>放送・枠管理</h1><p>映像・コメント・配信中の操作をまとめたコンパクトコントロール画面</p></div>'+
- '<div class="broadcast-console-head-note"><span>01　視聴</span><span>02　コメント</span><span>03　自動運用</span></div>'+
+ '<div class="broadcast-console-title"><span class="broadcast-console-kicker">KANANEO · BROADCAST WORKSPACE</span><h1>放送・枠管理</h1><p>映像・コメント・配信ランキングをひとつのワークスペースで見やすく管理</p></div>'+
+ '<div class="broadcast-console-head-note"><span>視聴</span><span>コメント</span><span>ランキング</span><span>自動運用</span></div>'+
  '</div>'+
  '<section class="broadcast-connection-grid" aria-label="アカウントと放送接続">'+
  '<article class="broadcast-connect-card broadcast-account-card"><div class="broadcast-connect-heading"><b>アカウント</b><span class="broadcast-connect-tag">ACCOUNT</span></div>'+
@@ -973,7 +973,7 @@ panel("受信コメント",'<span id="comment-count">'+receivedComments.length+'
  '</section>'+
  '<div class="broadcast-screen-layout" id="broadcast-screen-layout">'+
  '<section class="broadcast-video-column" aria-label="放送映像">'+
- '<div class="broadcast-player-toolbar"><div class="broadcast-player-title-block"><span class="broadcast-panel-kicker">LIVE WINDOW</span><div class="broadcast-channel-name" id="broadcast-channel-name" title="'+esc(channelTitle)+'">'+esc(channelTitle)+'</div></div>'+
+ '<div class="broadcast-player-toolbar"><div class="broadcast-player-title-block"><span class="broadcast-stage-identity" aria-hidden="true">◈</span><div class="broadcast-stage-heading"><span class="broadcast-panel-kicker">STAGE / 01</span><div class="broadcast-channel-name" id="broadcast-channel-name" title="'+esc(channelTitle)+'">'+esc(channelTitle)+'</div></div></div>'+
  '<div class="broadcast-player-actions"><span class="broadcast-live-badge '+(isLive?"is-live":"")+'" id="broadcast-live-status">'+(isLive?"LIVE":"待機中")+'</span>'+
  '<button type="button" class="broadcast-icon-button" data-live-video-mute title="'+(liveVideoMuted?"音声をON":"音声をミュート")+'" aria-label="'+(liveVideoMuted?"音声をON":"音声をミュート")+'">'+(liveVideoMuted?"🔇":"🔊")+'</button>'+
  '<button type="button" class="broadcast-icon-button" data-broadcast-comment-start title="コメント受信を開始" aria-label="コメント受信を開始">▤</button>'+
@@ -981,21 +981,21 @@ panel("受信コメント",'<span id="comment-count">'+receivedComments.length+'
  '<button type="button" class="broadcast-icon-button" data-live-video-reload '+(!liveVideoState.open?"disabled":"")+' title="放送画面を更新" aria-label="放送画面を更新">↻</button>'+
  '<button type="button" class="broadcast-icon-button close" data-live-video-close '+(!liveVideoState.open?"disabled":"")+' title="放送画面を閉じる" aria-label="放送画面を閉じる">×</button>'+
  '</div></div>'+
- '<div class="broadcast-player-body"><div id="broadcast-video-slot" class="broadcast-video-slot"><div class="broadcast-video-placeholder"><b>'+(liveVideoState.status==="error"?"放送画面を表示できませんでした":"映像の接続を待っています")+'</b><span>'+esc(liveVideoState.message||"視聴先を設定して、右上の再生ボタンを押してください。")+'</span></div></div></div>'+
- '<form id="broadcast-comment-send-form" class="broadcast-comment-composer"><span class="broadcast-composer-label">運営コメント</span><input id="broadcast-comment-send-input" class="input" maxlength="200" autocomplete="off" placeholder="'+(nicoStatus.authenticated?"放送者コメントを入力":"ログインすると利用できます")+'" '+(!nicoStatus.authenticated||broadcastCommentSending?"disabled":"")+'>'+
- '<button type="button" class="broadcast-icon-button emoji" data-broadcast-emoji title="絵文字を入力">☺</button><button type="submit" class="btn broadcast-send-button" '+(!nicoStatus.authenticated||broadcastCommentSending?"disabled":"")+'>'+(broadcastCommentSending?"送信中…":"送信")+'</button></form>'+
+ '<div class="broadcast-player-body"><div id="broadcast-video-slot" class="broadcast-video-slot"><div class="broadcast-video-placeholder"><div class="broadcast-stage-visual" aria-hidden="true"><span class="broadcast-stage-orbit"></span><span class="broadcast-stage-screen">▶</span></div><b>'+(liveVideoState.status==="error"?"放送画面を表示できませんでした":"映像の接続を待っています")+'</b><span>'+esc(liveVideoState.message||"視聴先を設定して、映像表示ボタンを押してください。")+'</span><span class="broadcast-stage-standby">PREVIEW STANDBY</span></div></div></div>'+
+ '<div class="broadcast-stage-footer"><span><span class="broadcast-stage-footer-light" aria-hidden="true"></span>公式視聴ページを表示します。音声・再読み込みは上の操作ボタンから。</span><b>NICONICO LIVE</b></div>'+
  '</section>'+
  '<aside class="broadcast-comments-panel" aria-label="コメント一覧">'+
- '<div class="broadcast-comments-toolbar"><input class="input" id="broadcast-comment-search" value="'+esc(broadcastCommentSearch)+'" placeholder="コメントを検索" aria-label="コメントを検索">'+
+ '<div class="broadcast-comments-header"><div class="broadcast-comments-heading"><span class="broadcast-comments-symbol" aria-hidden="true">≋</span><div><span class="broadcast-panel-kicker">COMMENT / 02</span><h2>リアルタイムコメント</h2></div></div><span class="broadcast-connection-status '+(active?"connected":"")+'" id="broadcast-comment-status"><i></i><span>'+statusLabel+'</span></span></div>'+
+ '<div class="broadcast-comments-toolbar"><input class="input" id="broadcast-comment-search" value="'+esc(broadcastCommentSearch)+'" placeholder="本文・ユーザー名・IDで検索" aria-label="コメントを検索">'+
  '<button type="button" class="broadcast-small-button" data-broadcast-font-decrease title="文字を小さく">A−</button><button type="button" class="broadcast-small-button" data-broadcast-font-increase title="文字を大きく">A＋</button>'+
- '<span class="broadcast-connection-status '+(active?"connected":"")+'" id="broadcast-comment-status"><i></i><span>'+statusLabel+'</span></span>'+
  '<button type="button" class="broadcast-small-button" data-broadcast-comment-stop '+(!active?"disabled":"")+' title="コメント受信を切断">切断</button>'+
  '<button type="button" class="broadcast-small-button broadcast-ng-toggle '+(broadcastNgFilterEnabled?"active":"")+'" data-broadcast-ng-toggle aria-pressed="'+(broadcastNgFilterEnabled?"true":"false")+'" title="登録済みNGユーザー・NGワードを非表示">'+(broadcastNgFilterEnabled?"NG ON":"NG OFF")+'</button></div>'+
  '<div class="broadcast-current-channel" id="broadcast-current-channel"><i></i><span>'+esc(channelTitle)+'</span><b id="broadcast-comment-count">0件</b></div>'+
  '<div class="broadcast-comment-clear-row"><select class="input" id="broadcast-comment-type"><option value="all" '+(broadcastCommentType==="all"?"selected":"")+'>すべて</option><option value="comment" '+(broadcastCommentType==="comment"?"selected":"")+'>通常</option><option value="operatorComment" '+(broadcastCommentType==="operatorComment"?"selected":"")+'>放送者</option><option value="gift" '+(broadcastCommentType==="gift"?"selected":"")+'>ギフト</option><option value="emotion" '+(broadcastCommentType==="emotion"?"selected":"")+'>エモーション</option><option value="notification" '+(broadcastCommentType==="notification"?"selected":"")+'>通知</option></select>'+
  '<button type="button" class="broadcast-small-button" data-broadcast-comment-clear-user '+(!broadcastCommentUserId?"disabled":"")+'>'+(broadcastCommentUserId?"絞り込み解除":"全ユーザー")+'</button><span id="broadcast-comment-user-filter">全ユーザー</span>'+
  '<button type="button" class="broadcast-small-button" data-broadcast-comments-copy>コピー</button><button type="button" class="broadcast-small-button" data-broadcast-comment-clear>表示クリア</button></div>'+
- '<div id="broadcast-comments-list" class="ncv-comment-list"><div class="empty">コメント受信を開始すると、ここに表示します。</div></div>'+
+ '<div id="broadcast-comments-list" class="ncv-comment-list"><div class="empty broadcast-comments-standby">コメント受信を開始すると、このエリアに時系列で表示します。</div></div>'+
+ '<form id="broadcast-comment-send-form" class="broadcast-comment-composer"><label class="broadcast-composer-label" for="broadcast-comment-send-input">放送者コメント</label><div class="broadcast-comment-compose-row"><input id="broadcast-comment-send-input" class="input" maxlength="200" autocomplete="off" placeholder="'+(nicoStatus.authenticated?"放送者コメントを入力（放送者権限が必要です）":"ログインするとコメントできます")+'" '+(!nicoStatus.authenticated||broadcastCommentSending?"disabled":"")+'><button type="submit" class="btn broadcast-send-button" '+(!nicoStatus.authenticated||broadcastCommentSending?"disabled":"")+'>'+(broadcastCommentSending?"送信中…":"送信")+'</button></div></form>'+
  '<details class="broadcast-comment-extra"><summary>詳細表示設定（文字サイズ・列・色）</summary><details class="ncv-display-settings"><summary>表示内容をカスタマイズ</summary><div id="broadcast-comment-settings-controls"></div></details>'+
  '<div class="muted">コメント番号で既読位置を記録できます。投稿者名を押すとユーザーで絞り込み、右クリックでNG登録・コテハン編集ができます。</div></details>'+
  '<div id="broadcast-comment-context" class="ncv-context-menu" hidden></div></aside></div>'+
@@ -3348,15 +3348,6 @@ if(b.hasAttribute("data-broadcast-comment-clear")){
  broadcastCommentClearIndex=receivedComments.length;
  renderBroadcastComments();
  toast("コメント表示をクリアしました。新しいコメントは引き続き表示されます。");
- return;
-}
-if(b.hasAttribute("data-broadcast-emoji")){
- const input=document.getElementById("broadcast-comment-send-input");
- if(input&&!input.disabled){
-  const start=input.selectionStart??input.value.length,end=input.selectionEnd??input.value.length;
-  input.value=input.value.slice(0,start)+"😊"+input.value.slice(end);
-  input.focus();input.setSelectionRange(start+2,start+2);
- }
  return;
 }
 if(b.hasAttribute("data-live-video-open")){
