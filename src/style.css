@@ -1319,3 +1319,84 @@ body{
   .workspace-page-content .row{flex-wrap:wrap}
   .workspace-page-content .actions>.btn{width:auto;max-width:100%}
 }
+
+
+/* Earthquake information: automatic broadcaster-comment panel (alpha.100) */
+.broadcast-earthquake-section{
+  margin:0 0 12px;padding:13px 14px;border:1px solid #487a88;
+  border-radius:14px;background:linear-gradient(133deg,#17394e,#10273b 76%);
+  box-shadow:0 5px 20px #0003;
+}
+.earthquake-notice-shell{min-width:0;color:#eaf6ff}
+.earthquake-notice-intro{display:flex;gap:11px;align-items:center;margin:1px 0 12px}
+.earthquake-notice-icon{
+  display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;
+  border:1px solid #67b2b7;border-radius:11px;background:#1e5664;
+  font-size:18px;color:#98eadb;
+}
+.earthquake-notice-intro>div{min-width:0}
+.earthquake-notice-intro h2{margin:3px 0 3px;font-size:14px;line-height:1.45;color:#f5faff}
+.earthquake-notice-intro p{margin:0;font-size:10px;line-height:1.55;color:#b5d0de}
+.earthquake-notice-shell .switchrow{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  margin:0;padding:11px 3px;border-bottom:1px solid #3b6677;
+}
+.earthquake-notice-shell .switchrow>span{flex:1;min-width:0}
+.earthquake-notice-shell .switchrow b{display:block;font-size:11px;line-height:1.5;color:#ecfaff}
+.earthquake-notice-shell .switchrow small{display:block;margin-top:3px;color:#aac8d7;font-size:10px;line-height:1.5}
+.earthquake-notice-shell .switchrow input{flex:0 0 auto;accent-color:#58dfcc;width:17px;height:17px}
+.earthquake-notice-controls{
+  display:grid;grid-template-columns:minmax(130px,1fr) minmax(120px,1fr) auto;
+  gap:10px;align-items:end;margin:10px 0;
+}
+.earthquake-notice-controls .field{min-width:0;margin:0;display:grid;gap:5px}
+.earthquake-notice-controls label{font-size:10px;color:#c0dbe8}
+.earthquake-notice-controls select{height:36px;width:100%;min-width:0}
+.earthquake-notice-controls .btn{height:36px;white-space:nowrap;min-width:118px}
+.earthquake-notice-status{
+  padding:9px 11px;margin:8px 0;border-radius:8px;background:#113245;
+  border-left:3px solid #53cdbb;color:#d0e7ef;line-height:1.55;font-size:10px;
+}
+.earthquake-notice-latest{
+  padding:10px 11px;border:1px solid #365f72;border-radius:8px;
+  background:#102537;color:#bddde8;font-size:11px;line-height:1.65;
+  overflow-wrap:anywhere;
+}
+.earthquake-notice-history-heading{
+  display:flex;gap:10px;align-items:center;justify-content:space-between;
+  margin:12px 0 8px;
+}
+.earthquake-notice-history-heading b{font-size:11px;color:#ebf8ff}
+.earthquake-notice-history-heading .btn{padding:6px 10px;font-size:10px}
+.earthquake-notice-history{display:grid;gap:6px;max-height:210px;overflow-y:auto}
+.earthquake-notice-history-row{
+  display:grid;grid-template-columns:66px 88px minmax(0,1fr) auto;
+  align-items:center;gap:9px;padding:9px 10px;
+  background:#112b3d;border:1px solid #385e72;border-radius:8px;
+}
+.earthquake-notice-history-row span{
+  font-size:9px;color:#9ae8d9;font-weight:850;
+}
+.earthquake-notice-history-row b{font-size:10px;color:#e4f2fb}
+.earthquake-notice-history-row small{font-size:10px;color:#acc4d3;line-height:1.5;overflow-wrap:anywhere}
+.earthquake-notice-history-row time{font-size:9px;color:#8faabd;white-space:nowrap}
+.earthquake-notice-caution{
+  font-size:10px;color:#b9cbd4;border-top:1px solid #365c6b;
+  line-height:1.7;margin-top:12px;padding-top:9px;
+}
+.earthquake-notice-caution a{color:#9ce9dd;text-decoration:underline;text-underline-offset:2px}
+.workspace-page-content .earthquake-notice-shell .empty{margin:0}
+.workspace-page-content .earthquake-notice-controls .btn{white-space:normal}
+@media(max-width:1100px){
+  .earthquake-notice-controls{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .earthquake-notice-controls .btn{grid-column:1/-1}
+  .earthquake-notice-history-row{grid-template-columns:85px 1fr auto}
+  .earthquake-notice-history-row small{grid-column:1/-1}
+}
+@media(max-width:700px){
+  .earthquake-notice-controls{grid-template-columns:1fr}
+  .earthquake-notice-controls .btn{grid-column:1}
+  .earthquake-notice-intro{align-items:flex-start}
+  .earthquake-notice-history-row{grid-template-columns:1fr 1fr}
+  .earthquake-notice-history-row small,.earthquake-notice-history-row time{grid-column:1/-1}
+}

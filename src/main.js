@@ -52,6 +52,11 @@ const {createNextFrameMonitor}=require("./next-frame-monitor");
 const {createOwnBroadcastMonitor}=require("./own-broadcast-monitor");
 const {buildRegisteredUserHistoryUrl,createRegisteredUserMonitor}=require("./registered-user-monitor");
 const {fetchOwnBroadcastRankings}=require("./ranking-monitor");
+const {fetchEarthquakeReports,isRecent,makeOperatorComment,MIN_POST_INTERVAL_MS}=require("./earthquake-notice");
+const earthquakeReportsCache=new Map();
+const earthquakeAttemptedReportIds=new Set();
+const earthquakeAttemptedKeys=new Set();
+let lastEarthquakeNoticeAttemptAt=0;
 const {validateProgramControl,canMutateProgram,buildProgramMutationRequest,summarizeProgramMutation}=require("./program-control");
 const {validateManualProgramInput}=require("./manual-program-create");
 const {fetchVideoMetadataWithFallback}=require("./video-metadata");
@@ -2594,6 +2599,40 @@ function registerIpcHandlers() {
   ipcMain.handle("niconico:own-broadcast",event=>{
     if(event.sender!==mainWindow?.webContents)return {ok:false,message:"この操作は許可されていません。"};
     return getOwnBroadcast();
+  });
+  ipcMain.handle("niconico:earthquake-reports",async event=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。",reports:[]};
+    const result=await fetchEarthquakeReports();
+    if(result.ok){
+      earthquakeReportsCache.clear();
+      for(const report of result.reports||[])earthquakeReportsCache.set(report.id,report);
+    }
+    return result;
+  });
+  ipcMain.handle("niconico:post-earthquake-notice",async(event,input)=>{
+    if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
+    const programId=String(input?.programId||"").trim().toLowerCase();
+    const reportId=String(input?.reportId||"");
+    if(!/^lv\d{1,12}$/.test(programId)||!/^[\w-]{6,100}$/.test(reportId))
+      return {ok:false,code:"INVALID_INPUT",message:"地震情報または放送IDが不正です。"};
+    const report=earthquakeReportsCache.get(reportId);
+    if(!report||!isRecent(report))return {ok:false,code:"EXPIRED_REPORT",message:"最新の地震情報でないため送信しません。"};
+    if(earthquakeAttemptedReportIds.has(reportId)||earthquakeAttemptedKeys.has(report.key))
+      return {ok:false,code:"DUPLICATE_REPORT",message:"この地震情報は送信済みまたは送信試行済みです。"};
+    const gap=Date.now()-lastEarthquakeNoticeAttemptAt;
+    if(gap<MIN_POST_INTERVAL_MS)
+      return {ok:false,code:"EARTHQUAKE_RATE_LIMITED",message:"地震情報の連投を防止しました。",retryAfterMs:MIN_POST_INTERVAL_MS-gap};
+    const own=await getOwnBroadcast();
+    if(!own?.ok)return {ok:false,code:"OWN_BROADCAST_UNAVAILABLE",message:own?.message||"自分の放送を確認できません。"};
+    const owned=(own.programs||[]).some(item=>String(item.programId||"").toLowerCase()===programId
+      &&["ON_AIR","ONAIR"].includes(String(item.programStatus||"").toUpperCase()));
+    if(!owned)return {ok:false,code:"NOT_OWN_LIVE",message:"自分の放送中の番組以外には地震情報を自動送信しません。"};
+    const text=makeOperatorComment(report);
+    if(!text)return {ok:false,code:"INVALID_REPORT",message:"運営コメントに変換できない地震情報です。"};
+    earthquakeAttemptedReportIds.add(reportId);
+    earthquakeAttemptedKeys.add(report.key);
+    lastEarthquakeNoticeAttemptAt=Date.now();
+    return sendNiconicoBroadcasterComment({programId,text});
   });
   ipcMain.handle("niconico:ranking-monitor-check",async event=>{
     if(event.sender!==mainWindow?.webContents)return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};

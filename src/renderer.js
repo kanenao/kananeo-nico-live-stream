@@ -101,11 +101,12 @@ function setAutoLiveQuoteMessage(message){
  const node=document.getElementById("request-auto-status");
  if(node)node.textContent="自動再生の状態："+autoLiveQuoteMessage;
 }
-const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,stockAutoPlay:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,autoPlayOnOwnLive:false,lastAutoPlayProgramId:"",nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true,autoOnQuote:false,announceResults:true},automation:{autoNext:false,autoCreate:false,autoStartProgram:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,autoVideo:false,notifyOnLive:false,ownAccount:true,targets:[],history:[]},rankingMonitor:{enabled:true,intervalSeconds:60,snapshots:{},history:[],lastCheckedAt:"",userId:"",programs:[]},liveVideoZoom:{zoomMode:"auto",zoomPercent:70},logs:["β2 UIプロトタイプを起動しました"]};
+const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,stockAutoPlay:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,autoPlayOnOwnLive:false,lastAutoPlayProgramId:"",nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true,autoOnQuote:false,announceResults:true},automation:{autoNext:false,autoCreate:false,autoStartProgram:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,autoVideo:false,notifyOnLive:false,ownAccount:true,targets:[],history:[]},rankingMonitor:{enabled:true,intervalSeconds:60,snapshots:{},history:[],lastCheckedAt:"",userId:"",programs:[]},earthquakeNotice:{enabled:false,minScale:30,intervalSeconds:30,seenIds:[],postedKeys:[],lastPostedAt:"",history:[]},liveVideoZoom:{zoomMode:"auto",zoomPercent:70},logs:["β2 UIプロトタイプを起動しました"]};
 let remoteAuditEntries=[],remoteAuditFilters={query:"",type:"all",from:"",to:""},remoteAuditNotificationEnabled=true;
 let state=load(),page="dashboard";
 let streamMonitorRuntime={busy:false,nextCheckAt:0,lastCheckAt:"",message:"監視は停止中です。",checked:0,generation:0};
 let rankingMonitorRuntime={busy:false,nextCheckAt:0,lastCheckAt:"",message:"配信開始を待っています。"};
+let earthquakeNoticeRuntime={busy:false,initialized:false,nextCheckAt:0,lastCheckAt:"",message:"地震情報の自動通知はOFFです。",latestReport:null,generation:0};
 let registeredMonitorStatus={enabled:false,message:"登録ユーザーの監視は停止中です。",lastCheckAt:""};
 let autoNextRuntime={enabled:false,busy:false,armedProgramId:"",phase:"disabled",message:"自動次枠監視は停止中です。"};
 function load(){
@@ -123,6 +124,7 @@ loaded.player.quoteExpectedEndAt=0;
 loaded.player.quotePollAutoSuspended=false;
 loaded.streamMonitor={...window.KananeoStreamMonitor.normalizeStreamMonitorSettings(stored.streamMonitor),ownAccount:true,history:window.KananeoStreamMonitorHistory.normalizeHistory(stored.streamMonitor?.history)};
  loaded.rankingMonitor=window.KananeoRankingMonitor.normalizeRankingMonitorState(stored.rankingMonitor);
+ loaded.earthquakeNotice=window.KananeoEarthquakeNotice.normalizeNoticeSettings(stored.earthquakeNotice);
 loaded.liveVideoZoom={zoomMode:stored?.liveVideoZoom?.zoomMode==="manual"?"manual":"auto",zoomPercent:Number.isFinite(Number(stored?.liveVideoZoom?.zoomPercent))?Math.max(35,Math.min(125,Math.round(Number(stored.liveVideoZoom.zoomPercent)))):70};
 loaded.playback={...initial.playback,...(stored.playback||{})};
 loaded.automation={...initial.automation,...(stored.automation||{})};
@@ -190,6 +192,124 @@ function rankingMetricText(metrics){
   metrics.comments!=null?"コメント "+Number(metrics.comments).toLocaleString("ja-JP"): ""
  ].filter(Boolean).join(" / ");
 }
+
+function earthquakeNoticeMarkup(){
+ const config=state.earthquakeNotice;
+ const options=window.KananeoEarthquakeNotice.SCALE_CODES.map(scale=>
+  '<option value="'+scale+'" '+(config.minScale===scale?"selected":"")+'>震度'+window.KananeoEarthquakeNotice.SCALE_LABELS[scale]+'以上</option>').join("");
+ const interval=[30,60,120,300].map(seconds=>
+  '<option value="'+seconds+'" '+(config.intervalSeconds===seconds?"selected":"")+'>'
+   +(seconds===30?"30秒":seconds===60?"1分":seconds===120?"2分":"5分")+'</option>').join("");
+ return '<div class="earthquake-notice-shell">'+
+  '<div class="earthquake-notice-intro"><span class="earthquake-notice-icon" aria-hidden="true">◉</span><div><span class="broadcast-panel-kicker">EARTHQUAKE / JMA</span><h2>地震情報・運営コメント自動通知</h2><p>気象庁の地震情報（P2P地震情報経由）を確認し、自分の放送中だけ運営コメントに投稿します。</p></div></div>'+
+  '<label class="switchrow"><span><b>地震情報を運営コメントへ自動投稿</b><small>初期OFF。許可した場合のみ、放送中の自分の番組へ投稿します。アプリ終了・スリープ中は監視できません。</small></span><input type="checkbox" id="earthquake-notice-enabled" '+(config.enabled?"checked":"")+'></label>'+
+  '<div class="earthquake-notice-controls"><div class="field"><label for="earthquake-notice-scale">通知する最低震度</label><select class="input" id="earthquake-notice-scale">'+options+'</select></div>'+
+  '<div class="field"><label for="earthquake-notice-interval">取得間隔</label><select class="input" id="earthquake-notice-interval">'+interval+'</select></div>'+
+  '<button class="btn" type="button" data-earthquake-check>最新情報を確認</button></div>'+
+  '<div id="earthquake-notice-status" class="earthquake-notice-status" role="status"></div>'+
+  '<div id="earthquake-notice-latest" class="earthquake-notice-latest"></div>'+
+  '<div class="earthquake-notice-history-heading"><b>運営コメント通知履歴</b><button class="btn" type="button" data-earthquake-history-clear '+(!config.history.length?"disabled":"")+'>履歴を削除</button></div>'+
+  '<div id="earthquake-notice-history" class="earthquake-notice-history"></div>'+
+  '<div class="earthquake-notice-caution">※これは地震発生後に配信される「地震情報」で、緊急地震速報（警報）ではありません。通知の遅延・欠落があります。避難判断はこのコメントに依存せず、最新の気象庁情報を確認してください。<a href="https://www.jma.go.jp/bosai/map.html#contents=earthquake" target="_blank" rel="noopener noreferrer">気象庁の地震情報</a></div>'+
+  '</div>';
+}
+function renderEarthquakeNoticeUi(){
+ const status=document.getElementById("earthquake-notice-status");
+ if(!status)return;
+ const config=state.earthquakeNotice,runtime=earthquakeNoticeRuntime;
+ const next=config.enabled&&runtime.nextCheckAt?new Date(runtime.nextCheckAt).toLocaleTimeString("ja-JP"):"—";
+ const checked=runtime.lastCheckAt?new Date(runtime.lastCheckAt).toLocaleTimeString("ja-JP"):"未確認";
+ status.textContent=runtime.message+"　最終確認："+checked+"／次回："+next;
+ const last=document.getElementById("earthquake-notice-latest");
+ if(last){
+  const report=runtime.latestReport;
+  const preview=report?window.KananeoEarthquakeNotice.makeOperatorComment(report):"取得済みの地震情報はありません。";
+  last.textContent="最新の取得情報："+preview;
+ }
+ const history=document.getElementById("earthquake-notice-history");
+ if(history){
+  history.innerHTML=config.history.length?config.history.slice(0,8).map(item=>
+   '<div class="earthquake-notice-history-row"><span>'+(item.status==="sent"?"送信済み":item.status==="failed"?"送信失敗":"未送信")+'</span>'+
+   '<b>最大震度'+esc(item.scaleLabel)+'</b><small>'+esc(item.programId||"—")+' / '+esc(item.message)+'</small>'+
+   '<time>'+esc(new Date(item.at).toLocaleString("ja-JP"))+'</time></div>').join("")
+   :'<div class="empty">自動通知の履歴はありません。</div>';
+ }
+ const refresh=document.querySelector("[data-earthquake-check]");
+ if(refresh)refresh.disabled=runtime.busy;
+ const clear=document.querySelector("[data-earthquake-history-clear]");
+ if(clear)clear.disabled=!config.history.length;
+}
+async function runEarthquakeNoticeCheck(force=false,allowPost=true){
+ const runtime=earthquakeNoticeRuntime;
+ if(runtime.busy||(!state.earthquakeNotice.enabled&&!force))return;
+ if(!force&&Date.now()<runtime.nextCheckAt)return;
+ const generation=runtime.generation;
+ runtime.busy=true;
+ runtime.nextCheckAt=Date.now()+state.earthquakeNotice.intervalSeconds*1000;
+ runtime.message="地震情報を取得しています…";
+ renderEarthquakeNoticeUi();
+ try{
+  const result=await window.kananeoApp.niconico.getEarthquakeReports();
+  if(runtime.generation!==generation)return;
+  runtime.lastCheckAt=new Date().toISOString();
+  if(!result?.ok){runtime.message=result?.message||"地震情報を取得できませんでした。";return;}
+  const reports=Array.isArray(result.reports)?result.reports:[];
+  runtime.latestReport=reports.slice().sort((a,b)=>b.reportedAt-a.reportedAt)[0]||null;
+  const first=!runtime.initialized;
+  const plan=window.KananeoEarthquakeNotice.planNotices(reports,state.earthquakeNotice,{
+   seed:first||!allowPost,now:Date.now()
+  });
+  state.earthquakeNotice=plan.settings;
+  runtime.initialized=true;
+  save();
+  if(first){runtime.message="最新の地震情報を初期同期しました。過去分は投稿しません。";return;}
+  if(!state.earthquakeNotice.enabled||!allowPost){
+   runtime.message="最新情報を確認しました（手動確認では投稿しません）。";return;
+  }
+  const latest=plan.candidates.at(-1);
+  if(!latest){runtime.message="新しい対象地震はありません。";return;}
+  const lastAttempt=Date.parse(state.earthquakeNotice.lastPostedAt||"");
+  if(Number.isFinite(lastAttempt)&&Date.now()-lastAttempt<window.KananeoEarthquakeNotice.MIN_POST_INTERVAL_MS){
+   runtime.message="対象地震を取得しましたが、連投防止のため通知を省略しました。";return;
+  }
+  const own=await window.kananeoApp.niconico.getOwnBroadcast();
+  if(runtime.generation!==generation||!state.earthquakeNotice.enabled)return;
+  const live=Array.isArray(own?.programs)?own.programs.filter(item=>
+   ["ON_AIR","ONAIR"].includes(String(item?.programStatus||"").toUpperCase())&&/^lv\d{1,12}$/i.test(String(item?.programId||""))):[];
+  const selected=live.find(item=>item.programId.toLowerCase()===String(state.lastProgramId||"").toLowerCase())||live[0];
+  if(!selected){
+   runtime.message="対象地震はありますが、自分の配信中の番組を確認できないため投稿しません。";
+   return;
+  }
+  const programId=selected.programId.toLowerCase();
+  const text=window.KananeoEarthquakeNotice.makeOperatorComment(latest);
+  if(!text){runtime.message="安全に整形できない情報のため投稿を中止しました。";return;}
+  // 投稿の最終段階でmainプロセスが情報IDの実在・時刻・配信主所有権を再確認する。
+  const response=await postAutomatedBroadcasterComment(programId,text,
+   ()=>runtime.generation===generation&&state.earthquakeNotice.enabled===true,
+   ()=>window.kananeoApp.niconico.postEarthquakeNotice({programId,reportId:latest.id}));
+  if(runtime.generation!==generation)return;
+  if(response?.code==="COMMENT_CANCELLED"){runtime.message="設定が変更されたため投稿を中止しました。";return;}
+  state.earthquakeNotice.lastPostedAt=new Date().toISOString();
+  if(response?.ok){
+   state.earthquakeNotice.postedKeys=[...new Set([...state.earthquakeNotice.postedKeys,latest.key])].slice(-120);
+  }
+  state.earthquakeNotice=window.KananeoEarthquakeNotice.appendHistory(state.earthquakeNotice,{
+   reportId:latest.id,scaleLabel:latest.scaleLabel,programId,status:response?.ok?"sent":"failed",
+   message:response?.ok?"運営コメントを投稿しました。":(response?.message||response?.code||"投稿エラー")
+  });
+  runtime.message=response?.ok?"地震情報を自分の放送へ運営コメントで通知しました。":
+   "運営コメントの送信に失敗しました："+String(response?.message||response?.code||"不明").slice(0,110);
+  save();
+ }catch(error){
+  runtime.message="地震情報の確認エラー："+String(error?.message||"通信失敗").slice(0,110);
+ }finally{
+  runtime.busy=false;
+  runtime.nextCheckAt=Date.now()+state.earthquakeNotice.intervalSeconds*1000;
+  if(page==="broadcast"||page==="monitor")renderEarthquakeNoticeUi();
+ }
+}
+
 function updateBroadcastOverview(){
  const title=document.getElementById("broadcast-overview-title");
  const status=document.getElementById("broadcast-overview-status");
@@ -1024,6 +1144,7 @@ panel("受信コメント",'<span id="comment-count">'+receivedComments.length+'
  '<div class="broadcast-ranking-footnote"><span>3サイトの集計方法は異なります。取得エラーと未掲載を区別して表示します。</span><button class="broadcast-ranking-settings" type="button" data-go="monitor">監視設定・順位履歴を開く</button></div></div>'+
  '<div class="broadcast-overview-info"><div class="broadcast-overview-heading"><div class="broadcast-overview-heading-text"><span class="broadcast-overview-icon" aria-hidden="true">◷</span><div><span class="broadcast-panel-kicker">ON AIR / INFO</span><h2>放送情報</h2></div></div></div>'+
  '<dl class="broadcast-overview-details"><div><dt>番組名</dt><dd id="broadcast-overview-title">'+esc(channelTitle)+'</dd></div><div><dt>配信状態</dt><dd id="broadcast-overview-status">'+esc(programStatusLabel(state.lastProgramStatus))+'</dd></div><div><dt>累計来場者</dt><dd id="broadcast-overview-viewers">'+(dashboardStats.watchCount==null?"—":Number(dashboardStats.watchCount).toLocaleString("ja-JP"))+'</dd></div><div><dt>コメント総数</dt><dd id="broadcast-overview-comments">'+(dashboardStats.commentCount==null?"—":Number(dashboardStats.commentCount).toLocaleString("ja-JP"))+'</dd></div><div><dt>放送残り時間</dt><dd id="broadcast-overview-remaining">'+formatRemainingTime()+'</dd></div></dl></div></section>'+
+ '<section class="broadcast-earthquake-section" aria-label="地震情報の運営コメント通知">'+earthquakeNoticeMarkup()+'</section>'+
  '<section class="broadcast-tools-section" aria-label="自動アンケート・引用再生・動画管理"><div id="broadcast-quick-tools" class="broadcast-extras"></div></section>';
 }else if(page==="programs"){
 html=hero("PROGRAM CONTROL","番組枠の作成・終了","番組の新規作成、放送開始・終了と、自分の番組の確認をこのページで行います。")+
@@ -1034,7 +1155,8 @@ panel("番組枠の作成・終了","作成後の自動番組開始と、開始�
 html=hero("LIVE MONITOR","24時間放送監視","自分の放送と登録配信者をアプリ起動中に監視します。アプリ終了時・PCスリープ中は監視できません。")+
 panel("24時間放送監視","登録した番組ページをアプリ起動中に定期確認します。放送開始時は通知し、任意でコメント取得を自動開始します。",'<div class="row"><div><b>ログイン中の自分の放送を自動監視：常時ON</b><small>起動後すぐに監視開始。セッション切れでも再ログイン後に自動復帰します（約15秒間隔）。</small></div><button class="btn" type="button" data-own-monitor-check>今すぐ確認</button></div><div class="field"><label>登録する配信者のユーザーID・プロフィールURL（1行に1件、最大30人）</label><textarea class="input" id="stream-monitor-users" rows="3" placeholder="12345678\nhttps://www.nicovideo.jp/user/12345678">'+esc((state.streamMonitor.userIds||[]).join("\n"))+'</textarea></div><div class="field"><label>追加で監視する放送ID・公式番組URL（1行に1件、最大50件）</label><textarea class="input" id="stream-monitor-targets" rows="4" placeholder="lv123456789\nlv987654321">'+esc((state.streamMonitor.targets||[]).map(x=>x.programId).join("\n"))+'</textarea></div><div class="grid2"><div class="field"><label>確認間隔</label><select class="input" id="stream-monitor-interval"><option value="30" '+(state.streamMonitor.intervalSeconds===30?"selected":"")+'>30秒</option><option value="60" '+(state.streamMonitor.intervalSeconds===60?"selected":"")+'>1分</option><option value="120" '+(state.streamMonitor.intervalSeconds===120?"selected":"")+'>2分</option><option value="300" '+(state.streamMonitor.intervalSeconds===300?"selected":"")+'>5分</option></select></div><label class="switchrow"><span><b>放送開始時にコメント取得</b><small>受信コメントをPC内へ保存します。別番組を受信中は切り替えません。</small></span><input type="checkbox" id="stream-monitor-auto-comments" '+(state.streamMonitor.autoComments?"checked":"")+'></label></div><label class="switchrow"><span><b>新規放送を検知したら放送画面も自動表示</b><small>既に別の放送画面を表示している場合は自動切替しません。初期OFF。</small></span><input type="checkbox" id="stream-monitor-auto-video" '+(state.streamMonitor.autoVideo?"checked":"")+'></label><label class="switchrow"><span><b>登録配信者が放送開始したらWindows通知</b><small>アプリを最小化していても、新しい放送を初めて検知したとき通知します。初期OFF。アプリ起動中のみ。</small></span><input type="checkbox" id="stream-monitor-notify-live" '+(state.streamMonitor.notifyOnLive?"checked":"")+'></label><div class="actions"><button class="btn" type="button" data-stream-monitor-own-fetch>自分の番組を取得</button><button class="btn" type="button" data-stream-monitor-save>監視対象を保存</button><button class="btn primary" type="button" data-stream-monitor-start '+(state.streamMonitor.enabled?"disabled":"")+'>監視開始</button><button class="btn danger" type="button" data-stream-monitor-stop '+(!state.streamMonitor.enabled?"disabled":"")+'>監視停止</button><button class="btn" type="button" data-stream-monitor-check>今すぐ確認</button></div><div id="stream-monitor-status" class="section"></div><div class="muted">アカウント放送履歴は非公開APIに依存します。監視停止・対象変更時は処理中の古い確認結果を破棄します。監視はアプリが起動している間に動作します。PCのスリープ中・アプリ終了中は確認できません。登録ユーザーの監視はElectron本体で動作します。自動連携は放送IDの追加、任意のコメント受信・映像表示です。映像ファイルの自動録画は未実装です。</div>')+
 panel("配信ランキング監視","自分の配信が3サイトのランキングで何位かを自動確認します。順位の変動と最高順位を保存します。",'<div class="ranking-monitor-controls"><label class="switchrow"><span><b>配信ランキングを自動監視</b><small>ログイン中のアカウントと放送中の番組を自動判定します。</small></span><input type="checkbox" id="ranking-monitor-enabled" '+(state.rankingMonitor.enabled?"checked":"")+'></label><div class="field"><label>確認間隔</label><select class="input" id="ranking-monitor-interval"><option value="60" '+(state.rankingMonitor.intervalSeconds===60?"selected":"")+'>1分</option><option value="90" '+(state.rankingMonitor.intervalSeconds===90?"selected":"")+'>90秒</option><option value="120" '+(state.rankingMonitor.intervalSeconds===120?"selected":"")+'>2分</option><option value="300" '+(state.rankingMonitor.intervalSeconds===300?"selected":"")+'>5分</option></select></div><button class="btn primary" type="button" data-ranking-monitor-check '+(rankingMonitorRuntime.busy?"disabled":"")+'>3サイトを今すぐ確認</button></div><div id="ranking-monitor-status" class="ranking-monitor-status">初回確認を待っています。</div><div id="ranking-monitor-cards" class="ranking-source-grid"></div><div class="ranking-history-heading"><div><b>順位変動履歴</b><small>順位が変わったときだけ記録します。</small></div><button class="btn" type="button" data-ranking-monitor-history-clear '+(!state.rankingMonitor.history.length?"disabled":"")+'>履歴を削除</button></div><div id="ranking-monitor-history" class="ranking-monitor-history"></div><div class="muted">各サイトの集計方法・掲載対象・更新タイミングは異なります。「掲載なし」は取得できたランキング範囲内に見つからなかった状態です。通信失敗やページ構造変更は「取得エラー」として区別します。ログインCookieは外部ランキングサイトへ送信しません。</div>')+
-'<div class="banner"><i class="led"></i><div><b>監視を継続するには</b><small>アプリを起動したままにしてください。自分の放送は起動中に自動監視されます。追加対象は「監視開始」を有効にしてください。</small></div></div>';
+panel("地震情報の運営コメント自動通知","最新の地震情報を監視して、配信中の自分の番組だけに運営コメントで投稿します。",earthquakeNoticeMarkup())+
+ '<div class="banner"><i class="led"></i><div><b>監視を継続するには</b><small>アプリを起動したままにしてください。自分の放送は起動中に自動監視されます。追加対象は「監視開始」を有効にしてください。</small></div></div>';
 }else if(page==="voice"){
 const speechAvailable=!!(window.speechSynthesis&&typeof window.SpeechSynthesisUtterance==="function");
 const mutedSpeechRows=(state.voice.mutedUserIds||[]).map(userId=>{
@@ -1089,6 +1211,7 @@ if(page==="dashboard")renderDashboardAlphaUpdateStatus();
 if(page==="broadcast"){renderBroadcastToolsUi();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();renderRankingMonitorUi();updateBroadcastOverview();}
 if(page==="programs")renderBroadcastManageVerification();
 if(page==="monitor"){renderStreamMonitorUi();renderRankingMonitorUi();}
+if(page==="monitor"||page==="broadcast")renderEarthquakeNoticeUi();
 updateLiveVideoBounds();
 if(page==="voice"){renderSpeechVoices();updateSpeechQueueUi();}
 if(page==="settings"){renderUpdateCheck();renderAutoUpdateStatus();}
@@ -2635,7 +2758,7 @@ void processRequestReplyQueue();
 }
 // Serialize poll-result announcements with request acknowledgements to respect
 // Nico's 5-second broadcaster-comment limit and avoid dropping poll notices.
-function postAutomatedBroadcasterComment(programId,text,canSend){
+function postAutomatedBroadcasterComment(programId,text,canSend,poster){
  const permitted=()=>{try{return canSend();}catch{return false;}};
  const send=async()=>{
   if(!permitted())return {ok:false,code:"COMMENT_CANCELLED"};
@@ -2643,7 +2766,7 @@ function postAutomatedBroadcasterComment(programId,text,canSend){
   if(waitMs)await new Promise(resolve=>setTimeout(resolve,waitMs));
   if(!permitted())return {ok:false,code:"COMMENT_CANCELLED"};
   lastRequestReplySentAt=Date.now();
-  try{return await window.kananeoApp.niconico.postBroadcasterComment({programId,text});}
+  try{return await (typeof poster==="function"?poster({programId,text}):window.kananeoApp.niconico.postBroadcasterComment({programId,text}));}
   catch{return {ok:false,code:"SEND_FAILED",message:"運営コメントAPIに接続できませんでした。"};}
  };
  const pending=automatedBroadcasterCommentTail.then(send,send);
@@ -3423,6 +3546,8 @@ if(b.hasAttribute("data-stream-monitor-history-clear")){
 if(b.hasAttribute("data-own-monitor-check")){const result=await window.kananeoApp.niconico.checkOwnMonitor?.();if(result?.phase)applyOwnMonitorStatus(result);return;}
  if(b.hasAttribute("data-ranking-monitor-check")){void runRankingMonitorCheck(true);return;}
  if(b.hasAttribute("data-ranking-monitor-history-clear")){clearRankingMonitorHistory();toast("順位変動履歴を削除しました。");return;}
+ if(b.hasAttribute("data-earthquake-check")){void runEarthquakeNoticeCheck(true,false);return;}
+ if(b.hasAttribute("data-earthquake-history-clear")){state.earthquakeNotice.history=[];save();renderEarthquakeNoticeUi();toast("地震通知の履歴を削除しました。");return;}
 if(b.hasAttribute("data-stream-monitor-check")){void runStreamMonitorCheck(true);void window.kananeoApp.niconico.checkRegisteredUserMonitor?.();return;}
 if(b.hasAttribute("data-broadcast-comment-start")){
  const id=document.getElementById("broadcast-watch-id")?.value.trim()||liveVideoState.programId||commentConnection.programId||state.lastProgramId||"";
@@ -3795,6 +3920,7 @@ document.addEventListener("change",e=>{
   if(enabled){for(const item of ownMonitorStatus.activePrograms||[])void maybeAutoPlayOnOwnLive(item);}
  }
 });
+document.addEventListener("change",e=>{if(e.target.id==="earthquake-notice-enabled"){state.earthquakeNotice.enabled=e.target.checked;earthquakeNoticeRuntime.generation++;earthquakeNoticeRuntime.initialized=false;earthquakeNoticeRuntime.nextCheckAt=0;earthquakeNoticeRuntime.message=e.target.checked?"地震情報を初期同期しています。":"地震情報の自動通知はOFFです。";save();renderEarthquakeNoticeUi();if(e.target.checked)void runEarthquakeNoticeCheck(true,false);}if(e.target.id==="earthquake-notice-scale"){state.earthquakeNotice.minScale=window.KananeoEarthquakeNotice.normalizeScale(e.target.value)||30;save();renderEarthquakeNoticeUi();}if(e.target.id==="earthquake-notice-interval"){state.earthquakeNotice.intervalSeconds=[30,60,120,300].includes(Number(e.target.value))?Number(e.target.value):60;save();earthquakeNoticeRuntime.nextCheckAt=Date.now()+state.earthquakeNotice.intervalSeconds*1000;renderEarthquakeNoticeUi();}});
 document.addEventListener("change",e=>{if(e.target.id==="ranking-monitor-enabled"){state.rankingMonitor.enabled=e.target.checked;save();rankingMonitorRuntime.nextCheckAt=0;rankingMonitorRuntime.message=e.target.checked?"ランキング監視を開始しました。":"ランキング監視を停止しました。";renderRankingMonitorUi();if(e.target.checked)void runRankingMonitorCheck(true);}if(e.target.id==="ranking-monitor-interval"){state.rankingMonitor.intervalSeconds=[60,90,120,300].includes(Number(e.target.value))?Number(e.target.value):60;save();rankingMonitorRuntime.nextCheckAt=0;renderRankingMonitorUi();if(state.rankingMonitor.enabled)void runRankingMonitorCheck(true);}});
 document.addEventListener("change",e=>{if(e.target.id==="release-history-type"){releaseHistoryState.type=e.target.value;renderReleaseHistoryRows();}if(e.target.id==="stream-monitor-interval"||e.target.id==="stream-monitor-auto-comments"){if(e.target.id==="stream-monitor-interval")state.streamMonitor.intervalSeconds=Number(e.target.value)||60;else state.streamMonitor.autoComments=e.target.checked;save();}if(e.target.id==="remote-audit-notification-enabled"){const enabled=e.target.checked;void window.kananeoApp.remote.setNotificationSettings({enabled}).then(result=>{if(result?.ok){remoteAuditNotificationEnabled=enabled;toast(enabled?"異常アクセス通知をONにしました。":"異常アクセス通知をOFFにしました。");}else{e.target.checked=remoteAuditNotificationEnabled;toast(result?.message||"通知設定を保存できませんでした。");}}).catch(()=>{e.target.checked=remoteAuditNotificationEnabled;toast("通知設定を保存できませんでした。");});}});
 document.addEventListener("change",e=>{if(e.target.id==="broadcast-comment-type"){broadcastCommentType=e.target.value;renderBroadcastComments();}if(e.target.id==="library-sort"){librarySort=e.target.value;renderVideoLibraryRows();}if(e.target.id==="library-source"){librarySource=e.target.value;renderVideoLibraryRows();}});
@@ -3946,6 +4072,7 @@ if(window.kananeoApp?.niconico){window.kananeoApp.niconico.getSessionStatus().th
     window.kananeoApp.niconico.onComment(receiveComment);
     window.kananeoApp.niconico.onCommentState(updateCommentConnection);window.kananeoApp.niconico.onVideoState(updateVideoPlayerState);}
 render();
+if(state.earthquakeNotice.enabled)void runEarthquakeNoticeCheck(true,false);
 window.KananeoUiHealth?.markReady();
 void refreshBgmLibrary(true);
 void refreshRemoteLanOptions();
@@ -3953,5 +4080,5 @@ void checkForApplicationUpdates(true);
 if(window.kananeoApp?.updates?.onAutoStatus){window.kananeoApp.updates.onAutoStatus(applyAutoUpdateStatus);void window.kananeoApp.updates.getAutoStatus().then(applyAutoUpdateStatus).catch(()=>{});}
 if(window.kananeoApp?.remote){window.kananeoApp.remote.onRequest(request=>{void handleRemoteControlRequest(request);});}
 if(state.lastProgramId){void refreshDashboardStatistics(true);void refreshQuotePlayback({silent:true});}
-setInterval(()=>{if(state.rankingMonitor.enabled&&!rankingMonitorRuntime.busy&&Date.now()>=rankingMonitorRuntime.nextCheckAt)void runRankingMonitorCheck();if(state.streamMonitor.enabled&&!streamMonitorRuntime.busy&&Date.now()>=streamMonitorRuntime.nextCheckAt)void runStreamMonitorCheck();updateQuoteScheduleUi();updateQuoteProgressUi();if(page==="remote"&&!remoteControlUi.loading&&Date.now()-remoteControlUi.lastRefreshAt>5000)void refreshRemoteControlUi(true);if(page==="broadcast"){renderBroadcastManageVerification();updateLiveVideoBounds();}if(page==="dashboard"){updateDashboardStatsUi();if(!dashboardStats.loading&&state.lastProgramId&&Date.now()-(Date.parse(dashboardStats.updatedAt)||0)>30000)void refreshDashboardStatistics(true);}},1000);
+setInterval(()=>{if(state.earthquakeNotice.enabled&&!earthquakeNoticeRuntime.busy&&Date.now()>=earthquakeNoticeRuntime.nextCheckAt)void runEarthquakeNoticeCheck();if(state.rankingMonitor.enabled&&!rankingMonitorRuntime.busy&&Date.now()>=rankingMonitorRuntime.nextCheckAt)void runRankingMonitorCheck();if(state.streamMonitor.enabled&&!streamMonitorRuntime.busy&&Date.now()>=streamMonitorRuntime.nextCheckAt)void runStreamMonitorCheck();updateQuoteScheduleUi();updateQuoteProgressUi();if(page==="remote"&&!remoteControlUi.loading&&Date.now()-remoteControlUi.lastRefreshAt>5000)void refreshRemoteControlUi(true);if(page==="broadcast"){renderBroadcastManageVerification();updateLiveVideoBounds();}if(page==="dashboard"){updateDashboardStatsUi();if(!dashboardStats.loading&&state.lastProgramId&&Date.now()-(Date.parse(dashboardStats.updatedAt)||0)>30000)void refreshDashboardStatistics(true);}},1000);
 })();
