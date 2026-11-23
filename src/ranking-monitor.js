@@ -53,6 +53,11 @@ function readNumber(value){
  const match=String(value??"").replace(/,/g,"").match(/\d{1,12}/);
  return match?Number(match[0]):null;
 }
+function readSignedNumber(value){
+ if(typeof value==="number"&&Number.isFinite(value))return Math.trunc(value);
+ const match=String(value??"").replace(/,/g,"").match(/-?\d{1,12}/);
+ return match?Number(match[0]):null;
+}
 function parseMetrics(block){
  const text=stripHtml(block);
  const points=text.match(/(\d[\d,]*)\s*points?\b/i)||text.match(/(?:ポイント|pt)\s*[:：]?\s*(\d[\d,]*)/i);
@@ -262,7 +267,7 @@ function normalizeRankingMonitorState(input){
   snapshots[source.id]={
    status:["ranked","not-listed","not-live","unavailable","parse-error"].includes(item.status)?item.status:"unavailable",
    rank:rank&&rank<=100000?rank:null,bestRank:bestRank&&bestRank<=100000?bestRank:null,
-   previousRank:readNumber(item.previousRank),delta:readNumber(item.delta),
+   previousRank:readNumber(item.previousRank),delta:readSignedNumber(item.delta),
    title:safeText(item.title||"",200),programId:normalizeProgramId(item.programId),
    entriesCount:readNumber(item.entriesCount)||0,
    metrics:item.metrics&&typeof item.metrics==="object"?{
@@ -278,7 +283,7 @@ function normalizeRankingMonitorState(input){
   programId:normalizeProgramId(item?.programId),title:safeText(item?.title||"",160),
   at:typeof item?.at==="string"?item.at:""
  })).filter(item=>item.sourceId&&item.at);
- return {enabled:value.enabled!==false,intervalSeconds:[60,90,120,300].includes(interval)?interval:60,snapshots,history};
+ return {enabled:value.enabled!==false,intervalSeconds:[60,90,120,300].includes(interval)?interval:60,snapshots,history,lastCheckedAt:typeof value.lastCheckedAt==="string"?value.lastCheckedAt:"",userId:/^\\d{1,20}$/.test(String(value.userId||""))?String(value.userId):"",programs:Array.isArray(value.programs)?value.programs.slice(0,5).map(item=>({programId:normalizeProgramId(item?.programId),title:safeText(item?.title||"",200)})).filter(item=>item.programId):[]};
 }
 function applyRankingSnapshot(stateInput,result,checkedAt=new Date().toISOString()){
  const state=normalizeRankingMonitorState(stateInput);
