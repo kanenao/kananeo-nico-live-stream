@@ -1,3 +1,4 @@
+(()=>{
 "use strict";
 
 // P2P地震情報で配信される気象庁「地震情報」(code 551) 専用。
@@ -136,3 +137,5 @@ const api={EARTHQUAKE_HISTORY_URL,REQUEST_TIMEOUT_MS,MAX_REPORT_AGE_MS,MIN_POST_
  parseJapanDate,isRecent,planNotices,formatJapanTime,makeOperatorComment,appendHistory,fetchEarthquakeReports};
 if(typeof module!=="undefined"&&module.exports)module.exports=api;
 if(typeof window!=="undefined")window.KananeoEarthquakeNotice=api;
+
+})();
