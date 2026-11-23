@@ -50,7 +50,7 @@ test("a next-frame transition checkpoints the previous program before replacing 
  assert.match(renderer,/if\(quotePlayback\.active&&quotePlayback\.programId!==programId\)finalizeEndedQuotedFrame\(quotePlayback\.programId\)/);
  assert.match(renderer,/const continuation=window\.KananeoQuoteResume\.continueInfo\(state\.playback\.quoteResumeCheckpoint,id\)/);
  assert.match(renderer,/引用再生APIの途中シークが未確認/);
- assert.match(renderer,/id="broadcast-resume-checkpoint"/);
+ assert.match(renderer,/getElementById\("broadcast-resume-checkpoint"\)/);
  assert.match(quick,/id="broadcast-resume-checkpoint"/);
 });
 test("STAGE automatically requests fullscreen on explicit view start and supports exit",()=>{
