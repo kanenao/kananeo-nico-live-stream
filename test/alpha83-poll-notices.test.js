@@ -88,7 +88,7 @@ test("no-request notice respects the existing comment switch and cancels if the 
 });
 test("repeat announcement is posted after a valid repeat plan and before the actual wait",()=>{
  const begin=renderer.indexOf('const plan=timing.repeatPlan(');
- const end=renderer.indexOf('const retryWait=await waitForPoll(plan.delaySeconds*1000,token);',begin);
+ const end=renderer.indexOf('const retryWait=await waitForPoll(plan.delaySeconds*1000,token,"repeat");',begin);
  assert.ok(begin>0&&end>begin);
  const block=renderer.slice(begin,end);
  assert.match(block,/if\(!plan\.ok\)/);

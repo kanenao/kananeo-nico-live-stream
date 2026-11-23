@@ -73,6 +73,7 @@
    '<div class="broadcast-tools-top"><section class="broadcast-tool-card" aria-label="自動アンケート">'+
    '<div class="broadcast-tool-card-head"><h3>自動アンケート</h3><span class="broadcast-tool-state" id="broadcast-poll-state">'+esc(pollLabel(model))+'</span></div>'+
    '<p id="broadcast-poll-message" class="broadcast-tool-description">'+esc(model.pollMessage||"引用再生の開始に連動して投票を管理します。")+'</p>'+
+   '<div id="broadcast-poll-countdown" class="poll-repeat-countdown" role="timer">'+esc(model.pollCountdown||"再投票の待機はありません。")+'</div>'+
    '<label class="broadcast-tool-switch" for="poll-auto-on-quote"><span>引用再生時に自動実行<small>次のリクエストがなければ投票を休止します。</small></span>'+
    '<input type="checkbox" id="poll-auto-on-quote" '+(model.pollEnabled?'checked':"")+'></label>'+
    '<div class="broadcast-tool-actions"><button class="btn primary" type="button" data-poll-start '+(pollBusy?'disabled':"")+'>投票を開始</button>'+
@@ -84,6 +85,7 @@
    '<div class="broadcast-quote-clock"><strong id="broadcast-quote-time">'+esc(clock.time)+'</strong><span>残り <b id="broadcast-quote-remaining">'+esc(clock.remaining)+'</b></span></div>'+
    '<progress id="broadcast-quote-progress" max="100" value="'+clock.percent+'"></progress>'+
    '<p class="broadcast-tool-note" id="broadcast-quote-hint">'+esc(clock.hint)+'</p>'+
+   '<div id="broadcast-resume-checkpoint" class="broadcast-quote-checkpoint">次枠へ引き継ぐ再生位置はまだありません。</div>'+
    '<div class="broadcast-tool-actions"><button class="btn" type="button" data-quote-refresh>引用状態を再確認</button><button class="btn" type="button" data-go="player">時間・再生設定</button></div></section></div>'+
    '<section class="broadcast-tool-card broadcast-tool-requests" aria-label="動画リクエスト・ライブラリ">'+
    '<div class="broadcast-tool-card-head"><div><h3>動画リクエスト・ライブラリ</h3><p>先にリクエストを再生し、保存動画は必要なものだけキューへ追加できます。</p></div>'+
