@@ -955,7 +955,8 @@ function broadcastToolModel(now=Date.now()){
  return {
   pollEnabled:state.poll.autoOnQuote===true,pollStatus:pollRuntime.status,
   pollActive:pollRuntime.active,pollStartPending,
-  waitingForRequests:!!autoPollWaitingForRequestKey,pollMessage:pollRuntime.message,pollCountdown:pollCountdownText(),
+  waitingForRequests:!!autoPollWaitingForRequestKey,pollMessage:pollRuntime.message,
+  pollCountdown:pollRuntime.status==="repeating"&&typeof pollCountdownText==="function"?pollCountdownText():"再投票の待機はありません。",
   quote:{active:quotePlayback.active,verified:quotePlayback.verified,
    videoId:quotePlayback.videoId,title:quotePlayback.item?.title||quotePlayback.videoId,
    progress:currentQuoteProgress(now)},
