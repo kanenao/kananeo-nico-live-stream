@@ -190,6 +190,18 @@ function rankingMetricText(metrics){
   metrics.comments!=null?"コメント "+Number(metrics.comments).toLocaleString("ja-JP"): ""
  ].filter(Boolean).join(" / ");
 }
+function updateBroadcastOverview(){
+ const title=document.getElementById("broadcast-overview-title");
+ const status=document.getElementById("broadcast-overview-status");
+ const viewers=document.getElementById("broadcast-overview-viewers");
+ const comments=document.getElementById("broadcast-overview-comments");
+ const remaining=document.getElementById("broadcast-overview-remaining");
+ if(title)title.textContent=state.lastProgramTitle||liveVideoState.title||liveVideoState.programId||state.lastProgramId||"番組未選択";
+ if(status)status.textContent=programStatusLabel(state.lastProgramStatus);
+ if(viewers)viewers.textContent=dashboardStats.watchCount==null?"—":Number(dashboardStats.watchCount).toLocaleString("ja-JP");
+ if(comments)comments.textContent=dashboardStats.commentCount==null?"—":Number(dashboardStats.commentCount).toLocaleString("ja-JP");
+ if(remaining)remaining.textContent=formatRemainingTime();
+}
 function renderRankingMonitorUi(){
  const cards=document.querySelectorAll("#ranking-monitor-cards, #broadcast-ranking-monitor-cards");if(!cards.length)return;
  const config=state.rankingMonitor,sources=window.KananeoRankingMonitor.SOURCES;
@@ -610,7 +622,7 @@ if(extensionOptionsState.error)toast(extensionOptionsState.error);
 }
 function programStatusLabel(status){return ({onAir:"放送中",ON_AIR:"放送中",test:"テスト放送",reserved:"予約",ended:"終了",ENDED:"終了"}[status]||"状態未確認")}
 function formatRemainingTime(){const end=Number(state.lastProgramEndAt);if(!Number.isFinite(end)||end<=0)return "—";const left=Math.ceil(end-Date.now()/1000);if(left<=0)return "終了予定を超過";const h=Math.floor(left/3600),m=Math.floor((left%3600)/60),sec=left%60;return h?String(h)+"時間"+String(m)+"分":m?String(m)+"分"+String(sec)+"秒":String(sec)+"秒"}
-function updateDashboardStatsUi(){const viewers=document.getElementById("dashboard-viewers"),comments=document.getElementById("dashboard-comments"),requests=document.getElementById("dashboard-requests"),remaining=document.getElementById("dashboard-remaining"),updated=document.getElementById("dashboard-updated"),error=document.getElementById("dashboard-stats-error"),program=document.getElementById("dashboard-program-label"),refresh=document.querySelector("[data-dashboard-refresh]");if(viewers)viewers.textContent=dashboardStats.loading&&dashboardStats.watchCount==null?"取得中…":dashboardStats.watchCount==null?"—":Number(dashboardStats.watchCount).toLocaleString("ja-JP");if(comments)comments.textContent=dashboardStats.loading&&dashboardStats.commentCount==null?"取得中…":dashboardStats.commentCount==null?"—":Number(dashboardStats.commentCount).toLocaleString("ja-JP");if(requests)requests.textContent=String(state.requests.filter(x=>!["completed","skipped"].includes(x.status)).length);if(remaining)remaining.textContent=formatRemainingTime();if(updated)updated.textContent=dashboardStats.updatedAt?"更新："+new Date(dashboardStats.updatedAt).toLocaleTimeString("ja-JP"):dashboardStats.loading?"取得中…":"統計未取得";if(error)error.textContent=dashboardStats.error||"";if(program)program.textContent=state.lastProgramId?(state.lastProgramTitle||state.lastProgramId)+" / "+programStatusLabel(state.lastProgramStatus):"放送ID未設定";if(refresh)refresh.disabled=dashboardStats.loading}
+function updateDashboardStatsUi(){const viewers=document.getElementById("dashboard-viewers"),comments=document.getElementById("dashboard-comments"),requests=document.getElementById("dashboard-requests"),remaining=document.getElementById("dashboard-remaining"),updated=document.getElementById("dashboard-updated"),error=document.getElementById("dashboard-stats-error"),program=document.getElementById("dashboard-program-label"),refresh=document.querySelector("[data-dashboard-refresh]");if(viewers)viewers.textContent=dashboardStats.loading&&dashboardStats.watchCount==null?"取得中…":dashboardStats.watchCount==null?"—":Number(dashboardStats.watchCount).toLocaleString("ja-JP");if(comments)comments.textContent=dashboardStats.loading&&dashboardStats.commentCount==null?"取得中…":dashboardStats.commentCount==null?"—":Number(dashboardStats.commentCount).toLocaleString("ja-JP");if(requests)requests.textContent=String(state.requests.filter(x=>!["completed","skipped"].includes(x.status)).length);if(remaining)remaining.textContent=formatRemainingTime();if(updated)updated.textContent=dashboardStats.updatedAt?"更新："+new Date(dashboardStats.updatedAt).toLocaleTimeString("ja-JP"):dashboardStats.loading?"取得中…":"統計未取得";if(error)error.textContent=dashboardStats.error||"";if(program)program.textContent=state.lastProgramId?(state.lastProgramTitle||state.lastProgramId)+" / "+programStatusLabel(state.lastProgramStatus):"放送ID未設定";if(refresh)refresh.disabled=dashboardStats.loading;updateBroadcastOverview()}
 async function refreshDashboardStatistics(silent=false){const programId=state.lastProgramId||commentConnection.programId;if(!programId){dashboardStats.error="放送IDを確認すると来場者数・コメント数を表示できます。";updateDashboardStatsUi();if(!silent)toast(dashboardStats.error);return;}if(dashboardStats.loading)return;dashboardStats.loading=true;dashboardStats.error="";updateDashboardStatsUi();try{const result=await window.kananeoApp.niconico.getProgramStatistics({programId});if(!result?.ok)throw new Error(result?.message||"番組統計を取得できませんでした。");dashboardStats={loading:false,watchCount:result.watchCount,commentCount:result.commentCount,updatedAt:result.updatedAt||new Date().toISOString(),error:""};}catch(error){dashboardStats.loading=false;dashboardStats.error=error?.message||"番組統計を取得できませんでした。";}updateDashboardStatsUi()}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function findUserProfile(userId){
@@ -999,6 +1011,12 @@ panel("受信コメント",'<span id="comment-count">'+receivedComments.length+'
  '<details class="broadcast-comment-extra"><summary>詳細表示設定（文字サイズ・列・色）</summary><details class="ncv-display-settings"><summary>表示内容をカスタマイズ</summary><div id="broadcast-comment-settings-controls"></div></details>'+
  '<div class="muted">コメント番号で既読位置を記録できます。投稿者名を押すとユーザーで絞り込み、右クリックでNG登録・コテハン編集ができます。</div></details>'+
  '<div id="broadcast-comment-context" class="ncv-context-menu" hidden></div></aside></div>'+
+ '<section class="broadcast-overview-grid" aria-label="配信ランキング監視と放送情報">'+
+ '<div class="broadcast-ranking-panel"><div class="broadcast-overview-heading"><div class="broadcast-overview-heading-text"><span class="broadcast-overview-icon" aria-hidden="true">▥</span><div><span class="broadcast-panel-kicker">RANKING / 03</span><h2>配信ランキング監視</h2></div></div><button class="btn broadcast-ranking-check" type="button" data-ranking-monitor-check '+(rankingMonitorRuntime.busy?"disabled":"")+'>3サイトを更新</button></div>'+
+ '<div id="broadcast-ranking-monitor-status" class="broadcast-ranking-status">ランキング監視データを確認しています。</div><div id="broadcast-ranking-monitor-cards" class="ranking-source-grid broadcast-ranking-cards"></div>'+
+ '<div class="broadcast-ranking-footnote"><span>3サイトの集計方法は異なります。取得エラーと未掲載を区別して表示します。</span><button class="broadcast-ranking-settings" type="button" data-go="monitor">監視設定・順位履歴を開く</button></div></div>'+
+ '<div class="broadcast-overview-info"><div class="broadcast-overview-heading"><div class="broadcast-overview-heading-text"><span class="broadcast-overview-icon" aria-hidden="true">◷</span><div><span class="broadcast-panel-kicker">ON AIR / INFO</span><h2>放送情報</h2></div></div></div>'+
+ '<dl class="broadcast-overview-details"><div><dt>番組名</dt><dd id="broadcast-overview-title">'+esc(channelTitle)+'</dd></div><div><dt>配信状態</dt><dd id="broadcast-overview-status">'+esc(programStatusLabel(state.lastProgramStatus))+'</dd></div><div><dt>累計来場者</dt><dd id="broadcast-overview-viewers">'+(dashboardStats.watchCount==null?"—":Number(dashboardStats.watchCount).toLocaleString("ja-JP"))+'</dd></div><div><dt>コメント総数</dt><dd id="broadcast-overview-comments">'+(dashboardStats.commentCount==null?"—":Number(dashboardStats.commentCount).toLocaleString("ja-JP"))+'</dd></div><div><dt>放送残り時間</dt><dd id="broadcast-overview-remaining">'+formatRemainingTime()+'</dd></div></dl></div></section>'+
  '<section class="broadcast-tools-section" aria-label="自動アンケート・引用再生・動画管理"><div id="broadcast-quick-tools" class="broadcast-extras"></div></section>';
 }else if(page==="programs"){
 html=hero("PROGRAM CONTROL","番組枠の作成・終了","番組の新規作成、放送開始・終了と、自分の番組の確認をこのページで行います。")+
@@ -2483,6 +2501,7 @@ function updateBroadcastLivePanel(){
  if(sendButton){sendButton.disabled=!canSend;sendButton.textContent=broadcastCommentSending?"送信中…":"送信";}
  const ng=document.querySelector("[data-broadcast-ng-toggle]");
  if(ng){ng.classList.toggle("active",broadcastNgFilterEnabled);ng.setAttribute("aria-pressed",broadcastNgFilterEnabled?"true":"false");ng.textContent=broadcastNgFilterEnabled?"NG":"NG OFF";}
+ updateBroadcastOverview();
 }
 function applyLiveVideoState(state){
  if(!state||typeof state!=="object")return;
@@ -3238,7 +3257,7 @@ if(page==="changelog")renderReleaseHistoryRows();
 if(page==="dashboard"&&updateCheckState.result?.updateAvailable)render();
 if(!silent&&updateCheckState.error)toast(updateCheckState.error);
 }
-function go(p){if(p!=="broadcast")hideBroadcastCommentContextMenu();page=p;render();if(p==="dashboard")void refreshDashboardStatistics(true);if(p==="player"){void refreshQuotePlayback();if(!bgmTracks.length&&!bgmLoading)void refreshBgmLibrary(true);}if(p==="comments")renderComments();if(p==="library"){void refreshVideoLibrary();renderVideoLibraryRows();}if(p==="users")renderUserProfileRows();if(p==="remote")void refreshRemoteControlUi(true);if(p==="changelog"&&!releaseHistoryState.items.length)void fetchReleaseHistory();}
+function go(p){if(p!=="broadcast")hideBroadcastCommentContextMenu();page=p;render();if(p==="dashboard"||p==="broadcast")void refreshDashboardStatistics(true);if(p==="player"){void refreshQuotePlayback();if(!bgmTracks.length&&!bgmLoading)void refreshBgmLibrary(true);}if(p==="comments")renderComments();if(p==="library"){void refreshVideoLibrary();renderVideoLibraryRows();}if(p==="users")renderUserProfileRows();if(p==="remote")void refreshRemoteControlUi(true);if(p==="changelog"&&!releaseHistoryState.items.length)void fetchReleaseHistory();}
 document.getElementById("nav").addEventListener("click",e=>{const b=e.target.closest("[data-page]");if(!b)return;window.KananeoUiHealth?.trackAction("画面移動："+b.textContent);try{go(b.dataset.page);}catch(error){window.KananeoUiHealth?.report(error,"メニュー操作");}});
 window.addEventListener("resize",()=>{hideBroadcastCommentContextMenu();updateLiveVideoBounds();},{passive:true});
 document.addEventListener("scroll",()=>{hideBroadcastCommentContextMenu();updateLiveVideoBounds();},true);
