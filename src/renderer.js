@@ -101,11 +101,12 @@ function setAutoLiveQuoteMessage(message){
  const node=document.getElementById("request-auto-status");
  if(node)node.textContent="自動再生の状態："+autoLiveQuoteMessage;
 }
-const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,stockAutoPlay:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,autoPlayOnOwnLive:false,lastAutoPlayProgramId:"",nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true,autoOnQuote:false,announceResults:true},automation:{autoNext:false,autoCreate:false,autoStartProgram:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,autoVideo:false,notifyOnLive:false,ownAccount:true,targets:[],history:[]},rankingMonitor:{enabled:true,intervalSeconds:60,snapshots:{},history:[],lastCheckedAt:"",userId:"",programs:[]},liveVideoZoom:{zoomMode:"auto",zoomPercent:70},logs:["β2 UIプロトタイプを起動しました"]};
+const initial={requests:[],stocks:[],playback:{playStyle:1,randomStock:false,stockAutoPlay:false,mainVolume:1,subVolume:0,bgmVolume:0.7,bgmRepeat:false,quoteAutoNext:false,autoPlayOnOwnLive:false,lastAutoPlayProgramId:"",nextIntervalSeconds:10},ngWords:[],ngUsers:[],userProfiles:[],voice:{enabled:false,includeName:false,speakOperator:false,rate:1,pitch:1,volume:1,voiceURI:"",maxQueue:100,mutedUserIds:[]},playlist:[],poll:{question:"この動画を続けますか？",wait:15,result:10,continue:"もう一度",next:"次の動画へ",tie:true,zero:true,autoOnQuote:false,announceResults:true},automation:{autoNext:false,autoCreate:false,autoStartProgram:false,autoExtend:false,keepPosition:true,adjustVideo:true,extend:30},player:{currentId:"",currentQueueType:"request",autoNext:true,status:"closed",currentTime:0,duration:0,endedFor:""},requestSettings:{acceptComments:false,maxPerUser:5,replyEnabled:false,replyAccepted:"リクエスト受付：{video_id}",replyRejected:"リクエスト不可：{reason}"},external:{obs:"",nair:"",xsplit:""},streamMonitor:{enabled:false,intervalSeconds:60,autoComments:false,autoVideo:false,notifyOnLive:false,ownAccount:true,targets:[],history:[]},rankingMonitor:{enabled:true,intervalSeconds:60,snapshots:{},history:[],lastCheckedAt:"",userId:"",programs:[]},earthquakeNotice:{enabled:false,minScale:30,intervalSeconds:30,seenIds:[],postedKeys:[],lastPostedAt:"",history:[]},liveVideoZoom:{zoomMode:"auto",zoomPercent:70},logs:["β2 UIプロトタイプを起動しました"]};
 let remoteAuditEntries=[],remoteAuditFilters={query:"",type:"all",from:"",to:""},remoteAuditNotificationEnabled=true;
 let state=load(),page="dashboard";
 let streamMonitorRuntime={busy:false,nextCheckAt:0,lastCheckAt:"",message:"監視は停止中です。",checked:0,generation:0};
 let rankingMonitorRuntime={busy:false,nextCheckAt:0,lastCheckAt:"",message:"配信開始を待っています。"};
+let earthquakeNoticeRuntime={busy:false,initialized:false,nextCheckAt:0,lastCheckAt:"",message:"地震情報の自動通知はOFFです。",latestReport:null};
 let registeredMonitorStatus={enabled:false,message:"登録ユーザーの監視は停止中です。",lastCheckAt:""};
 let autoNextRuntime={enabled:false,busy:false,armedProgramId:"",phase:"disabled",message:"自動次枠監視は停止中です。"};
 function load(){
@@ -123,6 +124,7 @@ loaded.player.quoteExpectedEndAt=0;
 loaded.player.quotePollAutoSuspended=false;
 loaded.streamMonitor={...window.KananeoStreamMonitor.normalizeStreamMonitorSettings(stored.streamMonitor),ownAccount:true,history:window.KananeoStreamMonitorHistory.normalizeHistory(stored.streamMonitor?.history)};
  loaded.rankingMonitor=window.KananeoRankingMonitor.normalizeRankingMonitorState(stored.rankingMonitor);
+ loaded.earthquakeNotice=window.KananeoEarthquakeNotice.normalizeNoticeSettings(stored.earthquakeNotice);
 loaded.liveVideoZoom={zoomMode:stored?.liveVideoZoom?.zoomMode==="manual"?"manual":"auto",zoomPercent:Number.isFinite(Number(stored?.liveVideoZoom?.zoomPercent))?Math.max(35,Math.min(125,Math.round(Number(stored.liveVideoZoom.zoomPercent)))):70};
 loaded.playback={...initial.playback,...(stored.playback||{})};
 loaded.automation={...initial.automation,...(stored.automation||{})};
@@ -2635,7 +2637,7 @@ void processRequestReplyQueue();
 }
 // Serialize poll-result announcements with request acknowledgements to respect
 // Nico's 5-second broadcaster-comment limit and avoid dropping poll notices.
-function postAutomatedBroadcasterComment(programId,text,canSend){
+function postAutomatedBroadcasterComment(programId,text,canSend,poster){
  const permitted=()=>{try{return canSend();}catch{return false;}};
  const send=async()=>{
   if(!permitted())return {ok:false,code:"COMMENT_CANCELLED"};
@@ -2643,7 +2645,7 @@ function postAutomatedBroadcasterComment(programId,text,canSend){
   if(waitMs)await new Promise(resolve=>setTimeout(resolve,waitMs));
   if(!permitted())return {ok:false,code:"COMMENT_CANCELLED"};
   lastRequestReplySentAt=Date.now();
-  try{return await window.kananeoApp.niconico.postBroadcasterComment({programId,text});}
+  try{return await (typeof poster==="function"?poster({programId,text}):window.kananeoApp.niconico.postBroadcasterComment({programId,text}));}
   catch{return {ok:false,code:"SEND_FAILED",message:"運営コメントAPIに接続できませんでした。"};}
  };
  const pending=automatedBroadcasterCommentTail.then(send,send);
