@@ -659,7 +659,7 @@ function panel(t,d,body){
  const number=String(++workspaceCardSequence).padStart(2,"0");
  return `<article class="panel workspace-card"><header class="workspace-card-heading"><span class="workspace-card-mark" aria-hidden="true">◈</span><div class="workspace-card-heading-copy"><span class="workspace-card-eyebrow">MODULE / ${number}</span><h2>${t}</h2><p>${d}</p></div></header><div class="workspace-card-body">${body}</div></article>`;
 }
-function field(label,id,value="",placeholder=""){return `<div class="field"><label>${label}</label><input class="input" id="${id}" value="${esc(value)}" placeholder="${placeholder}"></div>`}
+function field(label,id,value="",placeholder=""){return `<div class="field"><label for="${id}">${label}</label><input class="input" id="${id}" value="${esc(value)}" placeholder="${placeholder}"></div>`}
 function toggle(id,title,desc,on){return `<div class="switchrow"><div><b>${title}</b><small>${desc}</small></div><input type="checkbox" data-toggle="${id}" ${on?"checked":""}></div>`}
 function remotePermissionLabel(permission){
  return ({"status:read":"状態閲覧","comments:read":"コメント閲覧","player:control":"プレビュー操作","bgm:control":"BGM操作"}[permission]||permission);
