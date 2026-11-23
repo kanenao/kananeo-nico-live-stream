@@ -1368,10 +1368,13 @@ function finalizeEndedQuotedFrame(programId,now=Date.now(),reason="前の放送�
 async function verifyQuotedFrameAfterDeadline(now=Date.now()){
  if(!quotePlayback.active||!quotePlayback.verified)return;
  const programId=String(quotePlayback.programId||"").toLowerCase();
- if(!window.KananeoFrameLifecycle.shouldVerifyFrame({
+ const deadline=window.KananeoFrameLifecycle.shouldVerifyFrame({
   programId,lastProgramId:state.lastProgramId,
   frameEndsAt:state.lastProgramEndAt,status:state.lastProgramStatus
- },now))return;
+ },now);
+ // Check the official live status periodically even before scheduled end:
+ // broadcasters can finish a frame early.
+ if(!deadline&&now-quoteFrameRuntime.lastCheckedAt<15000)return;
  if(["ENDED","END","CLOSED"].includes(String(state.lastProgramStatus||"").toUpperCase())){
   finalizeEndedQuotedFrame(programId,now);return;
  }
@@ -1389,7 +1392,8 @@ async function verifyQuotedFrameAfterDeadline(now=Date.now()){
 }
 
 function currentQuoteProgress(now=Date.now()){
- if(!quotePlayback.active||quotePlayback.verified!==true)return {ok:false};
+ if(!quotePlayback.active||quotePlayback.verified!==true||
+    String(state.lastProgramId||"").toLowerCase()!==String(quotePlayback.programId||"").toLowerCase())return {ok:false};
  return window.KananeoQuoteResume.quoteProgress({
   programId:quotePlayback.programId,videoId:quotePlayback.videoId,
   storedProgramId:state.player.quoteProgramId,storedVideoId:state.player.quoteVideoId,
