@@ -283,7 +283,7 @@ function normalizeRankingMonitorState(input){
   programId:normalizeProgramId(item?.programId),title:safeText(item?.title||"",160),
   at:typeof item?.at==="string"?item.at:""
  })).filter(item=>item.sourceId&&item.at);
- return {enabled:value.enabled!==false,intervalSeconds:[60,90,120,300].includes(interval)?interval:60,snapshots,history,lastCheckedAt:typeof value.lastCheckedAt==="string"?value.lastCheckedAt:"",userId:/^\\d{1,20}$/.test(String(value.userId||""))?String(value.userId):"",programs:Array.isArray(value.programs)?value.programs.slice(0,5).map(item=>({programId:normalizeProgramId(item?.programId),title:safeText(item?.title||"",200)})).filter(item=>item.programId):[]};
+ return {enabled:value.enabled!==false,intervalSeconds:[60,90,120,300].includes(interval)?interval:60,snapshots,history,lastCheckedAt:typeof value.lastCheckedAt==="string"?value.lastCheckedAt:"",userId:/^\d{1,20}$/.test(String(value.userId||""))?String(value.userId):"",programs:Array.isArray(value.programs)?value.programs.slice(0,5).map(item=>({programId:normalizeProgramId(item?.programId),title:safeText(item?.title||"",200)})).filter(item=>item.programId):[]};
 }
 function applyRankingSnapshot(stateInput,result,checkedAt=new Date().toISOString()){
  const state=normalizeRankingMonitorState(stateInput);
