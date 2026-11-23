@@ -73,6 +73,7 @@
    '<div class="broadcast-tools-top"><section class="broadcast-tool-card" aria-label="自動アンケート">'+
    '<div class="broadcast-tool-card-head"><h3>自動アンケート</h3><span class="broadcast-tool-state" id="broadcast-poll-state">'+esc(pollLabel(model))+'</span></div>'+
    '<p id="broadcast-poll-message" class="broadcast-tool-description">'+esc(model.pollMessage||"引用再生の開始に連動して投票を管理します。")+'</p>'+
+   '<div id="broadcast-poll-countdown" class="poll-repeat-countdown" role="timer">'+esc(model.pollCountdown||"再投票の待機はありません。")+'</div>'+
    '<label class="broadcast-tool-switch" for="poll-auto-on-quote"><span>引用再生時に自動実行<small>次のリクエストがなければ投票を休止します。</small></span>'+
    '<input type="checkbox" id="poll-auto-on-quote" '+(model.pollEnabled?'checked':"")+'></label>'+
    '<div class="broadcast-tool-actions"><button class="btn primary" type="button" data-poll-start '+(pollBusy?'disabled':"")+'>投票を開始</button>'+
