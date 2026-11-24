@@ -52,7 +52,7 @@ test("native Nico Live view retains original authenticated full watch page",()=>
  assert.match(main,/new WebContentsView\(\{/);
  assert.match(main,/session:niconicoSession/);
  assert.match(main,/const targetUrl = NICONICO_WATCH_BASE \+ encodeURIComponent\(programId\)/);
- assert.match(main,/applyNiconicoLiveVideoZoom\(liveVideoView.getBounds\(\)\?\.width\)/);
+ assert.match(main,/applyNiconicoLiveVideoZoom\(liveVideoView.getBounds\(\)\?\.width,liveVideoView.getBounds\(\)\?\.height\)/);
  assert.doesNotMatch(main,/buildNiconicoPlayerOnlyScript|kananeo-player-only-root/);
  assert.equal(fs.existsSync(path.join(root,"src/niconico-player-only.js")),false);
 });

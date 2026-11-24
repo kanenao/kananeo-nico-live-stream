@@ -1479,3 +1479,34 @@ body{
  .broadcast-tool-requests-summary{align-items:flex-start;flex-direction:column;gap:5px}
  .broadcast-connection-details .broadcast-connect-controls{grid-template-columns:minmax(0,1fr)}
 }
+
+
+/* alpha.104: Opt-in window-sized STAGE, original STAGE UI and monitor fullscreen retained. */
+.broadcast-stage-window-fit,.broadcast-stage-monitor-fit{
+ min-height:32px;padding:0 10px;white-space:nowrap;font-size:10px;gap:4px
+}
+.broadcast-stage-window-fit[aria-pressed="true"]{
+ background:#16636d;border-color:#6fe1de;color:#fff;
+ box-shadow:0 0 0 1px #91fff522 inset
+}
+.broadcast-screen-layout.is-stage-window-fit{
+ grid-template-columns:minmax(0,1fr);
+}
+.broadcast-screen-layout.is-stage-window-fit .broadcast-video-column{
+ width:100%;min-width:0;
+}
+.broadcast-screen-layout.is-stage-window-fit .broadcast-video-column>.broadcast-player-body{
+ flex:0 0 auto;
+ height:clamp(290px,calc(100dvh - 180px),1600px);
+ min-height:0;
+ max-height:none;
+}
+.broadcast-screen-layout.is-stage-window-fit .broadcast-comments-panel{
+ min-height:270px;
+}
+@media(max-width:780px){
+ .broadcast-stage-window-fit,.broadcast-stage-monitor-fit{padding:0 8px;font-size:10px}
+ .broadcast-screen-layout.is-stage-window-fit .broadcast-video-column>.broadcast-player-body{
+  height:clamp(230px,calc(100dvh - 160px),1000px);
+ }
+}
