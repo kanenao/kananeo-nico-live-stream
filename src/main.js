@@ -33,6 +33,7 @@ const { normalizeNiconicoVideoUrl, extractRequestCandidate, findNextQueueItem } 
 const { normalizeLiveViewBounds } = require("./live-view-layout");
 const {normalizeLiveZoomSettings,calculateLivePageZoomFactor}=require("./live-page-zoom");
 const {normalizeLiveViewMode,buildLiveWatchUrl,liveWatchZoomFactor}=require("./live-watch-mode");
+const {buildStagePlayerFocusScript}=require("./stage-player-focus");
 const { evaluateCommentRequest } = require("./request-policy");
 const { decideEnqueteResult } = require("./poll-engine");
 const { buildEnqueteRequest, mapEnqueteHttpError, parseEnqueteResultResponse } = require("./enquete-api");
@@ -656,6 +657,11 @@ function openNiconicoLiveVideoView(input,mode) {
         if (liveVideoView?.webContents === contents) {
           // Page navigation can reset Chromium's zoom; restore the stored fit policy.
           applyNiconicoLiveVideoZoom(liveVideoView.getBounds()?.width);
+          // Only on official watch pages and only in the reversible popup mode.
+          const url=new URL(contents.getURL());
+          if(liveVideoDisplayMode==="popup"&&url.protocol==="https:"&&["live.nicovideo.jp","live2.nicovideo.jp"].includes(url.hostname)&&/^\/watch\/lv\d{1,20}\/?$/.test(url.pathname)){
+            void contents.executeJavaScript(buildStagePlayerFocusScript()).catch(()=>{});
+          }
           notifyLiveVideoState({
             status:"ready",programId:liveVideoProgramId,
             url:contents.getURL(),title:contents.getTitle() || "ニコニコ生放送"
