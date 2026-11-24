@@ -69,7 +69,7 @@
   const availableStock=(Array.isArray(model.stocks)?model.stocks:[]).some(x=>x&&!["completed","skipped","rejected","playing"].includes(x.status));
   return '<section class="broadcast-quick-tools" aria-label="放送中の動画・アンケート管理">'+
    '<header class="broadcast-tools-heading"><div><span class="broadcast-tools-eyebrow">BROADCAST TOOLS</span><h2>配信中の操作・動画管理</h2><p>アンケート、引用再生時間、リクエストと保存済み動画をここでまとめて確認できます。</p></div>'+
-   '<button class="btn" type="button" data-go="player">プレイヤーの詳細設定</button></header>'+
+   '<div class="broadcast-tools-heading-actions"><button class="btn primary" type="button" data-quote-next '+(pending.length||availableStock?'':"disabled")+'>次の動画をニコ生で引用</button><button class="btn" type="button" data-go="player">設定</button></div></header>'+
    '<div class="broadcast-tools-top"><section class="broadcast-tool-card" aria-label="自動アンケート">'+
    '<div class="broadcast-tool-card-head"><h3>自動アンケート</h3><span class="broadcast-tool-state" id="broadcast-poll-state">'+esc(pollLabel(model))+'</span></div>'+
    '<p id="broadcast-poll-message" class="broadcast-tool-description">'+esc(model.pollMessage||"引用再生の開始に連動して投票を管理します。")+'</p>'+
@@ -87,7 +87,7 @@
    '<p class="broadcast-tool-note" id="broadcast-quote-hint">'+esc(clock.hint)+'</p>'+
    '<div id="broadcast-resume-checkpoint" class="broadcast-quote-checkpoint">次枠へ引き継ぐ再生位置はまだありません。</div>'+
    '<div class="broadcast-tool-actions"><button class="btn" type="button" data-quote-refresh>引用状態を再確認</button><button class="btn" type="button" data-go="player">時間・再生設定</button></div></section></div>'+
-   '<section class="broadcast-tool-card broadcast-tool-requests" aria-label="動画リクエスト・ライブラリ">'+
+   '<details class="broadcast-tool-card broadcast-tool-requests" aria-label="動画リクエスト・ライブラリ"><summary class="broadcast-tool-requests-summary">動画キュー・ライブラリを開く <span>未再生 '+pending.length+' 件 ／ 保存 '+lib.length+' 件</span></summary>'+
    '<div class="broadcast-tool-card-head"><div><h3>動画リクエスト・ライブラリ</h3><p>先にリクエストを再生し、保存動画は必要なものだけキューへ追加できます。</p></div>'+
    '<span class="broadcast-tool-state">未再生 '+pending.length+' 件 ・ 保存 <span id="broadcast-library-count">'+lib.length+'</span> 件</span></div>'+
    '<div class="broadcast-tool-queue-grid"><div><div class="broadcast-tool-subhead"><h4>リクエストキュー</h4><button class="btn" type="button" data-go="requests">すべて見る</button></div>'+
@@ -102,7 +102,7 @@
    '<label>動画尺・秒（任意）<input class="input" id="req-duration" type="number" min="0" max="86400" placeholder="例：240"></label>'+
    '<button class="btn primary" type="submit">キューに追加</button></div></form>'+
    '<p class="broadcast-tool-note">「プレビュー」は放送に流れません。「ニコ生で引用」は確認後に視聴者へ再生します。保存済み動画を追加しても自動的には引用再生しません。</p>'+
-   '</section></section>';
+   '</details></section>';
  }
  function prepareLibraryRequest(item,validation,requests=[],stocks=[],id=""){
   const videoId=String(validation?.videoId||"").toLowerCase();

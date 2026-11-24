@@ -87,6 +87,6 @@ test("repeat poll offers real-time countdown in broadcast and poll views",()=>{
  assert.match(renderer,/updatePollRepeatCountdownUi\(\);void verifyQuotedFrameAfterDeadline\(\)/);
 });
 test("released version progresses alpha serial continuously",()=>{
- assert.equal(pkg.version,"0.8.0-alpha.101");
- assert.match(index,/ALPHA 101/);
+ assert.equal(pkg.version,"0.9.0-alpha.102");
+ assert.match(index,/ALPHA 102/);
 });
