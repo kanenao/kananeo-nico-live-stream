@@ -86,8 +86,8 @@ test("small window layouts remain usable and can collapse into a horizontal menu
 });
 
 test("new alpha follows continuous version numbering without upgrading to stable",()=>{
- assert.equal(pkg.version,"0.9.0-alpha.102");
- assert.match(preload,/version:"0\.9\.0-alpha\.102"/);
- assert.match(index,/ALPHA 102/);
- assert.match(index,/v0\.9\.0-alpha\.102/);
+ assert.equal(pkg.version,"0.9.1-alpha.103");
+ assert.match(preload,/version:"0\.9\.1-alpha\.103"/);
+ assert.match(index,/ALPHA 103/);
+ assert.match(index,/v0\.9\.1-alpha\.103/);
 });
