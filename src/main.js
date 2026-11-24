@@ -31,7 +31,6 @@ const { isTrustedNdgrUri } = require("./ndgr-security");
 const { CommentRecorder } = require("./comment-recorder");
 const { normalizeNiconicoVideoUrl, extractRequestCandidate, findNextQueueItem } = require("./video-queue");
 const { normalizeLiveViewBounds } = require("./live-view-layout");
-const {buildNiconicoPlayerOnlyScript}=require("./niconico-player-only");
 const {normalizeLiveZoomSettings,calculateLivePageZoomFactor}=require("./live-page-zoom");
 const { evaluateCommentRequest } = require("./request-policy");
 const { decideEnqueteResult } = require("./poll-engine");
@@ -654,13 +653,6 @@ function openNiconicoLiveVideoView(input) {
         if (liveVideoView?.webContents === contents) {
           // Page navigation can reset Chromium's zoom; restore the stored fit policy.
           applyNiconicoLiveVideoZoom(liveVideoView.getBounds()?.width);
-          // Use the existing official Nico Live video element, not a separate
-          // stream extractor. If it cannot be found the normal page remains.
-          try {
-            if (new URL(contents.getURL()).hostname === "live2.nicovideo.jp") {
-              void contents.executeJavaScript(buildNiconicoPlayerOnlyScript()).catch(() => {});
-            }
-          } catch {}
           notifyLiveVideoState({
             status:"ready",programId:liveVideoProgramId,
             url:contents.getURL(),title:contents.getTitle() || "ニコニコ生放送"
