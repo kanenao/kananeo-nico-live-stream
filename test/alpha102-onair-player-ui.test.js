@@ -48,10 +48,10 @@ test("STAGE restores the original alpha101 header, video and control placement",
  assert.doesNotMatch(latest,/\.broadcast-player-toolbar\s*\{|\.broadcast-stage-footer\s*\{|\.broadcast-player-title-block\s*\{|\.broadcast-stage-visual\s*,/);
  assert.doesNotMatch(latest,/aspect-ratio:16\/9/);
 });
-test("native Nico Live view retains original authenticated full watch page",()=>{
+test("native Nico Live view retains authenticated official watch pages",()=>{
  assert.match(main,/new WebContentsView\(\{/);
  assert.match(main,/session:niconicoSession/);
- assert.match(main,/const targetUrl = NICONICO_WATCH_BASE \+ encodeURIComponent\(programId\)/);
+ assert.match(main,/const targetUrl = buildLiveWatchUrl\(programId,displayMode\)/);
  assert.match(main,/applyNiconicoLiveVideoZoom\(liveVideoView.getBounds\(\)\?\.width\)/);
  assert.doesNotMatch(main,/buildNiconicoPlayerOnlyScript|kananeo-player-only-root/);
  assert.equal(fs.existsSync(path.join(root,"src/niconico-player-only.js")),false);
