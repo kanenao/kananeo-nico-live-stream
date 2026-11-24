@@ -1103,6 +1103,8 @@ panel("受信コメント",'<span id="comment-count">'+receivedComments.length+'
  '<div class="broadcast-console-title"><span class="broadcast-console-kicker">KANANEO · BROADCAST WORKSPACE</span><h1>放送・枠管理</h1><p>映像・コメント・配信ランキングをひとつのワークスペースで見やすく管理</p></div>'+
  '<div class="broadcast-console-head-note"><span>視聴</span><span>コメント</span><span>ランキング</span><span>自動運用</span></div>'+
  '</div>'+
+ '<section class="broadcast-tools-section" aria-label="自動アンケート・引用再生・動画管理"><div id="broadcast-quick-tools" class="broadcast-extras"></div></section>'+
+ '<details class="broadcast-connection-details" '+(!nicoStatus.authenticated?"open":"")+'><summary>ログイン・放送ID・プレイヤー設定</summary>'+
  '<section class="broadcast-connection-grid" aria-label="アカウントと放送接続">'+
  '<article class="broadcast-connect-card broadcast-account-card"><div class="broadcast-connect-heading"><b>アカウント</b><span class="broadcast-connect-tag">ACCOUNT</span></div>'+
  '<div class="broadcast-auth-status" id="auth-status"><b>'+authTitle+'</b><span>'+authText+'</span></div>'+
@@ -1114,7 +1116,7 @@ panel("受信コメント",'<span id="comment-count">'+receivedComments.length+'
  '<article class="broadcast-connect-card broadcast-program-check"><div class="broadcast-connect-heading"><b>番組情報を確認</b><span class="broadcast-connect-tag">VERIFY</span></div>'+
  '<div class="broadcast-program-controls"><input class="input" id="live-id" value="'+esc(programId)+'" placeholder="lv123456789 または番組URL" maxlength="512"><button class="btn primary" type="button" data-nico-check>番組を確認</button></div>'+
  '<div class="broadcast-program-result" id="program-result">確認結果はここに表示します。</div></article>'+
- '</section>'+
+ '</section></details>'+
  '<div class="broadcast-screen-layout" id="broadcast-screen-layout">'+
  '<section class="broadcast-video-column" id="broadcast-stage" aria-label="放送映像">'+
  '<div class="broadcast-player-toolbar"><div class="broadcast-player-title-block"><span class="broadcast-stage-identity" aria-hidden="true">◈</span><div class="broadcast-stage-heading"><span class="broadcast-panel-kicker">STAGE / 01</span><div class="broadcast-channel-name" id="broadcast-channel-name" title="'+esc(channelTitle)+'">'+esc(channelTitle)+'</div></div></div>'+
@@ -1151,8 +1153,7 @@ panel("受信コメント",'<span id="comment-count">'+receivedComments.length+'
  '<div class="broadcast-ranking-footnote"><span>3サイトの集計方法は異なります。取得エラーと未掲載を区別して表示します。</span><button class="broadcast-ranking-settings" type="button" data-go="monitor">監視設定・順位履歴を開く</button></div></div>'+
  '<div class="broadcast-overview-info"><div class="broadcast-overview-heading"><div class="broadcast-overview-heading-text"><span class="broadcast-overview-icon" aria-hidden="true">◷</span><div><span class="broadcast-panel-kicker">ON AIR / INFO</span><h2>放送情報</h2></div></div></div>'+
  '<dl class="broadcast-overview-details"><div><dt>番組名</dt><dd id="broadcast-overview-title">'+esc(channelTitle)+'</dd></div><div><dt>配信状態</dt><dd id="broadcast-overview-status">'+esc(programStatusLabel(state.lastProgramStatus))+'</dd></div><div><dt>累計来場者</dt><dd id="broadcast-overview-viewers">'+(dashboardStats.watchCount==null?"—":Number(dashboardStats.watchCount).toLocaleString("ja-JP"))+'</dd></div><div><dt>コメント総数</dt><dd id="broadcast-overview-comments">'+(dashboardStats.commentCount==null?"—":Number(dashboardStats.commentCount).toLocaleString("ja-JP"))+'</dd></div><div><dt>放送残り時間</dt><dd id="broadcast-overview-remaining">'+formatRemainingTime()+'</dd></div></dl></div></section>'+
- '<section class="broadcast-earthquake-section" aria-label="地震情報の運営コメント通知">'+earthquakeNoticeMarkup()+'</section>'+
- '<section class="broadcast-tools-section" aria-label="自動アンケート・引用再生・動画管理"><div id="broadcast-quick-tools" class="broadcast-extras"></div></section>';
+ '<section class="broadcast-earthquake-section" aria-label="地震情報の運営コメント通知">'+earthquakeNoticeMarkup()+'</section>';
 }else if(page==="programs"){
 html=hero("PROGRAM CONTROL","番組枠の作成・終了","番組の新規作成、放送開始・終了と、自分の番組の確認をこのページで行います。")+
 '<div class="grid2">'+
