@@ -36,7 +36,7 @@ test("public ranking fetcher does not use or forward the Niconico login session"
  assert.match(moduleSource,/isAllowedRedirect/);
 });
 test("ranking monitor release version stays alpha and increments the base version",()=>{
- assert.equal(pkg.version,"0.9.3-alpha.105");
- assert.match(preload,/version:"0\.9\.3-alpha\.105"/);
- assert.match(index,/ALPHA 105/);
+ assert.equal(pkg.version,"0.9.4-alpha.106");
+ assert.match(preload,/version:"0\.9\.4-alpha\.106"/);
+ assert.match(index,/ALPHA 106/);
 });

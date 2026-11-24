@@ -4,7 +4,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
   name:"kananeo nico live stream",
-  version:"0.9.3-alpha.105",
+  version:"0.9.4-alpha.106",
   platform:process.platform,
   stage:"https-lan-remote-control",
   remote:Object.freeze({
@@ -119,7 +119,7 @@ contextBridge.exposeInMainWorld("kananeoApp", Object.freeze({
     },
     openBroadcastManage:programId=>ipcRenderer.invoke("niconico:open-broadcast-manage",programId),
     controlProgram:(programId,action)=>ipcRenderer.invoke("niconico:program-control",{programId,action}),
-    openLiveVideo:programId=>ipcRenderer.invoke("niconico:live-view-open",programId),
+    openLiveVideo:(programId,mode)=>ipcRenderer.invoke("niconico:live-view-open",programId,mode),
     setLiveVideoBounds:bounds=>ipcRenderer.send("niconico:live-view-bounds",bounds),
     closeLiveVideo:()=>ipcRenderer.invoke("niconico:live-view-close"),
     setLiveVideoAudio:enabled=>ipcRenderer.invoke("niconico:live-view-audio",enabled),
