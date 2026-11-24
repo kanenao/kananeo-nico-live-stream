@@ -1449,7 +1449,7 @@ body{
 }
 
 
-/* Broadcast on-air layout: actions first, player-focused stage, setup on demand. */
+/* Broadcast on-air tools and collapsible settings; STAGE keeps the alpha101 layout. */
 .broadcast-tools-section{margin:0 0 10px}
 .broadcast-tools-heading-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}
 .broadcast-tools-heading-actions .btn{min-height:34px;font-size:11px;font-weight:800}
@@ -1467,29 +1467,6 @@ body{
 }
 .broadcast-connection-details[open]>summary{border-radius:9px 9px 0 0}
 .broadcast-connection-details .broadcast-connection-grid{margin:8px 0 0}
-.broadcast-video-column{background:#05080e;border-color:#31495a;border-radius:10px}
-.broadcast-player-toolbar{
-  order:2;flex:0 0 auto;min-height:43px;height:auto;padding:5px 9px;
-  background:#0b1019;border-top:1px solid #344356;border-bottom:0;
-  gap:4px;justify-content:flex-end;flex-wrap:wrap
-}
-.broadcast-player-title-block{display:none}
-.broadcast-player-actions{width:100%;justify-content:flex-end;gap:5px;flex-wrap:wrap}
-.broadcast-live-badge{margin-right:auto}
-.broadcast-video-column>.broadcast-player-body{
-  order:1;flex:0 0 auto;min-height:0;height:auto;aspect-ratio:16/9;
-  background:#05080e
-}
-.broadcast-video-slot{background:#05080e}
-.broadcast-video-placeholder{background:#05080e}
-.broadcast-stage-visual,.broadcast-stage-standby{display:none!important}
-.broadcast-video-placeholder b{font-size:13px}
-.broadcast-stage-footer{display:none}
-.broadcast-stage-end{min-height:30px;font-size:10px;padding:4px 8px}
-.broadcast-icon-button{height:30px;min-width:30px}
-#broadcast-stage:fullscreen .broadcast-player-body{order:1;aspect-ratio:auto;flex:1 1 auto}
-#broadcast-stage:fullscreen .broadcast-player-toolbar{order:2}
-#broadcast-stage:fullscreen .broadcast-stage-footer{display:none}
 .broadcast-quick-tools{padding:10px 12px}
 .broadcast-quick-tools .broadcast-tools-top{gap:8px}
 .broadcast-quick-tools .broadcast-tool-card{padding:10px 12px}
@@ -1497,12 +1474,8 @@ body{
 .broadcast-quick-tools .broadcast-tool-note{line-height:1.4}
 @media(max-width:900px){
  .broadcast-tools-heading-actions{width:100%;justify-content:flex-start}
- .broadcast-video-column>.broadcast-player-body{min-height:230px}
 }
 @media(max-width:600px){
  .broadcast-tool-requests-summary{align-items:flex-start;flex-direction:column;gap:5px}
  .broadcast-connection-details .broadcast-connect-controls{grid-template-columns:minmax(0,1fr)}
- .broadcast-player-actions{justify-content:flex-start}
- .broadcast-live-badge{margin-right:0}
- .broadcast-video-column>.broadcast-player-body{min-height:180px}
 }
