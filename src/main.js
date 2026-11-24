@@ -32,6 +32,7 @@ const { CommentRecorder } = require("./comment-recorder");
 const { normalizeNiconicoVideoUrl, extractRequestCandidate, findNextQueueItem } = require("./video-queue");
 const { normalizeLiveViewBounds } = require("./live-view-layout");
 const {normalizeLiveZoomSettings,calculateLivePageZoomFactor}=require("./live-page-zoom");
+const {normalizeLiveViewMode,buildLiveWatchUrl,liveWatchZoomFactor}=require("./live-watch-mode");
 const { evaluateCommentRequest } = require("./request-policy");
 const { decideEnqueteResult } = require("./poll-engine");
 const { buildEnqueteRequest, mapEnqueteHttpError, parseEnqueteResultResponse } = require("./enquete-api");
@@ -88,6 +89,7 @@ let registeredUserMonitor=null;
 let liveVideoView = null;
 let liveVideoProgramId = "";
 let liveVideoZoomSettings={zoomMode:"auto",zoomPercent:70};
+let liveVideoDisplayMode="popup";
 let liveVideoMuted=false;
 let niconicoSession = null;
 let commentProvider = null;
@@ -567,7 +569,7 @@ function closeNiconicoLiveVideoView() {
 function applyNiconicoLiveVideoZoom(width){
  if(!liveVideoView||liveVideoView.webContents?.isDestroyed())return;
  try{
-  const factor=calculateLivePageZoomFactor(width,liveVideoZoomSettings);
+  const factor=liveWatchZoomFactor(width,liveVideoZoomSettings,liveVideoDisplayMode,calculateLivePageZoomFactor);
   const current=liveVideoView.webContents.getZoomFactor();
   if(Math.abs(current-factor)>0.005)liveVideoView.webContents.setZoomFactor(factor);
  }catch(error){console.warn("放送画面の倍率自動調整に失敗しました。",error?.code||error?.name||"UNKNOWN");}
@@ -584,7 +586,7 @@ function setNiconicoLiveVideoBounds(input) {
   liveVideoView.setBounds({x:bounds.x,y:bounds.y,width:bounds.width,height:bounds.height});
   applyNiconicoLiveVideoZoom(bounds.width);
   liveVideoView.setVisible(true);
-  return {ok:true,visible:true,zoomPercent:Math.round(calculateLivePageZoomFactor(bounds.width,liveVideoZoomSettings)*100)};
+  return {ok:true,visible:true,zoomPercent:Math.round(liveWatchZoomFactor(bounds.width,liveVideoZoomSettings,liveVideoDisplayMode,calculateLivePageZoomFactor)*100)};
 }
 
 function setNiconicoLiveVideoAudio(enabled){
@@ -600,7 +602,7 @@ function reloadNiconicoLiveVideo(){
  catch{return {ok:false,code:"RELOAD_FAILED",message:"放送画面を再読み込みできませんでした。"};}
 }
 
-function openNiconicoLiveVideoView(input) {
+function openNiconicoLiveVideoView(input,mode) {
   let programId;
   try { programId = normalizeProgramId(input); }
   catch (error) {
@@ -610,7 +612,8 @@ function openNiconicoLiveVideoView(input) {
     return {ok:false,code:"WINDOW_CLOSED",message:"アプリのメイン画面を確認できません。"};
   }
 
-  const targetUrl = NICONICO_WATCH_BASE + encodeURIComponent(programId);
+  const displayMode=normalizeLiveViewMode(mode);
+  const targetUrl = buildLiveWatchUrl(programId,displayMode);
   if (!liveVideoView) {
     try {
       liveVideoView = new WebContentsView({
@@ -677,6 +680,8 @@ function openNiconicoLiveVideoView(input) {
     }
   }
 
+  liveVideoDisplayMode=displayMode;
+  applyNiconicoLiveVideoZoom(liveVideoView.getBounds()?.width);
   if (liveVideoProgramId !== programId || liveVideoView.webContents.getURL() !== targetUrl) {
     liveVideoProgramId = programId;
     notifyLiveVideoState({status:"loading",programId,message:"ニコニコ生放送の映像ページを読み込んでいます。"});
@@ -2541,10 +2546,10 @@ function registerIpcHandlers() {
       return {ok:true,message:"このアプリ専用のニコニコセッションを削除しました。"};
     } catch { return {ok:false,message:"セッションを削除できませんでした。"}; }
   });
-  ipcMain.handle("niconico:live-view-open",(event,input)=>{
+  ipcMain.handle("niconico:live-view-open",(event,input,mode)=>{
     if(event.sender!==mainWindow?.webContents) return {ok:false,code:"FORBIDDEN",message:"この操作は許可されていません。"};
     if(typeof input!=="string"||input.length>512) return {ok:false,code:"INVALID_INPUT",message:"放送IDを確認してください。"};
-    return openNiconicoLiveVideoView(input);
+    return openNiconicoLiveVideoView(input,mode);
   });
   ipcMain.on("niconico:live-view-bounds",(event,input)=>{
     if(event.sender!==mainWindow?.webContents) return;
