@@ -564,10 +564,10 @@ function closeNiconicoLiveVideoView() {
   return {ok:true,closed:true};
 }
 
-function applyNiconicoLiveVideoZoom(width,height){
+function applyNiconicoLiveVideoZoom(width){
  if(!liveVideoView||liveVideoView.webContents?.isDestroyed())return;
  try{
-  const factor=calculateLivePageZoomFactor(width,liveVideoZoomSettings,height);
+  const factor=calculateLivePageZoomFactor(width,liveVideoZoomSettings);
   const current=liveVideoView.webContents.getZoomFactor();
   if(Math.abs(current-factor)>0.005)liveVideoView.webContents.setZoomFactor(factor);
  }catch(error){console.warn("放送画面の倍率自動調整に失敗しました。",error?.code||error?.name||"UNKNOWN");}
@@ -582,9 +582,9 @@ function setNiconicoLiveVideoBounds(input) {
   }
   liveVideoZoomSettings=normalizeLiveZoomSettings(input);
   liveVideoView.setBounds({x:bounds.x,y:bounds.y,width:bounds.width,height:bounds.height});
-  applyNiconicoLiveVideoZoom(bounds.width,bounds.height);
+  applyNiconicoLiveVideoZoom(bounds.width);
   liveVideoView.setVisible(true);
-  return {ok:true,visible:true,zoomPercent:Math.round(calculateLivePageZoomFactor(bounds.width,liveVideoZoomSettings,bounds.height)*100)};
+  return {ok:true,visible:true,zoomPercent:Math.round(calculateLivePageZoomFactor(bounds.width,liveVideoZoomSettings)*100)};
 }
 
 function setNiconicoLiveVideoAudio(enabled){
@@ -652,7 +652,7 @@ function openNiconicoLiveVideoView(input) {
       contents.on("did-finish-load",() => {
         if (liveVideoView?.webContents === contents) {
           // Page navigation can reset Chromium's zoom; restore the stored fit policy.
-          applyNiconicoLiveVideoZoom(liveVideoView.getBounds()?.width,liveVideoView.getBounds()?.height);
+          applyNiconicoLiveVideoZoom(liveVideoView.getBounds()?.width);
           notifyLiveVideoState({
             status:"ready",programId:liveVideoProgramId,
             url:contents.getURL(),title:contents.getTitle() || "ニコニコ生放送"
