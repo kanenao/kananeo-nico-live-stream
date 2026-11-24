@@ -32,27 +32,27 @@ test("video management can be expanded without blocking the live player",()=>{
  assert.match(renderer,/requestsExpanded=host\.querySelector/);
  assert.match(renderer,/requestsDetails\.open=requestsExpanded/);
 });
-test("stage visually prioritizes a clean player and an accessible controls row",()=>{
+test("STAGE restores the original alpha101 header, video and control placement",()=>{
  for(const token of [
-  ".broadcast-video-column>.broadcast-player-body",
-  ".broadcast-player-title-block{display:none}",
-  ".broadcast-stage-footer{display:none}",
-  ".broadcast-stage-visual,.broadcast-stage-standby{display:none!important}",
-  ".broadcast-tools-heading-actions",".broadcast-connection-details"
+  'class="broadcast-player-toolbar"', 'class="broadcast-player-title-block"',
+  'broadcast-panel-kicker">STAGE / 01', 'class="broadcast-stage-visual"',
+  'class="broadcast-stage-footer"', 'class="broadcast-player-body"',
+  'data-stage-fullscreen', 'data-broadcast-program-end'
+ ]) assert.ok(broadcast.includes(token),token);
+ for(const token of [
+  ".broadcast-player-toolbar{", ".broadcast-player-title-block{",
+  ".broadcast-stage-visual{", ".broadcast-stage-footer{",
+  "#broadcast-stage:fullscreen .broadcast-player-body"
  ]) assert.ok(css.includes(token),token);
- assert.match(css,/aspect-ratio:16\/9/);
- assert.match(css,/#broadcast-stage:fullscreen \.broadcast-player-body/);
+ const latest=css.slice(css.lastIndexOf("/* Broadcast on-air tools and collapsible settings"));
+ assert.doesNotMatch(latest,/\.broadcast-player-toolbar\s*\{|\.broadcast-stage-footer\s*\{|\.broadcast-player-title-block\s*\{|\.broadcast-stage-visual\s*,/);
+ assert.doesNotMatch(latest,/aspect-ratio:16\/9/);
 });
-test("native Nico Live view keeps auth and switches to player-only when available",()=>{
- const {buildNiconicoPlayerOnlyScript}=require("../src/niconico-player-only");
- const script=buildNiconicoPlayerOnlyScript();
- assert.doesNotThrow(()=>new vm.Script(script));
- assert.match(script,/querySelectorAll\("video"\)/);
- assert.match(script,/kananeo-player-only-root/);
- assert.match(script,/waiting-for-player/);
- assert.match(main,/buildNiconicoPlayerOnlyScript\(\)/);
- assert.match(main,/hostname === "live2\.nicovideo\.jp"/);
+test("native Nico Live view retains original authenticated full watch page",()=>{
  assert.match(main,/new WebContentsView\(\{/);
  assert.match(main,/session:niconicoSession/);
- assert.doesNotMatch(script,/fetch\(|WebSocket\(|XMLHttpRequest\(/);
+ assert.match(main,/const targetUrl = NICONICO_WATCH_BASE \+ encodeURIComponent\(programId\)/);
+ assert.match(main,/applyNiconicoLiveVideoZoom\(liveVideoView.getBounds\(\)\?\.width\)/);
+ assert.doesNotMatch(main,/buildNiconicoPlayerOnlyScript|kananeo-player-only-root/);
+ assert.equal(fs.existsSync(path.join(root,"src/niconico-player-only.js")),false);
 });
