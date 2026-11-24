@@ -66,7 +66,7 @@ test("UI clearly labels reports as post-quake information and not EEW",()=>{
  assert.match(css,/@media\(max-width:700px\)/);
 });
 test("version bump advances alpha serial without declaring stable",()=>{
- assert.equal(pkg.version,"0.9.4-alpha.106");
- assert.match(preload,/version:"0\.9\.4-alpha\.106"/);
- assert.match(index,/ALPHA 106/);
+ assert.equal(pkg.version,"0.9.5-alpha.107");
+ assert.match(preload,/version:"0\.9\.5-alpha\.107"/);
+ assert.match(index,/ALPHA 107/);
 });
