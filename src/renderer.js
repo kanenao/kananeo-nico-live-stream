@@ -968,7 +968,10 @@ function renderBroadcastToolsUi(){
  const host=document.getElementById("broadcast-quick-tools");
  if(!host)return;
  if(!window.KananeoBroadcastQuickTools){host.textContent="動画管理の画面を読み込めませんでした。アプリを再起動してください。";return;}
+ const requestsExpanded=host.querySelector(".broadcast-tool-requests")?.open===true;
  host.innerHTML=window.KananeoBroadcastQuickTools.render(broadcastToolModel());
+ const requestsDetails=host.querySelector(".broadcast-tool-requests");
+ if(requestsDetails)requestsDetails.open=requestsExpanded;
 }
 function updateBroadcastQuoteToolsTime(now=Date.now()){
  const label=document.getElementById("broadcast-quote-time");
