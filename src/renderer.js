@@ -51,6 +51,7 @@ let broadcastNgFilterEnabled=true;
 let broadcastCommentSending=false;
 let ownMonitorStatus={running:false,phase:"starting",message:"起動時から自分の放送を監視しています。",activePrograms:[]};
 let lastLiveVideoBoundsKey="";
+const autoStageAttemptedPrograms=new Set();
 let broadcastCommentSearch="";
 let broadcastCommentType="all";
 let broadcastCommentUserId="";
@@ -487,15 +488,43 @@ async function maybeAutoPlayOnOwnLive(info){
   toast("放送開始後の自動再生を確認できませんでした。手動で確認してください。");
  }finally{if(autoLiveQuotePending===id)autoLiveQuotePending="";}
 }
+async function maybeOpenOwnLiveStage(info){
+ const programId=window.KananeoStageFocus.ownLiveStageProgram(info);
+ if(!programId||state.liveVideoDisplayMode==="normal"||autoStageAttemptedPrograms.has(programId))return;
+ // The verified own-live monitor is the only automatic trigger. Respect a
+ // manually open view and never reopen a manually closed view on each poll.
+ autoStageAttemptedPrograms.add(programId);
+ if(autoStageAttemptedPrograms.size>100)autoStageAttemptedPrograms.delete(autoStageAttemptedPrograms.values().next().value);
+ if(liveVideoState.open)return;
+ liveVideoState={open:true,status:"loading",programId,title:info.title||programId,message:"放送開始を検知しました。プレイヤーを表示しています。"};
+ lastLiveVideoBoundsKey="";
+ page="broadcast";render();
+ try{
+  const result=await window.kananeoApp.niconico.openLiveVideo(programId,"popup");
+  if(!result?.ok)throw new Error(result?.message||"放送画面を開けませんでした。");
+  if(liveVideoState.open&&liveVideoState.programId===programId){
+   lastLiveVideoBoundsKey="";
+   updateLiveVideoBounds();updateBroadcastLivePanel();
+  }
+ }catch(error){
+  if(liveVideoState.programId===programId&&liveVideoState.open){
+   liveVideoState={open:false,status:"error",programId,title:info.title||programId,message:"自動表示に失敗しました。再生ボタンから開き直してください。"};
+   updateBroadcastLivePanel();updateLiveVideoBounds();toast(liveVideoState.message);
+  }
+ }
+}
 function applyOwnMonitorStatus(status){
  if(!status||typeof status!=="object")return;
  ownMonitorStatus=status;
  for(const item of status.activePrograms||[])void maybeAutoPlayOnOwnLive(item);
+ const ownLive=(status.activePrograms||[]).find(item=>window.KananeoStageFocus.ownLiveStageProgram(item));
+ if(ownLive)void maybeOpenOwnLiveStage(ownLive);
  if(page==="monitor"){renderStreamMonitorUi();renderRankingMonitorUi();}
 }
 async function handleOwnBroadcastLive(info){
  const programId=String(info?.programId||"").toLowerCase();
  if(!/^lv\d{1,20}$/.test(programId))return;
+ void maybeOpenOwnLiveStage(info);
  if(quotePlayback.active&&quotePlayback.programId!==programId)finalizeEndedQuotedFrame(quotePlayback.programId);
  let target=state.streamMonitor.targets.find(item=>item.programId===programId);
  if(!target&&state.streamMonitor.targets.length<50){
@@ -513,7 +542,7 @@ async function handleOwnBroadcastLive(info){
   if(!active)void startComments(programId);
   else if(commentConnection.programId.toLowerCase()!==programId)addStreamMonitorHistory("info",programId,"別番組のコメント受信中のため切替を保留しました。");
  }
- if(state.streamMonitor.autoVideo&&!liveVideoState.open){
+ if(state.liveVideoDisplayMode==="normal"&&state.streamMonitor.autoVideo&&!liveVideoState.open){
   const result=await window.kananeoApp.niconico.openLiveVideo(programId,state.liveVideoDisplayMode);
   if(result?.ok){liveVideoState={open:true,status:"loading",programId,message:"自分の放送画面を表示しています。"};page="broadcast";render();}
  }
@@ -1116,7 +1145,7 @@ panel("受信コメント",'<span id="comment-count">'+receivedComments.length+'
  '<article class="broadcast-connect-card broadcast-watch-setup"><div class="broadcast-connect-heading"><b>視聴先・表示設定</b><span class="broadcast-connect-tag">PLAYER</span></div>'+
  '<div class="broadcast-connect-controls"><label>放送ID / 番組URL<input class="input" id="broadcast-watch-id" value="'+esc(programId)+'" placeholder="lv123456789 または番組URL" maxlength="512"></label>'+
  '<label>表示倍率<select class="input" id="broadcast-video-zoom"><option value="auto" '+(state.liveVideoZoom.zoomMode==="auto"?"selected":"")+'>自動調整</option>'+[40,50,60,70,80,90,100,110,125].map(value=>'<option value="'+value+'" '+(state.liveVideoZoom.zoomMode==="manual"&&state.liveVideoZoom.zoomPercent===value?"selected":"")+'>'+value+'%</option>').join("")+'</select></label></div>'+
- '<label>視聴画面<select class="input" id="broadcast-video-display-mode"><option value="popup" '+(state.liveVideoDisplayMode!=="normal"?"selected":"")+ '>別窓風（映像中心）</option><option value="normal" '+(state.liveVideoDisplayMode==="normal"?"selected":"")+ '>従来の視聴ページ</option></select></label>'+
+ '<label>視聴画面<select class="input" id="broadcast-video-display-mode"><option value="popup" '+(state.liveVideoDisplayMode!=="normal"?"selected":"")+ '>別窓風（再生開始後プレイヤーのみ）</option><option value="normal" '+(state.liveVideoDisplayMode==="normal"?"selected":"")+ '>従来の視聴ページ</option></select></label>'+
  '<div class="broadcast-connect-hint" id="broadcast-live-message">'+esc(liveVideoState.message||"放送IDを入力し、映像パネルの再生ボタンで表示します。")+'</div></article>'+
  '<article class="broadcast-connect-card broadcast-program-check"><div class="broadcast-connect-heading"><b>番組情報を確認</b><span class="broadcast-connect-tag">VERIFY</span></div>'+
  '<div class="broadcast-program-controls"><input class="input" id="live-id" value="'+esc(programId)+'" placeholder="lv123456789 または番組URL" maxlength="512"><button class="btn primary" type="button" data-nico-check>番組を確認</button></div>'+
