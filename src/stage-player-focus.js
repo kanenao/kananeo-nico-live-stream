@@ -61,4 +61,5 @@ function ownLiveStageProgram(info){
  const id=String(info?.programId||"").toLowerCase();
  return /^lv\d{1,20}$/.test(id)&&["ON_AIR","ONAIR"].includes(String(info?.programStatus||"").toUpperCase())?id:"";
 }
-module.exports={buildStagePlayerFocusScript,ownLiveStageProgram};
+if(typeof module==="object"&&module.exports)module.exports={buildStagePlayerFocusScript,ownLiveStageProgram};
+else window.KananeoStageFocus={ownLiveStageProgram};
