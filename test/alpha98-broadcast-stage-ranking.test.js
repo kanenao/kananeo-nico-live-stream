@@ -65,6 +65,6 @@ test("redesigned screen has responsive readable CSS",()=>{
  assert.match(css,/\.broadcast-comment-compose-row\{display:grid;grid-template-columns:minmax\(0,1fr\) auto/);
 });
 test("the alpha98 stage redesign remains available in the newer alpha release",()=>{
- assert.equal(pkg.version,"0.9.6-alpha.108");
- assert.match(preload,/version:"0\.9\.6-alpha\.108"/);
+ assert.equal(pkg.version,"0.9.7-alpha.109");
+ assert.match(preload,/version:"0\.9\.7-alpha\.109"/);
 });
