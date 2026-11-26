@@ -51,6 +51,7 @@ let broadcastNgFilterEnabled=true;
 let broadcastCommentSending=false;
 let ownMonitorStatus={running:false,phase:"starting",message:"起動時から自分の放送を監視しています。",activePrograms:[]};
 let lastLiveVideoBoundsKey="";
+let liveVideoLayoutObserver=null,liveVideoLayoutFrame=0;
 const autoStageAttemptedPrograms=new Set();
 let broadcastCommentSearch="";
 let broadcastCommentType="all";
@@ -1248,6 +1249,7 @@ contentNode.innerHTML=html;
 contentNode.classList.toggle("broadcast-screen-content",page==="broadcast");
 contentNode.classList.toggle("workspace-page-content",page!=="broadcast");
 contentNode.dataset.workspacePage=page;
+observeLiveVideoLayout();
 renderInAppUpdateNotice();
 if(page==="dashboard")renderDashboardAlphaUpdateStatus();
 if(page==="broadcast"){renderBroadcastToolsUi();renderBroadcastCommentSettingsControls();renderBroadcastComments();updateBroadcastLivePanel();renderRankingMonitorUi();updateBroadcastOverview();}
@@ -2779,7 +2781,29 @@ function applyLiveVideoState(state){
   title:state.status==="closed"?"":(state.title||liveVideoState.title||""),
   message:state.message||""
  };
+ // Loading can be emitted after a new native view is created. Its bounds
+ // must be resent even when the renderer's rectangle is unchanged.
+ lastLiveVideoBoundsKey="";
  if(page==="broadcast"){updateBroadcastLivePanel();updateLiveVideoBounds();}
+}
+function scheduleLiveVideoLayout(){
+ if(liveVideoLayoutFrame)return;
+ liveVideoLayoutFrame=requestAnimationFrame(()=>{
+  liveVideoLayoutFrame=0;
+  updateLiveVideoBounds();
+ });
+}
+function observeLiveVideoLayout(){
+ if(liveVideoLayoutObserver){liveVideoLayoutObserver.disconnect();liveVideoLayoutObserver=null;}
+ if(page!=="broadcast"||typeof ResizeObserver!=="function")return;
+ const slot=document.getElementById("broadcast-video-slot");
+ if(!slot)return;
+ liveVideoLayoutObserver=new ResizeObserver(scheduleLiveVideoLayout);
+ // Changes to the controls above STAGE can move the slot without changing
+ // the video itself. Observe both the slot and the surrounding workspace.
+ for(const node of [slot,document.getElementById("content"),document.querySelector(".broadcast-tools-section"),document.querySelector(".broadcast-connection-details")]){
+  if(node)liveVideoLayoutObserver.observe(node);
+ }
 }
 function updateLiveVideoBounds(){
  const api=window.kananeoApp?.niconico;
@@ -3527,7 +3551,8 @@ if(!silent&&updateCheckState.error)toast(updateCheckState.error);
 function go(p){if(p!=="broadcast")hideBroadcastCommentContextMenu();page=p;render();if(p==="dashboard"||p==="broadcast")void refreshDashboardStatistics(true);if(p==="player"){void refreshQuotePlayback();if(!bgmTracks.length&&!bgmLoading)void refreshBgmLibrary(true);}if(p==="comments")renderComments();if(p==="library"){void refreshVideoLibrary();renderVideoLibraryRows();}if(p==="users")renderUserProfileRows();if(p==="remote")void refreshRemoteControlUi(true);if(p==="changelog"&&!releaseHistoryState.items.length)void fetchReleaseHistory();}
 document.getElementById("nav").addEventListener("click",e=>{const b=e.target.closest("[data-page]");if(!b)return;window.KananeoUiHealth?.trackAction("画面移動："+b.textContent);try{go(b.dataset.page);}catch(error){window.KananeoUiHealth?.report(error,"メニュー操作");}});
 window.addEventListener("resize",()=>{hideBroadcastCommentContextMenu();updateLiveVideoBounds();},{passive:true});
-document.addEventListener("scroll",()=>{hideBroadcastCommentContextMenu();updateLiveVideoBounds();},true);
+document.addEventListener("scroll",()=>{hideBroadcastCommentContextMenu();scheduleLiveVideoLayout();},true);
+document.addEventListener("toggle",()=>{if(page==="broadcast")scheduleLiveVideoLayout();},true);
 document.addEventListener("contextmenu",e=>{const row=e.target.closest("#broadcast-comments-list .broadcast-comment-item[data-broadcast-comment-index]");if(!row)return;e.preventDefault();const index=Number(row.dataset.broadcastCommentIndex);showBroadcastCommentContextMenu(receivedComments[index],e.clientX,e.clientY);});
 document.addEventListener("click",e=>{void handleUiClick(e).catch(error=>window.KananeoUiHealth?.report(error,"ボタン操作"));});
 async function handleUiClick(e){
@@ -3665,7 +3690,12 @@ if(b.hasAttribute("data-live-video-open")){
  try{
   const result=await window.kananeoApp.niconico.openLiveVideo(id,state.liveVideoDisplayMode);
   if(!result?.ok)throw new Error(result?.message||"放送画面を開けませんでした。");
-  liveVideoState={open:true,status:"loading",programId:result.programId||id,title:result.title||state.lastProgramTitle||"",message:result.message||"放送画面を読み込んでいます。"};
+  // The main process may have already sent ready/error/closed. Do not
+  // overwrite that newer notification with a stale loading response.
+  if(liveVideoState.open&&liveVideoState.status==="loading"&&[id,result.programId].includes(liveVideoState.programId)){
+   liveVideoState={...liveVideoState,programId:result.programId||id,title:result.title||liveVideoState.title||state.lastProgramTitle||"",message:result.message||liveVideoState.message};
+  }
+  lastLiveVideoBoundsKey="";
   updateLiveVideoBounds();updateBroadcastLivePanel();
  }catch(error){
   liveVideoState={open:false,status:"error",programId:id,message:error?.message||"放送画面を開けませんでした。"};

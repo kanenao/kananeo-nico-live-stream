@@ -9,6 +9,8 @@ function installStagePlayerFocus(){
  const styleId="kananeo-stage-focus-style";
  const candidates='[data-player-layout],[data-testid="player-container"],[data-testid="video-player"],[data-testid="live-player"],[class*="PlayerContainer"],[class*="VideoPlayerContainer"],[class*="LivePlayerContainer"]';
  let root=null,video=null;
+ const rejected=new WeakMap();
+ const viewportKey=()=>[window.innerWidth,window.innerHeight].join("x");
  function visible(el){
   const r=el.getBoundingClientRect(),s=getComputedStyle(el);
   return r.width>=120&&r.height>=68&&s.display!=="none"&&s.visibility!=="hidden";
@@ -24,6 +26,7 @@ function installStagePlayerFocus(){
   for(const v of playing){
    const candidate=v.closest(candidates);
    if(!candidate||candidate===document.body||candidate===document.documentElement||!visible(candidate))continue;
+   if(rejected.get(candidate)===viewportKey())continue;
    if(candidate.querySelector("header,nav,main,[role=banner]"))continue;
    const r=candidate.getBoundingClientRect(),vr=v.getBoundingClientRect();
    if(vr.width*vr.height<r.width*r.height*0.25)continue;
@@ -38,10 +41,32 @@ function installStagePlayerFocus(){
   }
   return null;
  }
+ function coversViewport(el){
+  const w=window.innerWidth,h=window.innerHeight;
+  if(!(w>0&&h>0))return false;
+  const r=el.getBoundingClientRect();
+  // Check real post-layout geometry, not merely the CSS we requested.
+  if(r.left>4||r.top>4||r.right<w-4||r.bottom<h-4)return false;
+  // Check the rendered player is not covered by page chrome or clipped by
+  // an ancestor. A player controls overlay still counts as part of the root.
+  const points=[[w/2,h/2],[w*.25,h*.25],[w*.75,h*.75]];
+  return points.every(([x,y])=>{
+   const hit=document.elementFromPoint(x,y);
+   return hit&&(hit===el||el.contains(hit));
+  });
+ }
  function tick(){
   if(!here()){restore();return;}
   if(root&&(!root.isConnected||!video?.isConnected||!root.contains(video)||video.ended)){restore();}
-  if(root)return; // Pause/resume must not cause disruptive layout changes.
+  if(root){
+   // Preserve intentional pause, but roll back if the native layout is
+   // obscured, clipped or no longer covers the viewport.
+   if(!coversViewport(root)||!visible(video)){
+    rejected.set(root,viewportKey());
+    restore();
+   }
+   return;
+  }
   const found=selectPlayer();
   if(!found)return; // Unknown DOM, login, waiting, errors: leave the official page intact.
   const css=document.createElement("style");css.id=styleId;
@@ -51,6 +76,9 @@ function installStagePlayerFocus(){
   `;
   (document.head||document.documentElement).appendChild(css);
   root=found.root;video=found.video;root.setAttribute(mark,"");
+  // Verify after browser layout. A failure returns to the untouched
+  // official popup, rather than repeatedly flashing a broken overlay.
+  requestAnimationFrame(()=>{if(root===found.root&&video===found.video)tick();});
  }
  // Poll at a low rate so delayed media and replacement nodes are handled.
  // Each document owns its own timer; navigation disposes of it.
