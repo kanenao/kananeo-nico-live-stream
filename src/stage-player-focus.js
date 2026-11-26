@@ -9,7 +9,6 @@ function installStagePlayerFocus(){
  const styleId="kananeo-stage-focus-style";
  const candidates='[data-player-layout],[data-testid="player-container"],[data-testid="video-player"],[data-testid="live-player"],[class*="PlayerContainer"],[class*="VideoPlayerContainer"],[class*="LivePlayerContainer"]';
  let root=null,video=null;
- let checkAfterLayout=false;
  const rejected=new WeakMap();
  const viewportKey=()=>[window.innerWidth,window.innerHeight].join("x");
  function visible(el){
@@ -19,7 +18,7 @@ function installStagePlayerFocus(){
  function restore(){
   if(root)root.removeAttribute(mark);
   document.getElementById(styleId)?.remove();
-  root=null;video=null;checkAfterLayout=false;
+  root=null;video=null;
  }
  function selectPlayer(){
   const playing=[...document.querySelectorAll("video")].filter(v=>v.readyState>=2&&!v.paused&&!v.ended&&v.videoWidth>0&&visible(v));
@@ -62,12 +61,9 @@ function installStagePlayerFocus(){
   if(root){
    // Preserve intentional pause, but roll back if the native layout is
    // obscured, clipped or no longer covers the viewport.
-   if(checkAfterLayout||!coversViewport(root)){
-    checkAfterLayout=false;
-    if(!coversViewport(root)||!visible(video)){
-     rejected.set(root,viewportKey());
-     restore();
-    }
+   if(!coversViewport(root)||!visible(video)){
+    rejected.set(root,viewportKey());
+    restore();
    }
    return;
   }
@@ -80,7 +76,6 @@ function installStagePlayerFocus(){
   `;
   (document.head||document.documentElement).appendChild(css);
   root=found.root;video=found.video;root.setAttribute(mark,"");
-  checkAfterLayout=true;
   // Verify after browser layout. A failure returns to the untouched
   // official popup, rather than repeatedly flashing a broken overlay.
   requestAnimationFrame(()=>{if(root===found.root&&video===found.video)tick();});
