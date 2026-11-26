@@ -1405,13 +1405,15 @@ function quoteFrameTime(now=Date.now()){
 function finalizeEndedQuotedFrame(programId,now=Date.now(),reason="前の放送枠が終了しました。"){
  const currentId=String(quotePlayback.programId||"").toLowerCase();
  if(!quotePlayback.active||currentId!==String(programId||"").toLowerCase())return false;
+ const sameFrame=window.KananeoFrameLifecycle.sameFrame(currentId,state.lastProgramId);
  const cap=quoteFrameTime(now);
  const progress=currentQuoteProgress(cap);
+ let savedPosition=false;
  if(progress.ok&&state.automation.keepPosition===true){
   const saved=window.KananeoQuoteResume.checkpointFromProgress(progress,{
    verified:quotePlayback.verified===true,now:cap,title:quotePlayback.item?.title||progress.videoId
   });
-  if(saved)state.playback.quoteResumeCheckpoint=saved;
+  if(saved){state.playback.quoteResumeCheckpoint=saved;savedPosition=true;}
  }
  const playing=[...state.requests,...state.stocks].find(item=>item.id===quotePlayback.itemId);
  if(playing?.status==="playing")playing.status="queued";
@@ -1421,11 +1423,12 @@ function finalizeEndedQuotedFrame(programId,now=Date.now(),reason="前の放送�
  pollCurrentProgramId="";pollVideoId="";pollRepeatUntil=0;
  quoteFrameRuntime.frozenAt=cap;
  quotePlayback={active:false,verified:false,programId:currentId,videoId:"",queueType:"",itemId:"",item:null,
-  message:reason+" 再生位置を保存しました。次枠への引き継ぎはプレイヤー欄で確認してください。"};
+  message:reason+(savedPosition?" 再生位置を保存しました。次枠への引き継ぎはプレイヤー欄で確認してください。":" 新しい再生位置は記録できませんでした。既存の記録は維持します。")};
  state.player.quoteStartedAt=0;state.player.quoteDurationMs=0;
  state.player.quoteVideoId="";state.player.quoteProgramId="";state.player.quoteExpectedEndAt=0;
  state.player.quotePollAutoSuspended=false;
- state.lastProgramStatus="ENDED";
+ // A late previous-frame result must not mark the selected next frame ended.
+ if(sameFrame)state.lastProgramStatus="ENDED";
  save();updateQuoteProgressUi();
  if(page==="broadcast"){renderBroadcastToolsUi();updateBroadcastOverview();updateBroadcastLivePanel();}
  if(page==="player")render();
@@ -1441,17 +1444,19 @@ async function verifyQuotedFrameAfterDeadline(now=Date.now()){
  // Check the official live status periodically even before scheduled end:
  // broadcasters can finish a frame early.
  if(!deadline&&now-quoteFrameRuntime.lastCheckedAt<15000)return;
- if(["ENDED","END","CLOSED"].includes(String(state.lastProgramStatus||"").toUpperCase())){
+ if(window.KananeoFrameLifecycle.isConfirmedFrameEnd(programId,state.lastProgramId,state.lastProgramStatus)){
   finalizeEndedQuotedFrame(programId,now);return;
  }
  if(quoteFrameRuntime.busy||now-quoteFrameRuntime.lastCheckedAt<5000)return;
  quoteFrameRuntime.busy=true;quoteFrameRuntime.lastCheckedAt=now;
+ const checkedPlayback=quotePlayback;
+ const checkedStartedAt=state.player.quoteStartedAt;
  try{
   const result=await window.kananeoApp.niconico.checkProgram(programId);
-  if(!quotePlayback.active||String(quotePlayback.programId||"").toLowerCase()!==programId)return;
+  if(!quotePlayback.active||quotePlayback!==checkedPlayback||state.player.quoteStartedAt!==checkedStartedAt||String(quotePlayback.programId||"").toLowerCase()!==programId)return;
   const status=window.KananeoFrameLifecycle.evaluateFrameStatus(result,programId);
   if(status.kind==="ended")finalizeEndedQuotedFrame(programId,now);
-  else if(status.kind==="live"&&status.frameEndsAt>0&&status.frameEndsAt!==state.lastProgramEndAt){
+  else if(status.kind==="live"&&window.KananeoFrameLifecycle.sameFrame(programId,state.lastProgramId)&&status.frameEndsAt>0&&status.frameEndsAt!==state.lastProgramEndAt){
    state.lastProgramEndAt=status.frameEndsAt;state.lastProgramStatus="ON_AIR";save();
   }
  }catch{}finally{quoteFrameRuntime.busy=false;}
@@ -3630,7 +3635,7 @@ if(b.hasAttribute("data-broadcast-program-end")){
   toast(response?.message||"放送終了の結果を確認できませんでした。");
   if(response?.ok&&response.verified){
    if(quotePlayback.active&&quotePlayback.programId===id)finalizeEndedQuotedFrame(id);
-   else{state.lastProgramStatus="ENDED";save();}
+   else if(window.KananeoFrameLifecycle.sameFrame(id,state.lastProgramId)){state.lastProgramStatus="ENDED";save();}
    updateBroadcastOverview();updateBroadcastLivePanel();render();
   }else if(response?.ok)await adoptCreatedBroadcast(id);
  }catch(error){toast(String(error?.message||"放送終了操作に失敗しました。").slice(0,180));}
