@@ -89,5 +89,21 @@ function ownLiveStageProgram(info){
  const id=String(info?.programId||"").toLowerCase();
  return /^lv\d{1,20}$/.test(id)&&["ON_AIR","ONAIR"].includes(String(info?.programStatus||"").toUpperCase())?id:"";
 }
-if(typeof module==="object"&&module.exports)module.exports={buildStagePlayerFocusScript,ownLiveStageProgram};
-else window.KananeoStageFocus={ownLiveStageProgram};
+// Never replace a manually selected view or a view from another account.
+// Missing/failed official verification must not be interpreted as an ended frame.
+function ownStageTransition(info,current,owner,verification){
+ const target=ownLiveStageProgram(info);
+ if(!target)return "ignore";
+ if(!current?.open)return "open";
+ const previous=String(current.programId||"").toLowerCase();
+ if(previous===target)return "keep";
+ const account=String(info?.userId||"");
+ if(!/^\d{1,20}$/.test(account)||!/^lv\d{1,20}$/.test(previous)||
+    owner?.programId!==previous||owner?.userId!==account)return "keep";
+ if(!verification)return "verify";
+ if(verification.ok===true&&String(verification.programId||"").toLowerCase()===previous&&
+    ["ENDED","END","CLOSED"].includes(String(verification.programStatus||"").toUpperCase()))return "follow";
+ return "wait";
+}
+if(typeof module==="object"&&module.exports)module.exports={buildStagePlayerFocusScript,ownLiveStageProgram,ownStageTransition};
+else window.KananeoStageFocus={ownLiveStageProgram,ownStageTransition};
