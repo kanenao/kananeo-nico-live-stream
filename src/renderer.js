@@ -53,6 +53,7 @@ let ownMonitorStatus={running:false,phase:"starting",message:"起動時から自
 let lastLiveVideoBoundsKey="";
 let liveVideoLayoutObserver=null,liveVideoLayoutFrame=0;
 const autoStageAttemptedPrograms=new Set();
+let autoStageOwner=null,autoStageFollowPending=false;
 let broadcastCommentSearch="";
 let broadcastCommentType="all";
 let broadcastCommentUserId="";
@@ -492,12 +493,37 @@ async function maybeAutoPlayOnOwnLive(info){
 async function maybeOpenOwnLiveStage(info){
  const programId=window.KananeoStageFocus.ownLiveStageProgram(info);
  if(!programId||state.liveVideoDisplayMode==="normal"||autoStageAttemptedPrograms.has(programId))return;
- // The verified own-live monitor is the only automatic trigger. Respect a
- // manually open view and never reopen a manually closed view on each poll.
- autoStageAttemptedPrograms.add(programId);
- if(autoStageAttemptedPrograms.size>100)autoStageAttemptedPrograms.delete(autoStageAttemptedPrograms.values().next().value);
- if(liveVideoState.open)return;
- liveVideoState={open:true,status:"loading",programId,title:info.title||programId,message:"放送開始を検知しました。プレイヤーを表示しています。"};
+ const markAttempted=()=>{
+  autoStageAttemptedPrograms.add(programId);
+  if(autoStageAttemptedPrograms.size>100)autoStageAttemptedPrograms.delete(autoStageAttemptedPrograms.values().next().value);
+ };
+ const policy=window.KananeoStageFocus.ownStageTransition;
+ let decision=policy(info,liveVideoState,autoStageOwner);
+ if(decision==="keep"){markAttempted();return;}
+ if(decision==="verify"){
+  // The onLive event can arrive before the monitor publishes its fresh
+  // account and program list. Wait for the successful status snapshot.
+  const isCurrentOwnLive=()=>ownMonitorStatus.phase==="watching"&&String(ownMonitorStatus.userId||"")===String(info.userId||"")&&
+   (ownMonitorStatus.activePrograms||[]).some(item=>window.KananeoStageFocus.ownLiveStageProgram(item)===programId);
+  if(autoStageFollowPending||!isCurrentOwnLive())return;
+  const previous=liveVideoState.programId,owner=autoStageOwner;
+  autoStageFollowPending=true;
+  let verification;
+  try{verification=await window.kananeoApp.niconico.checkProgram(previous);}
+  catch{return;}
+  finally{autoStageFollowPending=false;}
+  // A manual close/open or account change during verification must win.
+  if(autoStageOwner!==owner||!liveVideoState.open||liveVideoState.programId!==previous){
+   markAttempted();return;
+  }
+  if(state.liveVideoDisplayMode==="normal"||!isCurrentOwnLive())return;
+  decision=policy(info,liveVideoState,owner,verification||{ok:false});
+  if(decision!=="follow")return;
+ }
+ if(decision!=="open"&&decision!=="follow")return;
+ markAttempted();
+ autoStageOwner={programId,userId:String(info.userId||"")};
+ liveVideoState={open:true,status:"loading",programId,title:info.title||programId,message:decision==="follow"?"前枠の終了を確認しました。次枠を表示しています。":"放送開始を検知しました。プレイヤーを表示しています。"};
  lastLiveVideoBoundsKey="";
  page="broadcast";render();
  try{
@@ -509,6 +535,7 @@ async function maybeOpenOwnLiveStage(info){
   }
  }catch(error){
   if(liveVideoState.programId===programId&&liveVideoState.open){
+   autoStageOwner=null;
    liveVideoState={open:false,status:"error",programId,title:info.title||programId,message:"自動表示に失敗しました。再生ボタンから開き直してください。"};
    updateBroadcastLivePanel();updateLiveVideoBounds();toast(liveVideoState.message);
   }
@@ -518,7 +545,7 @@ function applyOwnMonitorStatus(status){
  if(!status||typeof status!=="object")return;
  ownMonitorStatus=status;
  for(const item of status.activePrograms||[])void maybeAutoPlayOnOwnLive(item);
- const ownLive=(status.activePrograms||[]).find(item=>window.KananeoStageFocus.ownLiveStageProgram(item));
+ const ownLive=status.phase==="watching"&&(status.activePrograms||[]).find(item=>window.KananeoStageFocus.ownLiveStageProgram(item));
  if(ownLive)void maybeOpenOwnLiveStage(ownLive);
  if(page==="monitor"){renderStreamMonitorUi();renderRankingMonitorUi();}
 }
@@ -544,6 +571,7 @@ async function handleOwnBroadcastLive(info){
   else if(commentConnection.programId.toLowerCase()!==programId)addStreamMonitorHistory("info",programId,"別番組のコメント受信中のため切替を保留しました。");
  }
  if(state.liveVideoDisplayMode==="normal"&&state.streamMonitor.autoVideo&&!liveVideoState.open){
+  autoStageOwner=null;
   const result=await window.kananeoApp.niconico.openLiveVideo(programId,state.liveVideoDisplayMode);
   if(result?.ok){liveVideoState={open:true,status:"loading",programId,message:"自分の放送画面を表示しています。"};page="broadcast";render();}
  }
@@ -712,6 +740,7 @@ async function onRegisteredUserLive(info){
  addStreamMonitorHistory("live",id,"登録ユーザー "+info.userId+" の放送開始を検知しました。");
  save();toast("登録配信者の放送を検知："+id);
  if(state.streamMonitor.autoVideo&&!liveVideoState.open){
+  autoStageOwner=null;
   page="broadcast";render();
   const result=await window.kananeoApp.niconico.openLiveVideo(id,state.liveVideoDisplayMode);
   if(result?.ok){
@@ -2774,6 +2803,7 @@ function toggleStageFullscreen(automatic=false){
 }
 function applyLiveVideoState(state){
  if(!state||typeof state!=="object")return;
+ if(state.status==="closed")autoStageOwner=null;
  liveVideoState={
   open:state.status!=="closed",
   status:state.status||"closed",
@@ -3681,6 +3711,7 @@ if(b.hasAttribute("data-broadcast-comment-clear")){
 }
 if(b.hasAttribute("data-stage-fullscreen")){toggleStageFullscreen();return;}
 if(b.hasAttribute("data-live-video-open")){
+ autoStageOwner=null;
  const id=document.getElementById("broadcast-watch-id")?.value.trim()||commentConnection.programId||state.lastProgramId||"";
  if(!id){toast("放送IDまたは番組URLを入力してください。");return;}
  toggleStageFullscreen(true);
@@ -3704,6 +3735,7 @@ if(b.hasAttribute("data-live-video-open")){
  return;
 }
 if(b.hasAttribute("data-live-video-close")){
+ autoStageOwner=null;
  if(document.fullscreenElement?.id==="broadcast-stage"&&document.exitFullscreen)void document.exitFullscreen().catch(()=>{});
  const result=await window.kananeoApp.niconico.closeLiveVideo();
  if(result?.ok){liveVideoState={open:false,status:"closed",programId:"",title:"",message:"放送画面を閉じました。"};lastLiveVideoBoundsKey="";updateBroadcastLivePanel();updateLiveVideoBounds();}
