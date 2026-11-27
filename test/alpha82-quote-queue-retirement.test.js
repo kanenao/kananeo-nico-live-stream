@@ -38,7 +38,7 @@ function playbackContext(queueType="request",confirmed=true,accepted=true){
  const state={requests:queueType==="request"?[played,other]:[other],stocks:queueType==="stock"?[played,extra]:[extra],
   lastProgramId:"lv123",playback:{mainVolume:1,subVolume:0,nextIntervalSeconds:10},player:{},logs:[]};
  const events=[];
- const ctx={state,quotePlayback:{active:false,itemId:"",programId:"",videoId:""},commentConnection:{programId:""},
+ const ctx={state,quoteRefreshGeneration:0,quotePlayback:{active:false,itemId:"",programId:"",videoId:""},commentConnection:{programId:""},
   window:{KananeoQuoteQueue:{retireVerifiedQuote},kananeoApp:{niconico:{
    validateVideo:async()=>({ok:true,videoId:played.videoId}),
    playQuotedVideo:async()=>accepted?
@@ -94,7 +94,7 @@ test("delayed verification removes the exact queued item; other live video canno
 test("refresh does not lose active playback metadata after pending queue removal",async()=>{
  for(const queueType of ["request","stock"]){
   const played=item("played");
-  const ctx={shortPollCompletion:null,clearShortPollCompletion:()=>{},quotePlayback:{active:true,verified:true,programId:"lv123",videoId:"sm123",queueType,itemId:played.id,item:played},
+  const ctx={quoteRefreshGeneration:0,shortPollCompletion:null,clearShortPollCompletion:()=>{},quotePlayback:{active:true,verified:true,programId:"lv123",videoId:"sm123",queueType,itemId:played.id,item:played},
    state:{requests:[],stocks:[],lastProgramId:"lv123",player:{currentId:played.id,currentQueueType:queueType,
     quoteProgramId:"lv123",quoteVideoId:"sm123",quoteStartedAt:1780000000000,quoteDurationMs:120000},
     logs:[],playback:{quoteAutoNext:false}},
