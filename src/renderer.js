@@ -72,6 +72,7 @@ let bgmAudio=null;
 let remoteControlUi={loading:false,lastRefreshAt:0,status:{running:false,mode:"localhost",protocol:"http",host:"127.0.0.1",port:0,url:"",devices:[],storageHealthy:true,storageMessage:""},lanOptions:{addresses:[],certificateName:"",privateKeyName:""},pairingCode:"",pairingExpiresAt:null,error:""};
 let quotePlayback={active:false,verified:false,programId:"",videoId:"",queueType:"",itemId:"",item:null,message:"ニコ生への引用再生は停止中です。"};
 let quoteFrameRuntime={busy:false,lastCheckedAt:0,frozenAt:0};
+let quoteRefreshGeneration=0;
 let pollRepeatUntil=0;
 let quoteAutoTimer=null;
 let quoteAutoToken=0;
@@ -1767,7 +1768,18 @@ async function refreshQuotePlayback(options={}){
 const silent=options.silent===true;
 const programId=(quotePlayback.active?quotePlayback.programId:state.lastProgramId)||state.lastProgramId||quotePlayback.programId;
 if(!programId){if(!silent)toast("先に「放送・枠管理」で番組IDを確認してください。");return {ok:false};}
-const result=await window.kananeoApp.niconico.getCurrentQuotation({programId});
+// Only the latest read of the same playback context may change local state.
+const generation=++quoteRefreshGeneration;
+const checkedPlayback=quotePlayback;
+const checkedProgramId=state.lastProgramId;
+const checkedStartedAt=state.player.quoteStartedAt;
+let result;
+try{result=await window.kananeoApp.niconico.getCurrentQuotation({programId});}
+catch{result={ok:false,message:"引用再生状態の通信に失敗しました。"};}
+if(generation!==quoteRefreshGeneration||quotePlayback!==checkedPlayback||
+   state.lastProgramId!==checkedProgramId||state.player.quoteStartedAt!==checkedStartedAt){
+ return {ok:false,code:"STALE_QUOTE_REFRESH",message:"確認中に番組または引用再生が切り替わったため、古い取得結果を破棄しました。"};
+}
 if(!result?.ok){
 quotePlayback={...quotePlayback,message:result?.message||"引用再生状態を取得できませんでした。"};
 if(!silent)toast(quotePlayback.message);
@@ -1894,6 +1906,8 @@ const programId=options.programId||state.lastProgramId||commentConnection.progra
 if(!programId){toast("先に「放送・枠管理」で配信中の放送IDを確認してください。");return false;}
 const ok=skipConfirmation||confirm("ニコ生の放送へ「"+item.title+"」を引用再生します。\\n\\n視聴者に動画が流れます。放送主権限が必要です。実行しますか？");
 if(!ok)return false;
+// Invalidate reads started before a confirmed playback operation.
+quoteRefreshGeneration++;
 try{
 const validation=await window.kananeoApp.niconico.validateVideo(item.videoId||item.url);
 if(!validation?.ok){toast(validation?.message||"引用再生できる動画IDではありません。");return false;}
@@ -1961,6 +1975,7 @@ cancelPendingAutoPoll();
 const programId=quotePlayback.programId||state.lastProgramId;
 if(!programId){toast("放送IDを確認してください。");return;}
 if(!confirm("現在ニコ生へ送っている引用再生を停止しますか？"))return;
+quoteRefreshGeneration++;
 const current=await window.kananeoApp.niconico.getCurrentQuotation({programId});
 if(!current?.ok){toast(current?.message||"引用再生状態を確認できませんでした。");return;}
 if(!current.exists){
