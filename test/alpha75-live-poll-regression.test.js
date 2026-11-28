@@ -36,7 +36,7 @@ test("real quote mutation is not blocked by the unrelated live-start opt-in",asy
  let quotePosts=0;
  const state={lastProgramId:"lv123",playback:{autoPlayOnOwnLive:false,lastAutoPlayProgramId:"",
   mainVolume:1,subVolume:0}};
- const ctx={state,quotePlayback:{active:false,programId:""},
+ const ctx={state,quoteRefreshGeneration:0,quotePlayback:{active:false,programId:""},
   commentConnection:{programId:""},toast:()=>{},confirm:()=>true,
   window:{kananeoApp:{niconico:{
    validateVideo:async()=>({ok:true,videoId:"sm1"}),
