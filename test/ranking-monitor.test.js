@@ -12,8 +12,8 @@ const officialHtml=`<ol>
 <li><a href="/watch/lv111111111">別番組</a></li>
 </ol>`;
 
-test("defines exactly the three requested ranking sources",()=>{
- assert.deepEqual(ranking.SOURCES.map(x=>x.id),["chikuwa","nicoran","official"]);
+test("defines exactly the four requested ranking sources",()=>{
+ assert.deepEqual(ranking.SOURCES.map(x=>x.id),["chikuwa","nicoran","official","kanachin"]);
  assert.equal(ranking.SOURCES.find(x=>x.id==="chikuwa").url,"https://www.chikuwachan.com/live/NCU/");
  assert.equal(ranking.SOURCES.find(x=>x.id==="nicoran").url,"https://nico-ran.stream/");
  assert.equal(ranking.SOURCES.find(x=>x.id==="official").url,"https://live.nicovideo.jp/ranking");
@@ -101,7 +101,7 @@ test("does not erase the best rank when a broadcast leaves the visible list",()=
  assert.equal(state.snapshots.official.rank,null);
  assert.equal(state.snapshots.official.bestRank,4);
 });
-test("fetches all three sources without forwarding account cookies",async()=>{
+test("fetches all four sources without forwarding account cookies",async()=>{
  const calls=[];
  const result=await ranking.fetchOwnBroadcastRankings({
   userId:"12345678",programs:[{programId:"lv222222222",programStatus:"ON_AIR",title:"自分の配信"}]
@@ -114,13 +114,13 @@ test("fetches all three sources without forwarding account cookies",async()=>{
  });
  assert.equal(result.ok,true);
  assert.equal(result.status,"checked");
- assert.equal(result.results.length,3);
- assert.equal(calls.length,3);
+ assert.equal(result.results.length,4);
+ assert.equal(calls.length,4);
  assert.ok(calls.every(call=>!Object.keys(call.options.headers).some(key=>key.toLowerCase()==="cookie")));
  assert.ok(calls.every(call=>!("credentials" in call.options)));
  assert.ok(calls.every(call=>!call.url.includes("12345678")));
 });
-test("keeps one ranking source failure independent of the other two",async()=>{
+test("keeps one ranking source failure independent of other sources",async()=>{
  const result=await ranking.fetchOwnBroadcastRankings({
   userId:"12345678",programs:[{programId:"lv222222222",programStatus:"ON_AIR"}]
  },{
@@ -129,7 +129,7 @@ test("keeps one ranking source failure independent of the other two",async()=>{
    return {ok:true,status:200,url,headers:{get:()=>null},text:async()=>chikuwaHtml};
   }
  });
- assert.equal(result.results.length,3);
+ assert.equal(result.results.length,4);
  assert.equal(result.results.find(x=>x.sourceId==="nicoran").status,"unavailable");
  assert.equal(result.results.filter(x=>x.status==="ranked").length,2);
 });
@@ -162,4 +162,27 @@ test("keeps page-size limits and handles network failures safely",async()=>{
  });
  assert.equal(network.status,"unavailable");
  assert.doesNotMatch(network.message,/private transport detail/);
+});
+
+test("Kanachin adapter matches exact Nico program and rejects unknown or old data",()=>{
+ const now=Date.parse("2026-11-28T00:00:00Z");
+ const identity={userId:"42",programIds:["lv222"]};
+ const data={updatedAt:new Date(now).toISOString(),niconico:[{programId:"lv111",rank:1},{programId:"lv222",rank:2,title:"自分の放送"}],kick:[{programId:"lv222",rank:1}]};
+ assert.equal(ranking.parseKanachinRanking(JSON.stringify(data),identity,now).rank,2);
+ assert.equal(ranking.parseKanachinRanking(JSON.stringify(data),{programIds:["lv999"]},now).status,"not-listed");
+ assert.equal(ranking.parseKanachinRanking(JSON.stringify(data),identity,now+600000).status,"parse-error");
+ assert.equal(ranking.parseKanachinRanking(JSON.stringify({updatedAt:data.updatedAt,kick:data.kick}),identity,now).status,"parse-error");
+ assert.equal(ranking.parseKanachinRanking(JSON.stringify({...data,niconico:[{programId:"lv222"}]}),identity,now).status,"parse-error");
+});
+test("rank-in notices persist per account, site and exact program",()=>{
+ const result={ok:true,status:"ranked",sourceId:"kanachin",programId:"lv222",rank:2};
+ let state=ranking.normalizeRankingMonitorState({});
+ const first=ranking.recordRankInNotice(state,result,"42",["lv222"]);
+ assert.match(first.notice.message,/かなちんランキングで 2位/);
+ state=first.state;
+ assert.equal(ranking.recordRankInNotice(state,result,"42",["lv222"]).notice,null);
+ assert.equal(ranking.recordRankInNotice(state,{...result,status:"unavailable"},"42",["lv222"]).notice,null);
+ assert.equal(ranking.recordRankInNotice(state,result,"42",["lv999"]).notice,null);
+ assert.ok(ranking.recordRankInNotice(state,result,"43",["lv222"]).notice);
+ assert.ok(ranking.recordRankInNotice(state,{...result,sourceId:"official"},"42",["lv222"]).notice);
 });

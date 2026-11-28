@@ -13,7 +13,7 @@ test("ranking monitor is exposed through a guarded main-process IPC",()=>{
  assert.match(main,/fetchOwnBroadcastRankings\(\{userId:own\.userId,programs:own\.programs\}\)/);
  assert.match(preload,/checkOwnRanking:\(\)=>ipcRenderer\.invoke\("niconico:ranking-monitor-check"\)/);
 });
-test("ranking monitor module loads before renderer and provides three source adapters",()=>{
+test("ranking monitor module loads before renderer and provides four source adapters",()=>{
  assert.ok(index.indexOf('src="ranking-monitor.js"')<index.indexOf('src="renderer.js"'));
  assert.match(moduleSource,/https:\/\/www\.chikuwachan\.com\/live\/NCU\//);
  assert.match(moduleSource,/https:\/\/nico-ran\.stream\//);
@@ -36,7 +36,7 @@ test("public ranking fetcher does not use or forward the Niconico login session"
  assert.match(moduleSource,/isAllowedRedirect/);
 });
 test("ranking monitor release version stays alpha and increments the base version",()=>{
- assert.equal(pkg.version,"0.9.9-alpha.111");
- assert.match(preload,/version:"0\.9\.9-alpha\.111"/);
- assert.match(index,/ALPHA 111/);
+ assert.equal(pkg.version,"0.10.0-alpha.112");
+ assert.match(preload,/version:"0\.10\.0-alpha\.112"/);
+ assert.match(index,/ALPHA 112/);
 });
