@@ -803,7 +803,7 @@ input[type="range"]{accent-color:#8c7cff;cursor:pointer}
 .broadcast-ranking-status{
   margin-bottom:9px;color:#b4cad8;font-size:10px;line-height:1.6;
 }
-.broadcast-ranking-cards{grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.broadcast-ranking-cards{grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
 .broadcast-ranking-cards .ranking-source-card{
   padding:10px 11px;background:linear-gradient(145deg,#163d4c,#10293c);
   border-color:#3a7482;box-shadow:0 2px 12px #0002;
@@ -845,7 +845,7 @@ input[type="range"]{accent-color:#8c7cff;cursor:pointer}
   .broadcast-screen-layout,.broadcast-overview-grid{grid-template-columns:1fr}
   .broadcast-player-body{height:clamp(270px,36vh,430px)}
   .broadcast-comments-panel .ncv-comment-list{min-height:260px;max-height:460px}
-  .broadcast-ranking-cards{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .broadcast-ranking-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
   .broadcast-overview-details{grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}
 }
 @media(max-width:780px){
