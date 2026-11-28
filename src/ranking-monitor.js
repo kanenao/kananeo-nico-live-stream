@@ -3,7 +3,8 @@
 const SOURCES = Object.freeze([
   Object.freeze({id:"chikuwa",name:"ちくわちゃん",url:"https://www.chikuwachan.com/live/NCU/",description:"NCUリアルタイムランキング"}),
   Object.freeze({id:"nicoran",name:"nico-ran.stream",url:"https://nico-ran.stream/",description:"独自集計リアルタイムランキング"}),
-  Object.freeze({id:"official",name:"ニコ生公式",url:"https://live.nicovideo.jp/ranking",description:"公式ランキング"})
+  Object.freeze({id:"official",name:"ニコ生公式",url:"https://live.nicovideo.jp/ranking",description:"公式ランキング"}),
+  Object.freeze({id:"kanachin",name:"かなちんランキング",url:"https://kanachin-app-collection.kanenao0224.workers.dev/#rankings",apiUrl:"https://kane-nao.tail7d733c.ts.net/api/rankings/compact",description:"かなちん独自集計ランキング"})
 ]);
 const SOURCE_MAP = new Map(SOURCES.map(source=>[source.id,source]));
 const MAX_PAGE_CHARS=6*1024*1024;
@@ -201,11 +202,39 @@ function matchOwnBroadcast(entries,userId,programIds){
  const matches=byProgram.length?byProgram:byUser;
  return matches.sort((a,b)=>a.rank-b.rank)[0]||null;
 }
+// Public JSON only. Require explicitly labelled Nico rows, ranks and a fresh
+// timestamp. Unknown formats are errors, not an invented rank or omission.
+function parseKanachinRanking(raw,identity={},now=Date.now()){
+ const source=SOURCE_MAP.get("kanachin");
+ const base={sourceId:source.id,name:source.name,url:source.url};
+ const failure=message=>({...base,ok:false,status:"parse-error",entriesCount:0,message});
+ let data;try{data=JSON.parse(raw);}catch{return failure("かなちんランキングのJSONを読み取れません。");}
+ if(!data||typeof data!=="object"||data.ok===false||data.stale===true)return failure("ランキングの取得状態を確認できません。");
+ const group=data.niconico??data.rankings?.niconico??data.data?.niconico;
+ const rows=Array.isArray(group)?group:(Array.isArray(group?.items)?group.items:Array.isArray(group?.programs)?group.programs:null);
+ const stamp=group?.updatedAt??group?.generatedAt??data.updatedAt??data.generatedAt??data.checkedAt??data.data?.updatedAt;
+ const timestamp=typeof stamp==="string"?Date.parse(stamp):typeof stamp==="number"?(stamp<1e12?stamp*1000:stamp):NaN;
+ if(!Number.isFinite(timestamp)||timestamp>now+60000||now-timestamp>300000)return failure("ランキングの更新時刻が不明、または古いため通知を保留します。");
+ if(!rows||!rows.length||rows.length>100||group?.stale===true||group?.ok===false)return failure("ニコニコのランキング形式を確認できません。");
+ const seen=new Set(),entries=[];
+ for(const row of rows){
+  const id=String(row?.programId??row?.nicoliveProgramId??row?.liveId??row?.id??"").toLowerCase();
+  const rank=Number(row?.rank??row?.position);
+  if(!/^lv\d{1,20}$/.test(id)||!Number.isInteger(rank)||rank<1||rank>100||seen.has(id))return failure("番組IDまたは順位の形式を確認できません。");
+  seen.add(id);
+  entries.push({programId:id,rank,title:safeText(row.title||row.programTitle||id),metrics:{points:readNumber(row.points??row.score),viewers:readNumber(row.watchCount??row.viewerCount??row.viewers),comments:readNumber(row.commentCount??row.comments),score:readNumber(row.score??row.momentum)}});
+ }
+ const ids=new Set((identity.programIds||[]).map(normalizeProgramId).filter(Boolean));
+ const match=entries.filter(row=>ids.has(row.programId)).sort((a,b)=>a.rank-b.rank)[0];
+ if(!match)return {...base,ok:true,status:"not-listed",rank:null,programId:"",entriesCount:entries.length,message:"取得したランキング範囲に自分の配信は見つかりませんでした。"};
+ return {...base,...match,ok:true,status:"ranked",entriesCount:entries.length,matchType:"programId",message:"ランキング掲載中"};
+}
 function parseRankingPage(html,sourceId,identity={}){
  const source=SOURCE_MAP.get(sourceId);
  if(!source)return {ok:false,status:"unavailable",sourceId,message:"未対応のランキングサイトです。"};
  if(typeof html!=="string"||!html.trim()||html.length>MAX_PAGE_CHARS)
   return {ok:false,status:"unavailable",sourceId,message:"ランキングページの内容が空か、取得上限を超えています。"};
+ if(sourceId==="kanachin")return parseKanachinRanking(html,identity);
  const entries=extractRankingEntries(html);
  if(!entries.length)return {ok:false,status:"parse-error",sourceId,name:source.name,url:source.url,entriesCount:0,message:"ランキング項目を読み取れません。ページ構造が変更された可能性があります。"};
  const userId=String(identity.userId||"");
@@ -218,7 +247,7 @@ function isAllowedRedirect(source,responseUrl){
  if(!responseUrl)return true;
  let actual;
  try{actual=new URL(responseUrl);}catch{return false;}
- const expected=new URL(source.url);
+ const expected=new URL(source.apiUrl||source.url);
  if(actual.protocol!=="https:")return false;
  const root=host=>host.toLowerCase().replace(/^www\./,"");
  return root(actual.hostname)===root(expected.hostname);
@@ -229,9 +258,9 @@ async function fetchRankingSource(sourceId,identity={},options={}){
  const fetchImpl=typeof options.fetchImpl==="function"?options.fetchImpl:globalThis.fetch;
  if(typeof fetchImpl!=="function")return {ok:false,status:"unavailable",sourceId,name:source.name,url:source.url,message:"この環境ではHTTP取得を利用できません。"};
  try{
-  const response=await fetchImpl(source.url,{
-   method:"GET",redirect:"follow",
-   headers:{Accept:"text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8","Cache-Control":"no-cache"},
+  const response=await fetchImpl(source.apiUrl||source.url,{
+   method:"GET",redirect:source.apiUrl?"error":"follow",
+   headers:source.apiUrl?{Accept:"application/json"}:{Accept:"text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8","Cache-Control":"no-cache"},
    signal:AbortSignal.timeout(REQUEST_TIMEOUT_MS)
   });
   if(!response?.ok)return {ok:false,status:"unavailable",sourceId,name:source.name,url:source.url,message:"HTTP "+Number(response?.status||0)+"：ランキングを取得できません。"};
@@ -240,7 +269,7 @@ async function fetchRankingSource(sourceId,identity={},options={}){
   if(length>MAX_PAGE_CHARS)return {ok:false,status:"unavailable",sourceId,name:source.name,url:source.url,message:"ランキングページが大きすぎるため取得を中止しました。"};
   const html=await response.text();
   if(html.length>MAX_PAGE_CHARS)return {ok:false,status:"unavailable",sourceId,name:source.name,url:source.url,message:"ランキングページが大きすぎるため取得を中止しました。"};
-  return parseRankingPage(html,sourceId,identity);
+  return sourceId==="kanachin"?parseKanachinRanking(html,identity,options.now instanceof Date?options.now.getTime():Date.now()):parseRankingPage(html,sourceId,identity);
  }catch(error){
   const aborted=error?.name==="TimeoutError"||error?.name==="AbortError";
   return {ok:false,status:"unavailable",sourceId,name:source.name,url:source.url,message:aborted?"応答がタイムアウトしました。":"通信できませんでした。"};
@@ -253,7 +282,7 @@ async function fetchOwnBroadcastRankings(input={},options={}){
  const checkedAt=(options.now instanceof Date?options.now:new Date()).toISOString();
  if(!/^\d{1,20}$/.test(userId))return {ok:false,code:"LOGIN_REQUIRED",message:"ログイン中のユーザーIDを確認できません。",checkedAt,results:[]};
  if(!programIds.length)return {ok:true,status:"not-live",userId,programs:[],checkedAt,results:SOURCES.map(source=>({ok:true,status:"not-live",sourceId:source.id,name:source.name,url:source.url,rank:null,entriesCount:0,message:"自分の配信を検出していません。"}))};
- const results=await Promise.all(SOURCES.map(source=>fetchRankingSource(source.id,{userId,programIds},{fetchImpl:options.fetchImpl})));
+ const results=await Promise.all(SOURCES.map(source=>fetchRankingSource(source.id,{userId,programIds},{fetchImpl:options.fetchImpl,now:options.now})));
  return {ok:true,status:"checked",userId,programs:programs.map(item=>({programId:normalizeProgramId(item.programId),title:safeText(item.title||item.programId,200)})),checkedAt,results};
 }
 function normalizeRankingMonitorState(input){
@@ -283,7 +312,8 @@ function normalizeRankingMonitorState(input){
   programId:normalizeProgramId(item?.programId),title:safeText(item?.title||"",160),
   at:typeof item?.at==="string"?item.at:""
  })).filter(item=>item.sourceId&&item.at);
- return {enabled:value.enabled!==false,intervalSeconds:[60,90,120,300].includes(interval)?interval:60,snapshots,history,lastCheckedAt:typeof value.lastCheckedAt==="string"?value.lastCheckedAt:"",userId:/^\d{1,20}$/.test(String(value.userId||""))?String(value.userId):"",programs:Array.isArray(value.programs)?value.programs.slice(0,5).map(item=>({programId:normalizeProgramId(item?.programId),title:safeText(item?.title||"",200)})).filter(item=>item.programId):[]};
+ const notified=(Array.isArray(value.notified)?value.notified:[]).filter(key=>typeof key==="string"&&/^(?:chikuwa|nicoran|official|kanachin):\d{1,20}:lv\d{1,20}$/.test(key)).slice(0,400);
+ return {notified,enabled:value.enabled!==false,intervalSeconds:[60,90,120,300].includes(interval)?interval:60,snapshots,history,lastCheckedAt:typeof value.lastCheckedAt==="string"?value.lastCheckedAt:"",userId:/^\d{1,20}$/.test(String(value.userId||""))?String(value.userId):"",programs:Array.isArray(value.programs)?value.programs.slice(0,5).map(item=>({programId:normalizeProgramId(item?.programId),title:safeText(item?.title||"",200)})).filter(item=>item.programId):[]};
 }
 function applyRankingSnapshot(stateInput,result,checkedAt=new Date().toISOString()){
  const state=normalizeRankingMonitorState(stateInput);
@@ -311,8 +341,20 @@ function applyRankingSnapshot(stateInput,result,checkedAt=new Date().toISOString
  return state;
 }
 
+// Notify once per account, site and exact live program. Unavailable
+// results cannot trigger a notice or reset deduplication.
+function recordRankInNotice(stateInput,result,userId,programIds){
+ const state=normalizeRankingMonitorState(stateInput);
+ const id=normalizeProgramId(result?.programId),account=String(userId||"");
+ if(result?.ok!==true||result.status!=="ranked"||!SOURCE_MAP.has(result.sourceId)||!/^\d{1,20}$/.test(account)||
+    !id||!(programIds||[]).map(normalizeProgramId).includes(id)||!Number.isInteger(result.rank)||result.rank<1||result.rank>100000)return {state,notice:null};
+ const key=result.sourceId+":"+account+":"+id;
+ if(state.notified.includes(key))return {state,notice:null};
+ state.notified=[key,...state.notified].slice(0,400);
+ return {state,notice:{sourceId:result.sourceId,programId:id,rank:result.rank,title:safeText(result.title||id),message:SOURCE_MAP.get(result.sourceId).name+"で "+result.rank+"位にランクイン！"}};
+}
 const api={
- SOURCES,MAX_PAGE_CHARS,REQUEST_TIMEOUT_MS,normalizeUserId,normalizeProgramId,
+ parseKanachinRanking,recordRankInNotice,SOURCES,MAX_PAGE_CHARS,REQUEST_TIMEOUT_MS,normalizeUserId,normalizeProgramId,
  extractRankingEntries,parseRankingPage,fetchRankingSource,fetchOwnBroadcastRankings,
  normalizeRankingMonitorState,applyRankingSnapshot,matchOwnBroadcast,isAllowedRedirect
 };
